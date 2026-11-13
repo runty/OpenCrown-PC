@@ -323,9 +323,10 @@ That gives you `OpenCrownPC Launcher.exe`, `dcp_run.exe` and `SDL3.dll` in `port
 **Linux:** the Linux build lives in [`linux-port/`](linux-port) (Ubuntu 22.04 or newer: install the packages listed in [`linux-port/README.md`](linux-port/README.md), then run `./build.sh`; `sh packaging/make-appimage.sh` makes the AppImage).
 
 **macOS (development build):** the x86-64 runner uses Rosetta and SDL3 Metal.
-Visible title and inn character-selection frames, screenshot readback and
-scripted save/reload work on the reference M5 Max. Follow the
-[Mac build instructions](macos/README.md). Gameplay validation and app packaging
+Character creation, tutorial, town and combat frames work on the reference
+M5 Max. Two full process restarts recover the same earned EXP and gold; see the
+[gameplay verification](macos/gameplay-smoke.md) and
+[Mac build instructions](macos/README.md). Remaining gameplay checks and app packaging
 are tracked in the [port plan](docs/macos-port-plan.md), alongside
 [iOS/iPadOS phase 2 feasibility](docs/macos-port-plan.md#phase-2-feasibility-on-ios-and-ipados).
 

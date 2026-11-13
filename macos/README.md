@@ -77,6 +77,12 @@ The visible smoke run reaches TITLE and INN, writes all three PNGs, and exits 0
 at 2,100 frames. The spawn adapter also preserves redirected stdio and closes
 unrelated descriptors in a child process.
 
-Town/combat, ImGui name/chat overlays, the launcher workflow, Linux regression
+Live testing now covers character creation, the full tutorial, town/guild/shop,
+Ancient Temple Ruins combat through a Harpy boss attempt ending in game-over,
+and two full process
+quit/relaunch cycles recovering the same earned EXP and gold. The
+[gameplay smoke record](gameplay-smoke.md) gives the route, controls, save hashes
+and exact limits. A successful adventure clear, ImGui name/chat overlays, audio,
+controller/hotplug, measured performance, the launcher workflow, Linux regression
 execution and packaged-app tests remain open in the
 [milestone plan](../docs/macos-port-plan.md).

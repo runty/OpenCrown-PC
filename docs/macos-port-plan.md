@@ -8,9 +8,12 @@ packaging work.
 The 2026-11-13 Darwin implementation builds the complete headless runner.
 The supported dump starts under Rosetta, creates and reloads a disposable save,
 and reaches TITLE and INN using scripted input. See the [Mac build instructions](../macos/README.md).
-The rendered runner now presents title and INN character-selection frames through
-SDL Metal. Town/combat, overlays and packaged-app validation remain open. The milestone tracker below
-is the execution checklist. A milestone is
+The rendered runner now covers character creation, the full tutorial, town and
+combat through the Harpy boss, plus two full quit/relaunch cycles recovering
+Felix with 351 EXP and 47 gold. See the [gameplay smoke record](../macos/gameplay-smoke.md).
+The Harpy defeated the character; a successful adventure clear, overlays, audio,
+controller/hotplug, measured performance and packaged-app validation remain open.
+The milestone tracker below is the execution checklist. A milestone is
 complete only when its acceptance checks have evidence attached to its issue.
 
 ## Baseline and scope
@@ -40,9 +43,10 @@ accepted both SELF modules, four supported-version signatures and both CPK
 table bounds. Payload and gameplay comparisons remain open. A translated process
 reported 4 KiB pages, compared with 16 KiB in a native arm64 process. An adapted
 synthetic loader fixture called a host shim successfully. A translated Metal
-probe submitted a command buffer. All eight shaders compiled and five RGBA8
-offscreen pipelines were created using cached SDL 3.4.16. Real guest startup,
-draws, presentation and a repeat on pinned SDL 3.4.18 are outstanding.
+probe submitted a command buffer. The initial probe compiled all eight shaders
+and created five RGBA8 offscreen pipelines using cached SDL 3.4.16. The subsequent implementation
+boots the real guest and presents its frames using pinned SDL 3.4.18; the
+current coverage and remaining acceptance work are recorded above.
 
 ## Architecture decisions
 
@@ -330,7 +334,7 @@ evidence from the actual game.
 **Acceptance**
 
 - [ ] Complete at least one adventure and return to town during a 60-minute run.
-- [ ] Save progress, quit fully and recover the same character/progress twice.
+- [x] Save progress, quit fully and recover the same character/progress twice.
 - [ ] Inject short and interrupted writes in disposable save tests, including
   truncated PARAM/ICON sidecars; verify recovery and reload known character
   progress in a fresh process. Record slot and sidecar results independently.
@@ -343,6 +347,13 @@ evidence from the actual game.
   frame when three are pending; the F1 averages cannot expose those losses.
   Target 60 fps on the reference Mac; diagnose sustained misses rather than
   declaring the average frame rate sufficient.
+
+The 2026-11-13 [manual gameplay and save record](../macos/gameplay-smoke.md)
+passes the normal-quit reload check at source `784fe20`. It covers creation,
+tutorial, town and a boss attempt, followed by two fresh-process reloads with
+matching in-game earned progress and unchanged slot/sidecar hashes. The Harpy
+was not defeated, so the adventure-completion check remains open. Failed-write
+recovery, audio/controller and formal frame pacing were not established.
 
 Use the measured save/reload session and frame timings to update the remaining Mac estimate.
 
