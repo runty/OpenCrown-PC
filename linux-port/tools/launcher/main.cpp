@@ -49,7 +49,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
-#include <spawn.h>
+#include "platform/spawn.h"
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -133,9 +133,9 @@ void open_in_explorer(const std::string& p) {
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+    dcp::platform::close_spawn_descriptors(&fa);
     pid_t pid;
-    if (posix_spawnp(&pid, "xdg-open", &fa, nullptr, const_cast<char**>(argv), environ) == 0) g_openers.push_back(pid);
+    if (dcp::platform::spawn(&pid, "xdg-open", &fa, const_cast<char**>(argv), environ, true) == 0) g_openers.push_back(pid);
     else std::fprintf(stderr, "launcher: xdg-open not found; open %s by hand\n", p.c_str());
     posix_spawn_file_actions_destroy(&fa);
 }
@@ -512,11 +512,11 @@ bool start_game(Game& g, const Settings& s, const std::string& user, const std::
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 1, log_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     posix_spawn_file_actions_adddup2(&fa, 1, 2);
-    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+    dcp::platform::close_spawn_descriptors(&fa);
     const std::string dir = exe_dir();
     posix_spawn_file_actions_addchdir_np(&fa, dir.c_str());
     pid_t pid = 0;
-    int rc = posix_spawn(&pid, exe.c_str(), &fa, nullptr, argv.data(), environ);
+    int rc = dcp::platform::spawn(&pid, exe.c_str(), &fa, argv.data(), environ);
     posix_spawn_file_actions_destroy(&fa);
     // glibc reports a failed exec / file action (log not writable) as the spawn's own error.
     if (rc != 0) { g.error = "cannot start dcp_run: " + std::string(std::strerror(rc)) + " (log " + log_path + ")"; return false; }
@@ -876,9 +876,9 @@ bool relaunch(const std::string& appimage, std::string* err) {
     const char* argv[] = {appimage.c_str(), "--updated", OPENCROWN_VERSION, nullptr};
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+    dcp::platform::close_spawn_descriptors(&fa);
     pid_t pid;
-    int rc = posix_spawn(&pid, appimage.c_str(), &fa, nullptr, const_cast<char**>(argv), environ);
+    int rc = dcp::platform::spawn(&pid, appimage.c_str(), &fa, const_cast<char**>(argv), environ);
     posix_spawn_file_actions_destroy(&fa);
     if (rc != 0) *err = "the update is installed, but starting it failed (" + std::string(std::strerror(rc)) +
                         "): start the launcher again by hand";
@@ -1292,9 +1292,9 @@ void spawn_detached(const std::vector<std::string>& args) {
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+    dcp::platform::close_spawn_descriptors(&fa);
     pid_t pid;
-    if (posix_spawnp(&pid, argv[0], &fa, nullptr, argv.data(), env.data()) == 0) g_openers.push_back(pid);
+    if (dcp::platform::spawn(&pid, argv[0], &fa, argv.data(), env.data(), true) == 0) g_openers.push_back(pid);
     else std::fprintf(stderr, "launcher: cannot start %s\n", argv[0]);
     posix_spawn_file_actions_destroy(&fa);
 }

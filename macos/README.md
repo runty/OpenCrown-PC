@@ -43,6 +43,40 @@ The CPU suite reports skipped native comparisons and synthetic patch groups
 whose padding differs from real game bytes. Inspect its counts before
 interpreting the exit code.
 
-Rendered builds still need Metal shader integration and renderer/launcher host
-adapters. Linux regression execution and packaged-app tests remain open in the
+Visible Metal rendering builds with Python 3, Xcode's Metal compiler and
+SPIRV-Cross installed. The reference tool is Homebrew spirv-cross 1.4.363.0.
+CMake translates all eight checked-in SPIR-V shaders, compiles individual Metal
+libraries and embeds them in the runner. Runtime launch uses those embedded
+libraries and needs no compiler. SDL 3.4.18 and ImGui 1.91.9b archives are
+SHA-256 pinned.
+
+```sh
+./macos/build.sh --build-dir /Volumes/office/Build/OpenCrown/macos-rendered --mode rendered
+ROSETTA_ADVERTISE_AVX=1 ctest --test-dir /Volumes/office/Build/OpenCrown/macos-rendered --timeout 60 --output-on-failure
+```
+
+To launch a visible test, set explicit disposable state directories and use the
+rendered runner. Copying the headless test save into this save root exercises the
+same reload route. Supply the script for deterministic input, or omit
+`--input` to use live input.
+
+```sh
+ROSETTA_ADVERTISE_AVX=1 DCP_USER_DIR=/path/to/test-state/user DCP_SAVE_ROOT=/path/to/test-state/saves /Volumes/office/Build/OpenCrown/macos-rendered/dcp_run /path/to/CUSA10454/eboot.bin --render --window --vsync --renderer gpu --size 1280x720 --frames 2100 --input macos/headless-input.txt
+```
+
+Optional `--shots 600=/path/to/opening.png,1100=/path/to/title.png,1800=/path/to/inn.png`
+captures the 1920×1080 game target before window scaling and overlays. The visible
+window still exits at the explicit `--frames` limit. Request shots before that
+limit so the render thread can finish their readback. Logs identify the Metal
+driver and swapchain size. `DCP_PROBE='68840*'` provides scene evidence and
+`MTL_DEBUG_LAYER=1` enables Metal API validation for a diagnostic run.
+
+Eleven tests pass on the reference Mac, including exact-pixel checks for Metal
+uniforms, alpha blending, scissor orientation and two-texture mask sampling.
+The visible smoke run reaches TITLE and INN, writes all three PNGs, and exits 0
+at 2,100 frames. The spawn adapter also preserves redirected stdio and closes
+unrelated descriptors in a child process.
+
+Town/combat, ImGui name/chat overlays, the launcher workflow, Linux regression
+execution and packaged-app tests remain open in the
 [milestone plan](../docs/macos-port-plan.md).

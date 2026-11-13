@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include "platform/io.h"
 
 #include <algorithm>
 #include <cmath>
@@ -84,6 +85,13 @@ uint64_t fnv(const void* p, size_t n, uint64_t h = 1469598103934665603ull) {
 bool readable(uint64_t a, uint64_t n) {
     if (!a) return false;
     constexpr uint64_t kPage = 4096;
+#ifdef __APPLE__
+    if (n > UINT64_MAX - a) return false;
+    uint8_t byte;
+    for (uint64_t page = a & ~(kPage - 1); page < a + n; page += kPage)
+        if (!dcp::platform::read_memory(std::max(page, a), &byte, 1)) return false;
+    return true;
+#else
     constexpr int kBatch = 256;
     uint8_t sink[kBatch];
     iovec local[kBatch], remote[kBatch];
@@ -98,6 +106,7 @@ bool readable(uint64_t a, uint64_t n) {
         if (r != k) return false;
     }
     return true;
+#endif
 }
 
 }  // namespace

@@ -168,7 +168,8 @@ if(DCP_RENDER)
   set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
   set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(SDL3
-    URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz)
+    URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+    URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3)
   FetchContent_MakeAvailable(SDL3)
   target_compile_options(SDL3-static PRIVATE -w)  # third-party
 
@@ -177,6 +178,20 @@ if(DCP_RENDER)
   # src/render/shaders/generated, so no shader compiler / Vulkan SDK is needed; SDL dlopens libvulkan at run time).
   add_library(dcp_render STATIC src/render/gl.cpp src/render/gl_device.cpp src/render/gpu_device.cpp src/render/png.cpp
     src/render/backend.cpp src/render/prompts.cpp)
+  if(APPLE)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    find_program(DCP_SPIRV_CROSS spirv-cross REQUIRED)
+    file(GLOB DCP_SPIRV_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/generated/*.spv.h")
+    set(DCP_METAL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/metal/metal_shaders.h")
+    add_custom_command(OUTPUT "${DCP_METAL_HEADER}"
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../macos/generate-shaders.py"
+        --source "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/generated"
+        --output "${DCP_METAL_HEADER}" --spirv-cross "${DCP_SPIRV_CROSS}"
+      DEPENDS ${DCP_SPIRV_HEADERS} "${CMAKE_CURRENT_SOURCE_DIR}/../macos/generate-shaders.py"
+      VERBATIM)
+    target_sources(dcp_render PRIVATE "${DCP_METAL_HEADER}")
+    target_include_directories(dcp_render PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/metal")
+  endif()
   target_include_directories(dcp_render PUBLIC src)
   target_compile_definitions(dcp_render PUBLIC DCP_HAVE_SDL_GPU)
   target_link_libraries(dcp_render PUBLIC dcp_formats dcp_texwatch freetype SDL3::SDL3-static)
@@ -198,7 +213,8 @@ if(DCP_RENDER)
   # Dear ImGui (MIT), same release as the Windows build; offline: -DFETCHCONTENT_SOURCE_DIR_IMGUI=<unpacked source>.
   # No -lGL: imgui_impl_opengl3's own loader dlopens libGL.so.1, the launcher's few GL calls go through SDL_GL_GetProcAddress.
   FetchContent_Declare(imgui
-    URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b.tar.gz)
+    URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b.tar.gz
+    URL_HASH SHA256=8e1bbc76c71d74fef2fb85db7e7ca8eba13d6a86623c54992b60162db554ffdb)
   FetchContent_MakeAvailable(imgui)
   add_library(dcp_imgui STATIC ${imgui_SOURCE_DIR}/imgui.cpp ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp ${imgui_SOURCE_DIR}/imgui_widgets.cpp
@@ -222,6 +238,12 @@ add_executable(dcp_lobby tools/dcp_lobby/main.cpp)
 target_link_libraries(dcp_lobby PRIVATE dcp_net)
 
 enable_testing()
+if(APPLE AND DCP_RENDER)
+  add_executable(test_gpu tests/test_gpu.cpp)
+  target_link_libraries(test_gpu PRIVATE dcp_render)
+  add_test(NAME gpu COMMAND test_gpu)
+  set_tests_properties(gpu PROPERTIES TIMEOUT 60)
+endif()
 add_executable(test_platform tests/test_platform.cpp)
 target_include_directories(test_platform PRIVATE src)
 target_link_libraries(test_platform PRIVATE Threads::Threads)

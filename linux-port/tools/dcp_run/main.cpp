@@ -253,8 +253,14 @@ DCP_SYSV void game_exit_cb() { std::fprintf(stderr, "game exit callback called\n
 struct EntryParams { int32_t argc; uint32_t pad; const char* argv[4]; };
 EntryParams g_params;
 uint64_t g_entry, g_libc_start;
+std::atomic<bool> g_game_finished{false};
+
+void mark_game_finished(void*) {
+    g_game_finished.store(true, std::memory_order_release);
+}
 
 void* game_thread(void*) {
+    pthread_cleanup_push(mark_game_finished, nullptr);
     dcp::hle::install_signal_stack();
     if (g_libc_start) {  // module_start(argc, argv, callback): runs libc's preinit/init arrays (guess: args unused)
         using Start = DCP_SYSV int (*)(uint64_t, void*, void*);
@@ -264,6 +270,7 @@ void* game_thread(void*) {
     using Entry = DCP_SYSV void (*)(EntryParams*, void (*)());
     reinterpret_cast<Entry>(g_entry)(&g_params, reinterpret_cast<void (*)()>(&game_exit_cb));
     std::fprintf(stderr, "entry returned\n");
+    pthread_cleanup_pop(1);
     return nullptr;
 }
 
@@ -395,8 +402,8 @@ int main(int argc, char** argv) {
         cfg.save_root = dcp::hle::default_save_root();
         if (!shot.empty()) shots.emplace_back(max_frames, shot);
         std::sort(shots.begin(), shots.end());
-        cfg.max_frames = render && !shots.empty() ? 0 : max_frames;
-        cfg.neo = neo;  // with shots the render loop decides when to stop
+        cfg.max_frames = render && !window && !shots.empty() ? 0 : max_frames;
+        cfg.neo = neo;  // hidden screenshot runs stop after the render loop writes the last shot
         if (!input_path.empty()) {
             std::ifstream in(input_path, std::ios::binary);
             if (!in) throw std::runtime_error("cannot open input script " + input_path);
@@ -490,7 +497,7 @@ int main(int argc, char** argv) {
             ro.vsync = vsync, ro.fsr = fsr, ro.sharpness = sharpness;
             ro.scale = scale, ro.scale_window = scale_window;
             ro.game_w = neo ? 3840 : 1920, ro.game_h = neo ? 2160 : 1080;
-            finish(run_render_loop(ro, t, &finish));
+            finish(run_render_loop(ro, t, g_game_finished, &finish));
         }
 #endif
         pthread_join(t, nullptr);

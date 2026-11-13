@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -26,4 +27,4 @@ struct RenderOptions {
 
 // Runs on the process main thread until the game exits or the window closes (calls finish, never returns normally).
 // game_thread: the eboot entry thread; once it has returned, the loop joins it and calls finish(0).
-int run_render_loop(const RenderOptions& o, pthread_t game_thread, void (*finish)(int));
+int run_render_loop(const RenderOptions& o, pthread_t game_thread, const std::atomic<bool>& game_finished, void (*finish)(int));

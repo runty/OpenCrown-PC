@@ -39,7 +39,11 @@ bool open_gpu(const RenderOptions& o, SDL_Window** win, SDL_GPUDevice** dev, std
               std::string* why) {
     *win = SDL_CreateWindow(kTitle, o.width, o.height, window_flags(o));
     if (!*win) { *why = std::string("window: ") + SDL_GetError(); return false; }
+#ifdef __APPLE__
+    *dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_METALLIB, true, "metal");
+#else
     *dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, nullptr);
+#endif
     bool claimed = false;
     auto undo = [&](const std::string& reason) {
         *why = reason;
@@ -103,7 +107,7 @@ struct ImeOverlay final : dcp::render::Device::Overlay {
 
 }  // namespace
 
-int run_render_loop(const RenderOptions& o, pthread_t game_thread, void (*finish)(int)) {
+int run_render_loop(const RenderOptions& o, pthread_t game_thread, const std::atomic<bool>& game_finished, void (*finish)(int)) {
     const bool steam_x11 = steam_prefer_x11();
     if (!SDL_Init(SDL_INIT_VIDEO)) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
     std::fprintf(stderr, "video: SDL driver %s%s\n", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?",
@@ -228,7 +232,10 @@ int run_render_loop(const RenderOptions& o, pthread_t game_thread, void (*finish
             o.input->set_blocked(ime.blocking() || chat.blocking());
             o.input->update(win);
         }
-        if (pthread_tryjoin_np(game_thread, nullptr) == 0) finish(0);  // GNU: non-blocking join
+        if (game_finished.load(std::memory_order_acquire)) {
+            pthread_join(game_thread, nullptr);
+            finish(0);
+        }
         auto f = dcp::render::take_frame(locked ? 20 : 50);
         if (!f && !(locked && presented)) continue;
         uint64_t work0 = SDL_GetTicksNS();

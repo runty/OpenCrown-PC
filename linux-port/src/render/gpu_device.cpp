@@ -1,4 +1,4 @@
-// SDL_gpu Device (device.h): Vulkan on Linux (SPIR-V shaders only). Record then submit: draw() only appends a record
+// SDL_gpu Device (device.h): Vulkan/SPIR-V on Linux and Metal/metallib on Darwin. Record then submit: draw() only appends a record
 // (vertices into one frame array, uniforms by value); end_frame() fills one transfer buffer (texture uploads + all
 // vertices), runs one copy pass, then the render passes in draw order: a new pass whenever the target changes (load
 // LOAD; a target's first pass after creation clears it to 0). SDL_gpu's clip space has NDC y = +1 at row 0 on every
@@ -13,6 +13,9 @@
 
 #include "device.h"
 // SPIR-V of shaders/*.vert / *.frag, prebuilt (src/render/README.md): no shader compiler in the build.
+#ifdef __APPLE__
+#include "metal_shaders.h"
+#else
 #include "shaders/generated/downscale_frag.spv.h"
 #include "shaders/generated/easu_frag.spv.h"
 #include "shaders/generated/fsr_vert.spv.h"
@@ -21,6 +24,7 @@
 #include "shaders/generated/main_vert.spv.h"
 #include "shaders/generated/present_frag.spv.h"
 #include "shaders/generated/present_vert.spv.h"
+#endif
 
 namespace dcp::render {
 namespace {
@@ -126,8 +130,13 @@ public:
     // Shaders, the present pipeline and the white texture; err says what failed.
     bool create(std::string* err) {
         SDL_GPUShaderFormat have = SDL_GetGPUShaderFormats(dev_);
+#ifdef __APPLE__
+        if (!(have & SDL_GPU_SHADERFORMAT_METALLIB)) return fail(err, "no Metal library support");
+        fmt_ = SDL_GPU_SHADERFORMAT_METALLIB;
+#else
         if (!(have & SDL_GPU_SHADERFORMAT_SPIRV)) return fail(err, "no SPIR-V shader support");
         fmt_ = SDL_GPU_SHADERFORMAT_SPIRV;
+#endif
         vs_ = shader(kMainVertSpv, sizeof kMainVertSpv, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         fs_ = shader(kMainFragSpv, sizeof kMainFragSpv, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
         pvs_ = shader(kPresentVertSpv, sizeof kPresentVertSpv, SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
@@ -355,7 +364,7 @@ public:
         }
         if (overlay) overlay->render(cmd, pass);
         SDL_EndGPURenderPass(pass);
-        SDL_SubmitGPUCommandBuffer(cmd);
+        if (!SDL_SubmitGPUCommandBuffer(cmd)) return false;
         const int mode = (pic ? 1 : 0) | (easu ? 2 : 0) | (down ? 4 : 0) | (sharpen && (mid || same) ? 8 : 0);
         if (!logged_present_ || mode != logged_mode_) {
             logged_present_ = true, logged_mode_ = mode;
@@ -388,7 +397,7 @@ private:
 
     SDL_GPUShader* shader(const unsigned char* code, size_t n, SDL_GPUShaderStage stage, Uint32 samplers, Uint32 ubos) {
         SDL_GPUShaderCreateInfo si{};
-        si.code_size = n, si.code = code, si.entrypoint = "main", si.format = fmt_, si.stage = stage;
+        si.code_size = n, si.code = code, si.entrypoint = fmt_ == SDL_GPU_SHADERFORMAT_METALLIB ? "main0" : "main", si.format = fmt_, si.stage = stage;
         si.num_samplers = samplers, si.num_uniform_buffers = ubos;
         return SDL_CreateGPUShader(dev_, &si);
     }

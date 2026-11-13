@@ -8,7 +8,8 @@ packaging work.
 The 2026-11-13 Darwin implementation builds the complete headless runner.
 The supported dump starts under Rosetta, creates and reloads a disposable save,
 and reaches TITLE and INN using scripted input. See the [Mac build instructions](../macos/README.md).
-Metal game frames and the packaged app remain open. The milestone tracker below
+The rendered runner now presents title and INN character-selection frames through
+SDL Metal. Town/combat, overlays and packaged-app validation remain open. The milestone tracker below
 is the execution checklist. A milestone is
 complete only when its acceptance checks have evidence attached to its issue.
 

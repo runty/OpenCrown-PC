@@ -3,6 +3,9 @@
 #include "platform/context.h"
 #include <csignal>
 #include "platform/socket.h"
+#include "platform/spawn.h"
+#include <sys/wait.h>
+#include <cstdlib>
 
 #include <cstdio>
 #include <cstring>
@@ -45,7 +48,48 @@ static void test_single_step() {
     CHECK(sigaction(SIGTRAP, &previous, nullptr) == 0);
 }
 
-int main() {
+static void test_spawn(const char* executable) {
+    int original = open("/dev/null", O_RDONLY);
+    CHECK(original >= 0);
+    if (original < 0) return;
+    int inherited = fcntl(original, F_DUPFD, 200);
+    close(original);
+    CHECK(inherited >= 0);
+    if (inherited < 0) return;
+    int output[2];
+    if (pipe(output) != 0) { CHECK(false); close(inherited); return; }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    CHECK(posix_spawn_file_actions_adddup2(&actions, output[1], STDOUT_FILENO) == 0);
+    CHECK(dcp::platform::close_spawn_descriptors(&actions) == 0);
+    char descriptor[32];
+    std::snprintf(descriptor, sizeof descriptor, "%d", inherited);
+    char* arguments[] = {const_cast<char*>(executable), const_cast<char*>("--spawn-child"), descriptor, nullptr};
+    char* environment[] = {nullptr};
+    pid_t child;
+    int result = dcp::platform::spawn(&child, executable, &actions, arguments, environment);
+    posix_spawn_file_actions_destroy(&actions);
+    close(output[1]);
+    close(inherited);
+    CHECK(result == 0);
+    if (result == 0) {
+        char text[32]{};
+        CHECK(read(output[0], text, sizeof text) == 8);
+        CHECK(std::strcmp(text, "stdio-ok") == 0);
+        int status = 0;
+        CHECK(waitpid(child, &status, 0) == child);
+        CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    }
+    close(output[0]);
+}
+
+int main(int argc, char** argv) {
+    if (argc == 3 && std::strcmp(argv[1], "--spawn-child") == 0) {
+        int descriptor = std::atoi(argv[2]);
+        if (fcntl(descriptor, F_GETFD) != -1 || errno != EBADF) return 2;
+        return write(STDOUT_FILENO, "stdio-ok", 8) == 8 ? 0 : 3;
+    }
+    test_spawn(argv[0]);
     test_single_step();
     const size_t size = size_t(sysconf(_SC_PAGESIZE));
     void* memory = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

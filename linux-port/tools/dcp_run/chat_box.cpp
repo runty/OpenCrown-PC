@@ -3,7 +3,7 @@
 
 #include <SDL3/SDL.h>
 #include <fcntl.h>
-#include <spawn.h>
+#include "platform/spawn.h"
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -104,9 +104,9 @@ void ChatBox::spawn(const std::string& url) {
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+    dcp::platform::close_spawn_descriptors(&fa);
     pid_t pid;
-    if (posix_spawnp(&pid, argv[0], &fa, nullptr, argv, env.data()) == 0) children_.push_back(pid);
+    if (dcp::platform::spawn(&pid, argv[0], &fa, argv, env.data(), true) == 0) children_.push_back(pid);
     else std::fprintf(stderr, "chat: cannot start xdg-open\n");
     posix_spawn_file_actions_destroy(&fa);
     std::fprintf(stderr, "chat: on-screen keyboard: xdg-open %s\n", url.c_str());
