@@ -1,3 +1,4 @@
+#include "platform/socket.h"
 // UdpCarrier implementation; format and rules in udp_carrier.h. One I/O thread per carrier receives, retransmits and
 // sends keepalives; send() transmits immediately from the caller's thread when the window allows. Sink events are
 // collected under the lock and dispatched after it is released.
@@ -652,7 +653,7 @@ std::unique_ptr<Carrier> make_udp_carrier(const UdpCarrierOptions& opt, CarrierS
     if (opt.adopt_socket != ~uintptr_t(0)) {
         s = int(opt.adopt_socket);
     } else {
-        s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+        s = dcp::platform::socket_cloexec(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (s < 0) return nullptr;
         sockaddr_in a{};
         a.sin_family = AF_INET;

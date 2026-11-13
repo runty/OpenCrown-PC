@@ -83,9 +83,24 @@ timespec deadline_after_us(uint64_t usec) {
 void init_mono_cond(pthread_cond_t* cv) {
     pthread_condattr_t ca;
     pthread_condattr_init(&ca);
+#ifndef __APPLE__
     pthread_condattr_setclock(&ca, CLOCK_MONOTONIC);
+#endif
     pthread_cond_init(cv, &ca);
     pthread_condattr_destroy(&ca);
+}
+
+int wait_mono(pthread_cond_t* cv, pthread_mutex_t* mutex, const timespec* deadline) {
+#ifdef __APPLE__
+    timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    timespec remaining{deadline->tv_sec - now.tv_sec, deadline->tv_nsec - now.tv_nsec};
+    if (remaining.tv_nsec < 0) { --remaining.tv_sec; remaining.tv_nsec += 1000000000; }
+    if (remaining.tv_sec < 0) remaining = {0, 0};
+    return pthread_cond_timedwait_relative_np(cv, mutex, &remaining);
+#else
+    return pthread_cond_timedwait(cv, mutex, deadline);
+#endif
 }
 
 // ---- attributes ----
@@ -275,7 +290,7 @@ DCP_SYSV int32_t scePthreadCondWait(Cond** c, Mutex** m) {
 }
 DCP_SYSV int32_t scePthreadCondTimedwait(Cond** c, Mutex** m, uint32_t usec) {
     timespec ts = deadline_after_us(usec);
-    if (pthread_cond_timedwait(&get_cond(c)->cv, &get_mutex(m)->cs, &ts) == 0) return kOk;
+    if (wait_mono(&get_cond(c)->cv, &get_mutex(m)->cs, &ts) == 0) return kOk;
     return kErr(kETIMEDOUT);
 }
 DCP_SYSV int32_t scePthreadCondSignal(Cond** c) { return pthread_cond_signal(&get_cond(c)->cv), kOk; }
@@ -336,7 +351,7 @@ DCP_SYSV int32_t sceKernelWaitEventFlag(EventFlag* e, uint64_t pat, uint32_t mod
     while (!evf_match(e->bits, pat, mode)) {
         if (!timeout) {
             pthread_cond_wait(&e->cv, &e->lock);
-        } else if (pthread_cond_timedwait(&e->cv, &e->lock, &deadline) != 0 && !evf_match(e->bits, pat, mode)) {
+        } else if (wait_mono(&e->cv, &e->lock, &deadline) != 0 && !evf_match(e->bits, pat, mode)) {
             if (res) *res = e->bits;
             *timeout = 0;
             pthread_mutex_unlock(&e->lock);

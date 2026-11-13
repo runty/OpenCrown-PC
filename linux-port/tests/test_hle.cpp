@@ -6,13 +6,66 @@
 
 
 #include "hle/kernel/pure.h"
+#include "hle/hle.h"
+#include "loader/hle.h"
+#include "loader/nid.h"
+#include <chrono>
+#include <thread>
 
 using namespace dcp::hle;
 
 static int g_fail = 0;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); ++g_fail; } } while (0)
 
+// Exercise the registered guest ABI, including the Darwin monotonic wait adapter.
+static void test_runtime_threads() {
+    dcp::hle::register_all({});
+    dcp::loader::Binder binder;
+    auto address = [&](const char* name) {
+        return binder.resolve({dcp::loader::nid_from_name(name) + "#A#B", 0x12, 0, 0});
+    };
+    using Lock = DCP_SYSV int32_t (*)(void**);
+    using Wait = DCP_SYSV int32_t (*)(void**, void**, uint32_t);
+    using Destroy = DCP_SYSV int32_t (*)(void**);
+    auto lock = reinterpret_cast<Lock>(address("scePthreadMutexLock"));
+    auto unlock = reinterpret_cast<Lock>(address("scePthreadMutexUnlock"));
+    auto wait = reinterpret_cast<Wait>(address("scePthreadCondTimedwait"));
+    auto destroy_cond = reinterpret_cast<Destroy>(address("scePthreadCondDestroy"));
+    auto destroy_mutex = reinterpret_cast<Destroy>(address("scePthreadMutexDestroy"));
+    CHECK(binder.stats().stubs == 0);
+    void* mutex = nullptr;
+    void* condition = nullptr;
+    CHECK(lock(&mutex) == 0);
+    auto started = std::chrono::steady_clock::now();
+    CHECK(uint32_t(wait(&condition, &mutex, 20000)) == 0x8002003c);
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    CHECK(elapsed >= std::chrono::milliseconds(10));
+    CHECK(elapsed < std::chrono::seconds(5));
+    CHECK(unlock(&mutex) == 0);
+    CHECK(destroy_cond(&condition) == 0);
+    CHECK(destroy_mutex(&mutex) == 0);
+
+    struct TlsIndex { uint64_t module, offset; };
+    using Tls = DCP_SYSV void* (*)(const TlsIndex*);
+    auto tls = reinterpret_cast<Tls>(address("__tls_get_addr"));
+    uint64_t initial = 123;
+    TlsIndex index{dcp::hle::add_tls_module(&initial, sizeof initial, 32, 16), 0};
+    uint64_t values[2]{};
+    auto worker = [&](int slot) {
+        auto* value = static_cast<uint64_t*>(tls(&index));
+        if (!value || *value != initial) { values[slot] = 0; return; }
+        *value = uint64_t(slot + 100);
+        values[slot] = *static_cast<uint64_t*>(tls(&index));
+    };
+    std::thread first(worker, 0), second(worker, 1);
+    first.join();
+    second.join();
+    CHECK(values[0] == 100 && values[1] == 101);
+    CHECK(*static_cast<uint64_t*>(tls(&index)) == initial);
+}
+
 int main() {
+    test_runtime_threads();
     // 2 MiB alignment as requested by the game's MapDirectMemory calls; memory is writable.
     for (uint64_t len : {uint64_t(0x4000), uint64_t(0x200000), uint64_t(0x1234000)}) {
         auto* p = static_cast<uint8_t*>(alloc_aligned(len, 0x200000));

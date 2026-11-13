@@ -4,7 +4,9 @@
 #include <mbedtls/platform_util.h>
 #include <mbedtls/sha256.h>
 #include <pwd.h>
+#ifndef __APPLE__
 #include <sys/random.h>
+#endif
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -23,11 +25,15 @@ namespace {
 constexpr const char* kCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // the join-code alphabet (no I O 0 1)
 
 bool random_bytes(void* p, size_t n) {  // kernel CSPRNG (blocks only before the pool is first seeded)
+#ifdef __APPLE__
+    arc4random_buf(p, n);
+#else
     for (size_t done = 0; done < n;) {
         ssize_t r = getrandom(static_cast<uint8_t*>(p) + done, n - done, 0);
         if (r < 0) return false;
         done += size_t(r);
     }
+#endif
     return true;
 }
 

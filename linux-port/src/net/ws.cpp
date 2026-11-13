@@ -1,3 +1,4 @@
+#include "platform/socket.h"
 // Minimal WebSocket (ws.h).
 #include "net/ws.h"
 
@@ -141,7 +142,7 @@ int tcp_connect(const std::string& host, uint16_t port, int timeout_ms, std::str
         *err = "cannot resolve " + host;
         return kNoSock;
     }
-    int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+    int s = dcp::platform::socket_cloexec(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s < 0) {
         freeaddrinfo(res);
         *err = "socket() failed";

@@ -72,11 +72,13 @@ target_include_directories(dcp_loader PUBLIC src)
 
 if(DCP_PROBES_ONLY)
   enable_testing()
-  foreach(probe formats loader cpu_compat touch)
+  foreach(probe formats loader cpu_compat touch platform)
     add_executable(test_${probe} tests/test_${probe}.cpp)
     add_test(NAME ${probe} COMMAND test_${probe})
     set_tests_properties(${probe} PROPERTIES TIMEOUT 60)
   endforeach()
+  target_include_directories(test_platform PRIVATE src)
+  target_link_libraries(test_platform PRIVATE Threads::Threads)
   target_link_libraries(test_formats PRIVATE dcp_formats)
   target_link_libraries(test_loader PRIVATE dcp_loader)
   target_link_libraries(test_cpu_compat PRIVATE dcp_loader)
@@ -94,7 +96,8 @@ set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
 set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
 set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
 FetchContent_Declare(freetype
-  URL https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz)
+  URL https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz
+  URL_HASH SHA256=bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103)
 FetchContent_MakeAvailable(freetype)
 
 # miniupnpc (BSD-3) for UPnP IGD port mapping of the P2P UDP port (net/upnp.*, best effort). Pinned release tag;
@@ -106,6 +109,7 @@ set(UPNPC_BUILD_SAMPLE OFF CACHE BOOL "" FORCE)
 set(UPNPC_NO_INSTALL ON CACHE BOOL "" FORCE)
 FetchContent_Declare(miniupnpc
   URL https://github.com/miniupnp/miniupnp/archive/refs/tags/miniupnpc_2_2_8.tar.gz
+  URL_HASH SHA256=3d0d49f761f09c1321ceb663d1b008825361d7bd242640c60ae467e82642502a
   SOURCE_SUBDIR miniupnpc)
 FetchContent_MakeAvailable(miniupnpc)
 target_compile_options(libminiupnpc-static PRIVATE -w)  # third-party
@@ -120,7 +124,8 @@ set(USE_STATIC_MBEDTLS_LIBRARY ON CACHE BOOL "" FORCE)
 set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
 set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
 FetchContent_Declare(mbedtls
-  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.2/mbedtls-3.6.2.tar.bz2)
+  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.2/mbedtls-3.6.2.tar.bz2
+  URL_HASH SHA256=8b54fb9bcf4d5a7078028e0520acddefb7900b3e66fec7f7175bb5b7d85ccdca)
 FetchContent_MakeAvailable(mbedtls)
 target_compile_options(freetype PRIVATE -w)  # third-party
 foreach(t mbedtls mbedx509 mbedcrypto)
@@ -217,6 +222,10 @@ add_executable(dcp_lobby tools/dcp_lobby/main.cpp)
 target_link_libraries(dcp_lobby PRIVATE dcp_net)
 
 enable_testing()
+add_executable(test_platform tests/test_platform.cpp)
+target_include_directories(test_platform PRIVATE src)
+target_link_libraries(test_platform PRIVATE Threads::Threads)
+add_test(NAME platform COMMAND test_platform)
 add_executable(test_formats tests/test_formats.cpp)
 target_link_libraries(test_formats PRIVATE dcp_formats)
 add_test(NAME formats COMMAND test_formats)

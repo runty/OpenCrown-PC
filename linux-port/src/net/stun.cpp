@@ -1,3 +1,4 @@
+#include "platform/socket.h"
 // Minimal STUN client (stun.h).
 #include "net/stun.h"
 
@@ -143,7 +144,7 @@ bool query_one(int s, uint32_t sip, uint16_t sport, unsigned timeout_ms, uint32_
         FD_SET(s, &rs);
         uint64_t wait = std::min<uint64_t>(next, start + timeout_ms) - now_ms();
         if (int64_t(wait) < 1) wait = 1;
-        timeval tv{long(wait / 1000), long((wait % 1000) * 1000)};
+        timeval tv{long(wait / 1000), suseconds_t((wait % 1000) * 1000)};
         if (select(s + 1, &rs, nullptr, nullptr, &tv) <= 0) continue;
         uint8_t buf[1500];
         sockaddr_in from{};
@@ -161,7 +162,7 @@ bool query_blocking(const std::vector<std::string>& servers, unsigned timeout_ms
                     std::string* server_used, int* nat_same, uint16_t local_port) {
     if (nat_same) *nat_same = -1;
     if (servers.empty()) return false;
-    int s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+    int s = dcp::platform::socket_cloexec(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (s < 0) return false;
     sockaddr_in a{};
     a.sin_family = AF_INET, a.sin_port = htons(local_port), a.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -205,7 +206,7 @@ bool is_private_or_loopback(uint32_t ip_be) {
 }
 
 uint32_t default_route_ip() {
-    int s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+    int s = dcp::platform::socket_cloexec(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (s < 0) return 0;
     sockaddr_in to{};
     to.sin_family = AF_INET, to.sin_port = htons(53);

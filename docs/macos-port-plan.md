@@ -5,8 +5,11 @@ sources, running the player's PS4 executable under Rosetta 2 and drawing through
 SDL3's Metal backend. Prove game execution before committing to graphics and app
 packaging work.
 
-The 2026-11-13 feasibility probes cover the translated CPU, synthetic loader and
-offscreen pipeline creation. A complete Mac runner and a real game launch are outstanding. The milestone tracker below is the execution checklist. A milestone is
+The 2026-11-13 Darwin implementation builds the complete headless runner.
+The supported dump starts under Rosetta, creates and reloads a disposable save,
+and reaches TITLE and INN using scripted input. See the [Mac build instructions](../macos/README.md).
+Metal game frames and the packaged app remain open. The milestone tracker below
+is the execution checklist. A milestone is
 complete only when its acceptance checks have evidence attached to its issue.
 
 ## Baseline and scope

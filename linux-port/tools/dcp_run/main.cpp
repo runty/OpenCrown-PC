@@ -21,7 +21,8 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
-#include <ucontext.h>
+#include "platform/context.h"
+#include "platform/io.h"
 #include <unistd.h>
 
 #include "hle/hle.h"
@@ -111,10 +112,9 @@ void patch_byte(uint64_t a, uint8_t v) {  // probes sit in r-x text; x86 needs n
     mprotect(pg, 0x1000, PROT_READ | PROT_EXEC);
 }
 
-// Copies n bytes at host address a without faulting (process_vm_readv on ourselves fails on unmapped memory).
+// Copy a speculative guest range through the host kernel so unreadable memory fails safely.
 bool safe_read(uint64_t a, void* out, size_t n) {
-    iovec local{out, n}, remote{reinterpret_cast<void*>(a), n};
-    return process_vm_readv(getpid(), &local, 1, &remote, 1, 0) == ssize_t(n);
+    return dcp::platform::read_memory(a, out, n);
 }
 
 void install_probes(uint64_t base) {
@@ -144,7 +144,11 @@ std::string text_at(uint64_t a) {  // printable ASCII string at a readable addre
     return r.size() >= 2 ? " '" + r + "'" : "";
 }
 
+#ifdef __APPLE__
+using Regs = DcpRegisters&;
+#else
 using Regs = greg_t*;  // ucontext general registers (REG_RIP, REG_RAX, ...)
+#endif
 #define R64(r) (unsigned long long)c[REG_##r]
 
 bool handle_probe(Regs c) {
@@ -158,7 +162,7 @@ bool handle_probe(Regs c) {
             uint64_t ret = *reinterpret_cast<uint64_t*>(c[REG_RSP]);
             std::fprintf(stderr, "PROBE eboot+0x%llx vblank %llu thread %ld rdi=%llx%s rsi=%llx%s",
                          (unsigned long long)(at - reinterpret_cast<uint64_t>(g_mods[0]->img.base)),
-                         (unsigned long long)dcp::hle::vblank_count_public(), long(gettid()), R64(RDI),
+                         (unsigned long long)dcp::hle::vblank_count_public(), long(dcp::platform::thread_id()), R64(RDI),
                          text_at(uint64_t(c[REG_RDI])).c_str(), R64(RSI), text_at(uint64_t(c[REG_RSI])).c_str());
             print_addr(" ret", ret);
             std::fprintf(stderr, "\n");
@@ -182,7 +186,11 @@ const char* sig_name(int sig) {
 }
 
 void on_fault(int sig, siginfo_t* si, void* ucv) {
+#ifdef __APPLE__
+    DcpRegisters c(ucv);
+#else
     Regs c = static_cast<ucontext_t*>(ucv)->uc_mcontext.gregs;
+#endif
     if (sig == SIGTRAP && t_rearm) {  // single step after a repeating probe
         {
             std::lock_guard<std::mutex> lk(g_probe_lock);
@@ -193,7 +201,7 @@ void on_fault(int sig, siginfo_t* si, void* ucv) {
         return;
     }
     if (sig == SIGTRAP && g_nprobes && handle_probe(c)) return;
-    std::fprintf(stderr, "\nFAULT %s code %d (thread %ld)", sig_name(sig), si->si_code, long(gettid()));
+    std::fprintf(stderr, "\nFAULT %s code %d (thread %ld)", sig_name(sig), si->si_code, long(dcp::platform::thread_id()));
     print_addr(" at", uint64_t(c[REG_RIP]));
     if ((sig == SIGSEGV || sig == SIGBUS) && si->si_code > 0) {  // a real fault (not kill -SEGV)
         // x86-64 page-fault error code: bit 1 = write, bit 4 = instruction fetch.

@@ -1,3 +1,4 @@
+#include "platform/socket.h"
 // HTTP/1.1 GET client (http.h) on BSD sockets + net/tls.
 #include "net/http.h"
 
@@ -47,7 +48,7 @@ int tcp_connect(const std::string& host, uint16_t port, int timeout_ms, std::str
     std::stable_partition(addrs.begin(), addrs.end(), [](addrinfo* a) { return a->ai_family == AF_INET; });
     int s = -1;
     for (addrinfo* a : addrs) {
-        s = socket(a->ai_family, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+        s = dcp::platform::socket_cloexec(a->ai_family, SOCK_STREAM, IPPROTO_TCP);
         if (s < 0) continue;
         int fl = fcntl(s, F_GETFL);
         fcntl(s, F_SETFL, fl | O_NONBLOCK);

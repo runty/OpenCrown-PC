@@ -1,3 +1,4 @@
+#include "platform/socket.h"
 // Mock lobby server (lobby_server.h). Single-threaded select() loop; all state in memory. Message formats are
 // specified in notes/map/lobby_protocol.md (keep the two in sync).
 #define FD_SETSIZE 256
@@ -869,7 +870,7 @@ struct LobbyServer::Impl {
 LobbyServer::LobbyServer(const LobbyServerOptions& o) : d_(new Impl) {
     d_->opt = o;
     ws::startup();
-    int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+    int s = dcp::platform::socket_cloexec(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     int one = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);  // restart while old connections sit in TIME_WAIT
     sockaddr_in a{};
@@ -909,7 +910,7 @@ void LobbyServer::run(const std::atomic<bool>* stop) {
         if (FD_ISSET(d.ls, &rf)) {
             sockaddr_in a{};
             socklen_t len = sizeof a;
-            int s = accept4(d.ls, reinterpret_cast<sockaddr*>(&a), &len, SOCK_CLOEXEC);
+            int s = dcp::platform::accept_cloexec(d.ls, reinterpret_cast<sockaddr*>(&a), &len);
             if (s >= 0 && s < FD_SETSIZE) {  // select() takes fds below FD_SETSIZE only
                 int one = 1;
                 setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);

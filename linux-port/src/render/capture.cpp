@@ -67,7 +67,11 @@ bool readable(uint64_t a, uint64_t n) {
     for (uint64_t x = lo; x < hi;) {  // 1 MiB per call
         ++g_vq_calls;
         uint64_t e = hi - x > (1u << 20) ? x + (1u << 20) : hi;
+#ifdef __APPLE__
+        char vec[256];
+#else
         unsigned char vec[256];
+#endif
         if (mincore(reinterpret_cast<void*>(x), e - x, vec) != 0) return false;
         x = e;
     }

@@ -2,7 +2,7 @@
 
 #include <signal.h>
 #include <sys/mman.h>
-#include <ucontext.h>
+#include "platform/context.h"
 
 #include <atomic>
 #include <shared_mutex>
@@ -18,6 +18,7 @@ std::unordered_map<uint64_t, uint64_t> g_write;  // page index -> sequence of it
 std::atomic<uint64_t> g_seq{1};
 std::atomic<uint64_t> g_last_write{0};
 bool g_veh = false;           // our SIGSEGV handler is installed
+struct sigaction g_prev_bus;
 struct sigaction g_prev_segv;  // the handler before ours (dcp_run's crash report): faults that are not ours go there
 
 // Records a write to page pg and lifts our protection; caller holds g_lock exclusively. False if we do not track pg.
@@ -34,8 +35,12 @@ bool unprotect_locked(uint64_t pg) {
 void on_fault(int sig, siginfo_t* si, void* uc) {
     // x86-64 page-fault error code: bit 1 = write access.
     const auto* ctx = static_cast<const ucontext_t*>(uc);
+#ifdef __APPLE__
+    bool write = (ctx->uc_mcontext->__es.__err & 2) != 0;
+#else
     bool write = (ctx->uc_mcontext.gregs[REG_ERR] & 2) != 0;
-    if (sig == SIGSEGV && si->si_code == SEGV_ACCERR && write) {
+#endif
+    if (((sig == SIGSEGV && si->si_code == SEGV_ACCERR) || sig == SIGBUS) && write) {
         uint64_t pg = reinterpret_cast<uint64_t>(si->si_addr) / kPage;
         // Several threads can fault on one page at once: the first handler lifts the protection, the others then find
         // the page no longer protected by us but in the write log, and only need to retry their store. A page that
@@ -55,10 +60,11 @@ void on_fault(int sig, siginfo_t* si, void* uc) {
             if (retries <= 16) return;
         }
     }
-    if (g_prev_segv.sa_flags & SA_SIGINFO) {
-        if (g_prev_segv.sa_sigaction) return g_prev_segv.sa_sigaction(sig, si, uc);
-    } else if (g_prev_segv.sa_handler != SIG_DFL && g_prev_segv.sa_handler != SIG_IGN) {
-        return g_prev_segv.sa_handler(sig);
+    const auto& previous = sig == SIGBUS ? g_prev_bus : g_prev_segv;
+    if (previous.sa_flags & SA_SIGINFO) {
+        if (previous.sa_sigaction) return previous.sa_sigaction(sig, si, uc);
+    } else if (previous.sa_handler != SIG_DFL && previous.sa_handler != SIG_IGN) {
+        return previous.sa_handler(sig);
     }
     signal(sig, SIG_DFL);  // no one else: let the fault re-raise and kill the process
 }
@@ -69,6 +75,7 @@ void install_handler() {
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGSEGV, &sa, &g_prev_segv);
+    sigaction(SIGBUS, &sa, &g_prev_bus);
     g_veh = true;
 }
 

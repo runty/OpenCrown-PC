@@ -1,0 +1,40 @@
+# Smoke input for the pinned patch 1.03 dump and disposable saves.
+# First run creates SAVE0.DAT. On reload, this reaches TITLE then INN.
+# States persist until the next line. Release buttons after eight vblanks.
+0 0
+300 OPTIONS
+310 0
+600 CROSS
+608 0
+780 CROSS
+788 0
+960 CROSS
+968 0
+1140 CROSS
+1148 0
+1320 CROSS
+1328 0
+1500 CROSS
+1508 0
+1680 CROSS
+1688 0
+1860 CROSS
+1868 0
+2040 CROSS
+2048 0
+2220 CROSS
+2228 0
+2400 CROSS
+2408 0
+2580 CROSS
+2588 0
+2760 CROSS
+2768 0
+2940 CROSS
+2948 0
+3120 CROSS
+3128 0
+3300 CROSS
+3308 0
+3480 CROSS
+3488 0
