@@ -1,3 +1,4 @@
+#include "platform/memory.h"
 // Support for older CPUs without MOVBE / BMI1 / LZCNT. Details are restricted (see the README).
 #include "loader/cpu_compat.h"
 
@@ -172,8 +173,7 @@ uint8_t* alloc_near(uint64_t at, size_t size) {
         for (uint64_t a : {at + d, at - d}) {
             if (a <= 0x10000) continue;
             a &= ~0xffffull;
-            void* p = mmap(reinterpret_cast<void*>(a), size, PROT_READ | PROT_WRITE | PROT_EXEC,
-                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+            void* p = dcp::platform::map_exact(reinterpret_cast<void*>(a), size, PROT_READ | PROT_WRITE | PROT_EXEC);
             if (p == MAP_FAILED) continue;
             if (p == reinterpret_cast<void*>(a)) return static_cast<uint8_t*>(p);
             munmap(p, size);

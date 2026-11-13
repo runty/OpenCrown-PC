@@ -1,3 +1,4 @@
+#include "platform/memory.h"
 #include "elf.h"
 
 #include <cstring>
@@ -125,8 +126,7 @@ Image map_image(const ElfInfo& info, const std::vector<uint8_t>& elf, uint64_t p
     // pre-4.17 kernels ignore the flag and treat the address as a hint, so check where it landed.
     void* p = MAP_FAILED;
     if (preferred) {
-        p = mmap(reinterpret_cast<void*>(preferred), img.size, PROT_READ | PROT_WRITE,
-                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        p = dcp::platform::map_exact(reinterpret_cast<void*>(preferred), img.size, PROT_READ | PROT_WRITE);
         if (p != MAP_FAILED && reinterpret_cast<uint64_t>(p) != preferred) munmap(p, img.size), p = MAP_FAILED;
     }
     if (p == MAP_FAILED) p = mmap(nullptr, img.size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);  // PIE: any base works

@@ -1,3 +1,4 @@
+#include "platform/memory.h"
 // Hooks on the game's render wrappers (addresses: notes/map/render_cmds.md s3, s8). Each hook is a 5-byte jmp to a
 // relay that calls an observer with the original argument registers, then runs the displaced prologue and jumps
 // back: the game's own code still runs unchanged (it keeps writing its PM4, which the GNM stub ignores).
@@ -259,8 +260,7 @@ bool prologue_ok(const uint8_t* p, const HookSpec& h) {
 
 uint8_t* alloc_near(uint64_t from, size_t size) {
     for (uint64_t a = (from + 0xffff) & ~0xffffull; a < from + (1ull << 30); a += 0x10000) {
-        void* p = mmap(reinterpret_cast<void*>(a), size, PROT_READ | PROT_WRITE | PROT_EXEC,
-                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        void* p = dcp::platform::map_exact(reinterpret_cast<void*>(a), size, PROT_READ | PROT_WRITE | PROT_EXEC);
         if (p == MAP_FAILED) continue;
         if (p == reinterpret_cast<void*>(a)) return static_cast<uint8_t*>(p);
         munmap(p, size);  // pre-4.17 kernel: the address was only a hint

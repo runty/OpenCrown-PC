@@ -8,9 +8,14 @@ endif()
 
 # Linux / Steam Deck build. Separate from the Windows tree (../port): own sources, own build, no shared files.
 # Targets are added here as each part of src/ is ported (see README.md, Phase 1).
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  message(FATAL_ERROR "linux-port builds on Linux only (WSL2 works); the Windows build is ../port")
+if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+  message(FATAL_ERROR "This runtime supports Linux and Darwin; the Windows build is ../port")
 endif()
+
+if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
+  message(FATAL_ERROR "The Rosetta runner requires -DCMAKE_OSX_ARCHITECTURES=x86_64")
+endif()
+option(DCP_PROBES_ONLY "Build dependency-free formats and loader probes" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,6 +69,19 @@ endforeach()
 # Loader: maps the user's eboot into this process, relocates, binds imports to shims / module exports / stubs.
 add_library(dcp_loader STATIC src/loader/nid.cpp src/loader/elf.cpp src/loader/hle.cpp src/loader/cpu_compat.cpp)
 target_include_directories(dcp_loader PUBLIC src)
+
+if(DCP_PROBES_ONLY)
+  enable_testing()
+  foreach(probe formats loader cpu_compat touch)
+    add_executable(test_${probe} tests/test_${probe}.cpp)
+    add_test(NAME ${probe} COMMAND test_${probe})
+    set_tests_properties(${probe} PROPERTIES TIMEOUT 60)
+  endforeach()
+  target_link_libraries(test_formats PRIVATE dcp_formats)
+  target_link_libraries(test_loader PRIVATE dcp_loader)
+  target_link_libraries(test_cpu_compat PRIVATE dcp_loader)
+  return()
+endif()
 
 include(FetchContent)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)  # third-party projects below declare old minimums

@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include "platform/memory.h"
+#include <unistd.h>
+
 #include "loader/elf.h"
 #include "loader/hle.h"
 #include "loader/nid.h"
@@ -95,7 +98,50 @@ static void test_fake_elf() {
     unmap_image(img);
 }
 
+// A failed exact reservation must preserve the mapping it collided with.
+static void test_mapping_collision() {
+    const size_t size = size_t(sysconf(_SC_PAGESIZE));
+    void* occupied = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    CHECK(occupied != MAP_FAILED);
+    if (occupied == MAP_FAILED) return;
+    auto* byte = static_cast<volatile uint8_t*>(occupied);
+    *byte = 0x5a;
+    void* collision = dcp::platform::map_exact(occupied, size, PROT_READ | PROT_WRITE);
+    CHECK(collision == MAP_FAILED);
+    CHECK(*byte == 0x5a);
+    if (collision != MAP_FAILED && collision != occupied) munmap(collision, size);
+    munmap(occupied, size);
+}
+
+static void test_code_mutation() {
+    const size_t size = size_t(sysconf(_SC_PAGESIZE));
+    auto* code = static_cast<uint8_t*>(mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    CHECK(code != MAP_FAILED);
+    if (code == MAP_FAILED) return;
+    // mov eax, immediate; ret. Re-protect and execute after every modification.
+    code[0] = 0xb8;
+    code[5] = 0xc3;
+    using Fn = DCP_SYSV uint32_t (*)();
+    for (uint32_t expected = 1; expected <= 64; ++expected) {
+        if (mprotect(code, size, PROT_READ | PROT_WRITE) != 0) {
+            CHECK(false);
+            break;
+        }
+        std::memcpy(code + 1, &expected, sizeof expected);
+        if (mprotect(code, size, PROT_READ | PROT_EXEC) != 0) {
+            CHECK(false);
+            break;
+        }
+        CHECK(reinterpret_cast<Fn>(code)() == expected);
+    }
+    munmap(code, size);
+}
+
 int main() {
+    test_mapping_collision();
+    test_code_mutation();
     test_sha1_nid();
     test_fake_elf();
     std::printf("loader tests: %d failures\n", g_fail);

@@ -1,3 +1,4 @@
+#include "platform/memory.h"
 // Story / tutorial skip questions, see skip_offers.h and notes/map/story_progress.md for the asm evidence.
 //
 // Story skip, FUN_003adbf0 (creation screen) state 1 on confirm (asm 0x3aed82..0x3aedb2):
@@ -74,8 +75,7 @@ void write_code(uint8_t* at, const uint8_t* bytes, size_t n) {  // patch sites a
 
 uint8_t* alloc_near(uint64_t from, size_t size) {
     for (uint64_t a = (from + 0xffff) & ~0xffffull; a < from + (1ull << 30); a += 0x10000) {
-        void* p = mmap(reinterpret_cast<void*>(a), size, PROT_READ | PROT_WRITE | PROT_EXEC,
-                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        void* p = dcp::platform::map_exact(reinterpret_cast<void*>(a), size, PROT_READ | PROT_WRITE | PROT_EXEC);
         if (p == MAP_FAILED) continue;
         if (p == reinterpret_cast<void*>(a)) return static_cast<uint8_t*>(p);
         munmap(p, size);  // pre-4.17 kernel: the address was only a hint

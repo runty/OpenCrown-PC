@@ -79,16 +79,23 @@ extern "C" DCP_SYSV uint64_t dcp_unimpl_handler(uint64_t a, uint64_t b, uint64_t
 }
 extern "C" void dcp_unimpl_tramp();
 // Realign the stack and pass eax (import index) as the 7th SysV argument (on the stack).
+#ifdef __APPLE__
+#define DCP_TRAMP_SYMBOL "_dcp_unimpl_tramp"
+#define DCP_HANDLER_CALL "_dcp_unimpl_handler"
+#else
+#define DCP_TRAMP_SYMBOL "dcp_unimpl_tramp"
+#define DCP_HANDLER_CALL "dcp_unimpl_handler@PLT"
+#endif
 asm(R"(
     .text
-    .globl dcp_unimpl_tramp
-dcp_unimpl_tramp:
+    .globl )" DCP_TRAMP_SYMBOL R"(
+)" DCP_TRAMP_SYMBOL R"(:
     push %rbp
     mov %rsp, %rbp
     and $-16, %rsp
     sub $8, %rsp
     push %rax
-    call dcp_unimpl_handler@PLT
+    call )" DCP_HANDLER_CALL R"(
     leave
     ret
 )");

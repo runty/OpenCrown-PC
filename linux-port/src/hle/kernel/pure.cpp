@@ -1,3 +1,4 @@
+#include "platform/memory.h"
 #include "pure.h"
 
 #include <algorithm>
@@ -51,7 +52,7 @@ void* alloc_low(uint64_t len, uint64_t align) {
     len = align_up(len, 0x1000);
     std::lock_guard<std::mutex> lk(mu);
     for (uint64_t at = align_up(cursor, align); at + len <= kLimit; at = align_up(at + align, align)) {
-        void* p = mmap(reinterpret_cast<void*>(at), len, PROT_READ | PROT_WRITE, kAnon | MAP_FIXED_NOREPLACE, -1, 0);
+        void* p = dcp::platform::map_exact(reinterpret_cast<void*>(at), len, PROT_READ | PROT_WRITE);
         if (p == MAP_FAILED) continue;  // EEXIST: something lives there, try the next aligned slot
         if (reinterpret_cast<uint64_t>(p) != at) {  // pre-4.17 kernel took it as a hint
             munmap(p, len);
