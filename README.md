@@ -322,6 +322,10 @@ That gives you `OpenCrownPC Launcher.exe`, `dcp_run.exe` and `SDL3.dll` in `port
 
 **Linux:** the Linux build lives in [`linux-port/`](linux-port) (Ubuntu 22.04 or newer: install the packages listed in [`linux-port/README.md`](linux-port/README.md), then run `./build.sh`; `sh packaging/make-appimage.sh` makes the AppImage).
 
+**macOS (planned in this fork):** see the [macOS port plan](docs/macos-port-plan.md)
+for the Rosetta and Metal approach, milestones, dependencies and acceptance checks.
+Implementation has not started; this fork does not yet provide a working Mac build.
+
 **Android (beta):** OpenCrown Mobile's source isn't public. The APK is on the [Releases](https://github.com/Nezara/OpenCrown-PC/releases/latest) page.
 
 The lobby server builds and tests separately with Node.js; see [`server/lobby-worker/README.md`](server/lobby-worker/README.md).
