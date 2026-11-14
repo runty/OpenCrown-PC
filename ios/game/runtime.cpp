@@ -103,6 +103,7 @@ struct Engine {
   std::chrono::steady_clock::time_point epoch =
       std::chrono::steady_clock::now();
   std::string firstError;
+  std::string faultContext;
   std::string currentScene;
   std::string componentStage;
   std::string requestedCue;
@@ -673,6 +674,34 @@ uint64_t invoke(uint64_t pc, Memory &memory, uint64_t a = 0, uint64_t b = 0,
   try {
     dispatch(state, actual(pc), &memory);
   } catch (const std::runtime_error &error) {
+    if (std::string(error.what()).rfind("guest memory access", 0) == 0) {
+      // Failure-only, checked diagnostics: retain argument addresses and the
+      // caller frame without reading string contents or changing guest state.
+      const auto &r = state.gpr;
+      std::ostringstream context;
+      context << "rdi=0x" << hex(r.rdi.qword)
+              << " rsi=0x" << hex(r.rsi.qword)
+              << " r12=0x" << hex(r.r12.qword)
+              << " rbp=0x" << hex(r.rbp.qword)
+              << " rsp=0x" << hex(r.rsp.qword);
+      try {
+        if (r.rbp.qword > UINT64_MAX - 8)
+          throw std::runtime_error("invalid frame address");
+        const uint64_t caller = read64(memory, r.rbp.qword + 8);
+        context << " frame_return=0x" << hex(caller)
+                << " canonical_return=0x" << hex(canonical(caller));
+      } catch (const std::runtime_error &) {
+        context << " frame_return=unavailable";
+      }
+      for (const auto &module : engine().modules)
+        context << " module[0x" << hex(module.canonical) << "]=0x"
+                << hex(reinterpret_cast<uint64_t>(module.data.data()))
+                << "/0x" << hex(module.canonical)
+                << "+0x" << hex(module.data.size());
+      std::lock_guard<std::mutex> lock(engine().diagnosticLock);
+      if (engine().faultContext.empty())
+        engine().faultContext = context.str();
+    }
     throw std::runtime_error(std::string(error.what()) + " at PC " +
                              hex(canonical(state.gpr.rip.qword)));
   }
@@ -1035,10 +1064,11 @@ extern "C" const char *dcp_cpu_report() {
   const bool joined = dcp_thread_stop_and_join(5000);
   if (engine().host.will_unload)
     engine().host.will_unload(engine().host.context);
-  std::string firstError, currentScene, componentStage, requestedCue;
+  std::string firstError, faultContext, currentScene, componentStage, requestedCue;
   {
     std::lock_guard<std::mutex> lock(engine().diagnosticLock);
     firstError = engine().firstError;
+    faultContext = engine().faultContext;
     currentScene = engine().currentScene;
     componentStage = engine().componentStage;
     requestedCue = engine().requestedCue;
@@ -1102,6 +1132,7 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"cue_observer_read_errors\":" << engine().sceneReadErrors
       << ",\"cue_observer_invalid_names\":" << engine().sceneInvalidNames
       << ",\"current_scene\":" << jsonString(currentScene)
+      << ",\"fault_context\":" << jsonString(faultContext)
       << ",\"trace_hash\":\"" << traceHash << "\"";
 #ifdef DCP_NATIVE_LIBC_BULK
   const auto bulk = dcp_libc_bulk_stats();

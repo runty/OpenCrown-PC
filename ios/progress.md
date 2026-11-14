@@ -1,5 +1,34 @@
 # Device port progress
 
+## 2026-11-14 — Physical iPad INN and copied Felix verified
+
+Clean frontend `0e15ee5` with the frozen 50,292-entry core passes the seeded
+INN checkpoint on iPad mini A20 Pro. The isolated session records 123,268,154
+translated entries, 3,467 rendered frames, one checked INN-ready observation,
+no guest/frontend error and 144.97 seconds elapsed. The downloaded final Metal
+PNG was inspected: Dragon's Haven Inn and Felix level1 are visible. Sampled
+peak dirty footprint is about1.80GiB, thermal state nominal. This test uses
+scripted input and paced null audio, separately from normal interactive Play.
+
+Its three game save files retain their exact hashes after replacing the process
+and relaunching the normal launcher. They remain in the diagnostic UUID folder;
+this only proves retained files, not reopening that same working save or saving
+new progress. A diagnostic resume mode is being tested for that separate check.
+The seed and live Mac/iCloud saves are untouched. The normal player's save roots
+are no longer assumed empty after the subsequent hands-on session.
+
+The player reports extremely slow response at the fresh Create save data dialog.
+Live diagnostics confirm serious interactive frame stalls with real audio active.
+That performance issue takes priority over additional device gameplay testing.
+The iPhone remains away and has not been contacted.
+
+A 50,304-entry native Town attempt reaches the checked Town component, then
+fails on missing `2045f21f` while the final image still shows loading. This is
+not visible Town acceptance. An earlier run reported an invalid string pointer
+at `2057cbef`; failure-only checked argument/caller/module addresses are now
+included as `fault_context` to investigate recurrence. The later attempt does
+not reproduce that fault; no cause or resolution is claimed.
+
 ## 2026-11-14 — Real INN and the copied character load on the native host
 
 The frozen 50,292-entry core in `ios-game-50292` reaches Dragon's Haven Inn
