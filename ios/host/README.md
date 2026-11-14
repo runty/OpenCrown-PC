@@ -108,3 +108,11 @@ rejects the run. Evidence is in `ios-host-content/run` on the external build
 root. The synthetic ordering fixture explicitly marks its uniform-color output
 with `nonuniform_content_required=false`; this exemption never applies to the
 real game executable.
+
+The frozen 27,507-entry artifact in `ios-game-frames-20261114` renders a
+recognizable animated fairy and NOW LOADING text. Native AOT/Metal readback
+records 580 replayed frames / 8,276 draws in 20.06 seconds, nonuniform RGB and
+acknowledged unload, then missing `20428a47`. Its TITLE checkpoint remains
+incomplete and exit 1 is correct. `ios-host-frames/run/frame-final.png` and
+`report.json` preserve this first real-image result. This is not yet TITLE, INN
+or physical-device rendering acceptance.

@@ -2,6 +2,26 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+The first recognizable AOT game image now passes native Mac readback: the
+27,507-entry frozen artifact renders the real animated fairy and NOW LOADING
+text. The host replays 580 frames / 8,276 draw calls, sees nonuniform RGB content,
+and acknowledges ordered unload in 20.06 seconds before missing `20428a47`.
+Actual libc start remains 0 with 64 strlen checks. This is the same AOT path
+used by mobile, with native SDL/Metal replay; Rosetta does not execute this run.
+TITLE/INN have not been reached, so the host correctly returns failure despite
+visible loading content. Evidence is `ios-host-frames/run/frame-final.png` and
+`report.json` in the external workspace. Device/simulator builds of this frozen
+artifact are in progress. Physical devices remain away.
+
+A separate conditional catalog supplies 25 narrow-guard tables / 291 exact case
+and default PCs, with 6,856 CFG instructions checked. Each records its unproven
+high-index-zero condition. These are optional static case precompilations, not
+proven dynamic bounds or executed paths; runtime dispatch is unchanged and any
+other actual target still fails explicitly. The original strict 111-table
+catalog remains intact. An end-to-end seeded discovery attempt also verifies
+all three disposable Felix files and its adjacent SHA manifest, then stops at
+its configured round limit without claiming boot acceptance.
+
 Discovery can now seed each attempt from a quiescent disposable save copy,
 with bounded regular-file inventory, independent copy hashes and per-attempt
 manifests. Twenty-eight filesystem checks pass, and the earlier disposable
