@@ -2,6 +2,13 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+The mobile vblank timer now uses absolute, pause-excluded monotonic deadlines
+instead of appending a full 16.7 ms sleep to each frame's computation. The owned
+deadline/timing fixture passes 1,006 checks, with 60 waits plus 5 ms inter-frame
+work taking 1.002 s. Real-runtime lifecycle repeats all 27 sessions, maximum
+stop 37.8 ms; six bounded headless cases and input/configuration fixtures still
+pass. This corrects a pacing error, without claiming game or device FPS.
+
 The validated sectionless-ELF unwind reader now identifies 32,282 function
 entries in the pinned modules, exactly matching independent LLVM unwind output.
 Twenty-nine owned synthetic ELF/CFI cases cover malformed metadata and valid

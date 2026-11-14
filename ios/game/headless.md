@@ -72,3 +72,12 @@ empty directories, exact independent hashes, source preservation, size/count
 limits, overlap and symlink/FIFO rejection. A separate disposable copy of the
 previously verified Felix snapshot also matches all three input files. No live
 Mac or iCloud save was accessed by those copy tests.
+
+Vblank waits use the pause-excluded monotonic clock and absolute 60 Hz
+deadlines, matching the desktop timer's four-period long-stall reset. Work
+between waits consumes that frame's budget instead of adding another full
+sleep. Waiting polls pause/stop/per-worker cancellation at most every millisecond.
+The deadline fixture verifies 1,006 cases and 60 actual waits with 5 ms of work
+between them (about 1.002 s total); this is timer validation, not a game FPS claim.
+The updated real runtime passes 27 lifecycle sessions (maximum stop 37.8 ms)
+and all six bounded headless failure/configuration cases.

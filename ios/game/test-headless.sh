@@ -18,6 +18,8 @@ flags=(-std=c++17 -O2 -g -Wall -Wextra -Werror -I"$source_root/linux-port/src")
 sources=("$source_root/ios/game/scripted-input-fixture.cpp" "$source_root/ios/game/offline-services.cpp" "$source_root/linux-port/src/hle/kernel/pure.cpp")
 xcrun clang++ "${flags[@]}" "$source_root/ios/game/headless-config-fixture.cpp" -o "$output/config"
 "$output/config" > "$output/config-results.json"
+xcrun clang++ "${flags[@]}" "$source_root/ios/game/vblank-clock-fixture.cpp" -o "$output/vblank-clock"
+"$output/vblank-clock" > "$output/vblank-clock-results.json"
 xcrun clang++ "${flags[@]}" "${sources[@]}" -o "$output/input"
 "$output/input" "$output/saves" > "$output/input-results.json"
 xcrun clang++ "${flags[@]}" -fsanitize=address,undefined "${sources[@]}" -o "$output/input-asan-ubsan"

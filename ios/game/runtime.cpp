@@ -5,6 +5,7 @@
 #include "game.h"
 #include "gnm-services.h"
 #include "headless-config.h"
+#include "vblank-clock.h"
 #include <CommonCrypto/CommonDigest.h>
 #ifdef DCP_NATIVE_LIBC_BULK
 #include "libc-bulk.h"
@@ -78,6 +79,7 @@ struct Engine {
   std::condition_variable pauseChanged;
   std::chrono::steady_clock::time_point pausedAt;
   std::chrono::nanoseconds pausedTime{0};
+  dcp::game::VblankClock vblankClock;
   std::atomic<bool> interactive{false};
   std::atomic<uint64_t> steps{0};
   std::atomic<uint64_t> vblanks{0};
@@ -148,6 +150,25 @@ uint64_t elapsedNanoseconds() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              now - engine().epoch - engine().pausedTime)
       .count();
+}
+void waitVblank() {
+  auto &target = engine();
+  const uint64_t now = elapsedNanoseconds();
+  uint64_t deadline;
+  {
+    std::lock_guard<std::mutex> lock(target.pauseMutex);
+    deadline = target.vblankClock.reserve(now);
+  }
+  for (;;) {
+    if (pollRuntime())
+      throw std::runtime_error("bootstrap stopped while waiting for vblank");
+    const uint64_t elapsed = elapsedNanoseconds();
+    if (elapsed >= deadline)
+      return;
+    // Short waits preserve prompt per-worker cancellation and pause handling.
+    std::this_thread::sleep_for(std::chrono::nanoseconds(
+        std::min<uint64_t>(deadline - elapsed, 1000000)));
+  }
 }
 void recordFailure(const std::string &value) {
   std::lock_guard<std::mutex> lock(engine().diagnosticLock);
@@ -389,7 +410,7 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     std::memcpy(output + 24, &inches, 4);
     returnToGuest(state, *memory, 0);
   } else if (name == "sceVideoOutWaitVblank") {
-    std::this_thread::sleep_for(std::chrono::microseconds(16667));
+    waitVblank();
     const uint64_t frame = ++engine().vblanks;
     if (!engine().interactive && engine().checkpointSeen.load() &&
         frame >= engine().checkpointVblank.load() + 120 &&
