@@ -1,5 +1,33 @@
 # Device port progress
 
+## 2026-11-14 — Visible TITLE passes on the physical iPad
+
+Clean frontend `062a77d99e76a5e233cccf0d2ba08f31d753ee1b` with the frozen
+49,492-entry `ios-game-component-20261114` core passes on iPad mini A20 Pro
+(`iPad19,1`, Apple A20 Pro GPU). The automatic disposable session executes
+89,813,167 trace entries, renders 3,189 game frames, makes 3,541 drawable-present
+calls and completes the verified TITLE-component checkpoint with no guest,
+frontend, platform or save error. Downloaded final Metal readback was inspected
+and shows the real Dragon's Crown main menu. Total session is about 95 seconds.
+
+Sampled peak dirty footprint is 1,813,237,448 bytes (1.69 GiB); thermal state
+remains nominal. Captured-frame median is 16.67 ms with p95 about 50 ms across
+startup; this is not a sustained gameplay performance claim. Default signing
+works without increased-memory entitlements. Three game-generated files remain
+in the diagnostic session's save tree, while ordinary ProbeSaves contains no
+files. The app is relaunched normally after the check, leaving Play available.
+This checkpoint uses paced null audio and scripted pad input; audible output,
+physical input/reconnect and gameplay remain unqualified. The iPhone is away
+and has not been contacted. Evidence is `ipad-title-verification.json`, final
+diagnostics and first/final PNGs in the private external workspace.
+
+The matching native arm64 Metal host also passes: 3,385 rendered frames,
+85,649,897 trace entries, no error and a visually inspected title-menu frame.
+A copied-Felix INN run gets beyond TITLE but reports missing `2002ef6d`; INN
+component mapping and save reopening remain work in progress. The full expanded
+Simulator core is compiling. Live Mac/iCloud saves and the installed Mac app
+remain untouched.
+
 ## 2026-11-14 — Isolated automatic startup checks and component evidence
 
 The 49,492-entry Mac/iPhoneOS core now compiles. Its preceding frozen Metal

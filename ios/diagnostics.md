@@ -54,7 +54,8 @@ request stop, observe destruction and begin another session. Idle fields,
 terminated strings, snapshots while parked and wake-on-stop are checked. Native
 and ThreadSanitizer runs pass; the latter reports zero races. App and runtime
 sources also compile with strict warnings for both iPhoneOS and Simulator.
-Physical-device heartbeat and sustained gameplay measurements remain to verify.
+Physical-device heartbeat, memory and TITLE readback now pass on iPad mini
+A20 Pro; sustained gameplay and the iPhone remain to verify.
 
 Session memory peaks are the maximum of heartbeat samples, explicitly labelled
 as sampled peaks rather than OS high-water marks. Final live exports retain
@@ -81,3 +82,8 @@ launch requires Play and retains its ordinary local saves. Missing inputs,
 guest errors and incomplete checkpoints remain explicit failures. This option
 exists for repeated device tests without manual launch taps; it does not claim
 audio/controller quality or sustained play.
+
+Automated checkpoint mode deliberately uses the paced null-audio adapter and
+scripted pad events. Zero platform PCM counters in that mode are expected and
+do not qualify audible playback. Normal interactive Play connects real platform
+audio and input.

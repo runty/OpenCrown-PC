@@ -116,3 +116,13 @@ acknowledged unload, then missing `20428a47`. Its TITLE checkpoint remains
 incomplete and exit 1 is correct. `ios-host-frames/run/frame-final.png` and
 `report.json` preserve this first real-image result. This is not yet TITLE, INN
 or physical-device rendering acceptance.
+
+The 2026-11-14 49,492-entry frozen core in `ios-game-component-20261114`
+passes the verified TITLE-component checkpoint. `ios-host-component/run/`
+records 3,385 rendered frames, 85,649,897 trace entries, acknowledged unload,
+no errors and exit 0. The final 1920x1080 PNG was independently inspected and
+shows the real title menu with Start Game/Options/Gallery. Runtime component
+markers remain distinct from this external visual inspection. A copied-Felix
+INN attempt reports missing `2002ef6d`; neither that attempt nor title-menu
+success qualifies gameplay or save reopening. The same core also passes TITLE
+on the physical iPad; see the current progress ledger.
