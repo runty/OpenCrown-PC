@@ -1,6 +1,7 @@
 // Shared by dcp_run and the launcher: the default input.ini (binding names, order and format) and the per-user
 // settings directory. Header-only so both targets stay in lockstep without a library.
 #pragma once
+#include "platform/paths.h"
 #include <cstdlib>
 #include <string>
 
@@ -64,12 +65,10 @@ chat = Return
 )";
 
 // Per-user settings dir (input.ini, launcher.ini, saves/, logs/): $DCP_USER_DIR if set, else
-// ${XDG_DATA_HOME:-~/.local/share}/OpenCrown (the same dir as net::default_user_dir()).
+// ~/Library/Application Support/OpenCrown on macOS, XDG data on Linux (same as net::default_user_dir()).
 inline std::string user_dir() {
     if (const char* d = std::getenv("DCP_USER_DIR"); d && *d) return d;
-    if (const char* x = std::getenv("XDG_DATA_HOME"); x && *x == '/') return std::string(x) + "/OpenCrown";
-    const char* home = std::getenv("HOME");
-    return std::string(home && *home ? home : ".") + "/.local/share/OpenCrown";
+    return dcp::platform::default_user_directory();
 }
 
 }  // namespace dcp

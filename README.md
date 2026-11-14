@@ -327,7 +327,8 @@ Character creation, tutorial, town and combat frames work on the reference
 M5 Max. CoreAudio playback and Switch Pro Controller reconnect are verified.
 Two full process restarts recover the same earned EXP and gold; see the
 [gameplay verification](macos/gameplay-smoke.md) and
-[Mac build instructions](macos/README.md). Remaining gameplay checks and app packaging
+[Mac build instructions](macos/README.md). A Metal launcher and relocatable
+[local app bundle](macos/app-bundle.md) are available from source. Remaining gameplay and compatibility checks
 are tracked in the [port plan](docs/macos-port-plan.md), alongside
 [iOS/iPadOS phase 2 feasibility](docs/macos-port-plan.md#phase-2-feasibility-on-ios-and-ipados).
 

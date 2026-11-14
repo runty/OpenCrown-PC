@@ -1,4 +1,4 @@
-// opencrown-launcher (target opencrown_launcher): end-user launcher (Dear ImGui on SDL3 + OpenGL 3.3). Picks and validates the
+// opencrown-launcher: Dear ImGui on SDL3 (Metal on macOS, OpenGL 3.3 on Linux). Picks and validates the
 // user's dump folder, edits input.ini (bindings shared with dcp_run via tools/common/input_defaults.h), sets display
 // options and starts dcp_run (next to this binary, posix_spawn), stdout/stderr to <user dir>/logs/last_run.log.
 // User dir: ${XDG_DATA_HOME:-~/.local/share}/OpenCrown ($DCP_USER_DIR overrides), the same one dcp_run uses.
@@ -24,7 +24,8 @@
 // built-in folder browser (FolderBrowser), Steam's on-screen keyboard for text fields focused by pad / touch, 1.25x UI
 // on a Deck. Test hook DCP_LAUNCHER_PAD_SCRIPT (Script: virtual gamepad, injected touches, screenshots).
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
+#include "graphics.h"
+#include "platform/paths.h"
 
 #include <algorithm>
 #include <atomic>
@@ -63,7 +64,7 @@ extern char** environ;
 #include "../common/input_defaults.h"
 #include "pad_setup.h"
 #include "imgui.h"
-#include "imgui_impl_opengl3.h"
+
 #include "imgui_impl_sdl3.h"
 #include "imgui_internal.h"  // gamepad focus (SetFocusID), touch drag-scroll (window scroll), text-field state
 #include "net/bug_report.h"
@@ -103,6 +104,11 @@ bool exists(const std::string& p) {
     return stat(p.c_str(), &st) == 0;
 }
 
+bool writable_directory(const std::string& path) {
+    struct stat st{};
+    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && access(path.c_str(), W_OK | X_OK) == 0;
+}
+
 // dir + "/" + rel with each component of rel matched without case when the exact path is missing; "" if not found.
 std::string find_ci(const std::string& dir, const std::string& rel) {
     if (exists(dir + "/" + rel)) return dir + "/" + rel;
@@ -127,16 +133,21 @@ std::string find_ci(const std::string& dir, const std::string& rel) {
 // Openers started by open_in_explorer; reaped each frame (poll_openers) so they leave no zombies.
 std::vector<pid_t> g_openers;
 
-// Opens a folder or file in the desktop's default app: xdg-open with the path as one argv entry (no shell).
+// Opens a folder/file/URL using the platform desktop opener and one argv entry, without a shell.
 void open_in_explorer(const std::string& p) {
-    const char* argv[] = {"xdg-open", p.c_str(), nullptr};
+    #ifdef __APPLE__
+    const char* opener = "/usr/bin/open";
+#else
+    const char* opener = "xdg-open";
+#endif
+    const char* argv[] = {opener, p.c_str(), nullptr};
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
     dcp::platform::close_spawn_descriptors(&fa);
     pid_t pid;
-    if (dcp::platform::spawn(&pid, "xdg-open", &fa, const_cast<char**>(argv), environ, true) == 0) g_openers.push_back(pid);
-    else std::fprintf(stderr, "launcher: xdg-open not found; open %s by hand\n", p.c_str());
+    if (dcp::platform::spawn(&pid, opener, &fa, const_cast<char**>(argv), environ, true) == 0) g_openers.push_back(pid);
+    else std::fprintf(stderr, "launcher: desktop opener unavailable; open %s by hand\n", p.c_str());
     posix_spawn_file_actions_destroy(&fa);
 }
 
@@ -201,7 +212,7 @@ void load_settings(const std::string& path, Settings& s) {
     }
 }
 
-void save_settings(const std::string& path, const Settings& s) {
+bool save_settings(const std::string& path, const Settings& s) {
     std::ofstream o(path);
     o << "# OpenCrownPC Launcher settings\n"
       << "dump = " << s.dump << "\nsaves = " << s.saves
@@ -215,6 +226,9 @@ void save_settings(const std::string& path, const Settings& s) {
       << "\nown_camera = " << (s.own_camera ? "true" : "false")
       << "\nconfirm = " << (s.confirm_circle ? "circle" : "cross")
       << "\n";
+    o.close();
+    if (!o) std::fprintf(stderr, "launcher: cannot save settings: %s\n", path.c_str());
+    return bool(o);
 }
 
 // ---- input.ini model: the action lines of kInputDefaults, in order ----
@@ -368,10 +382,10 @@ struct Check {
 
 Check version_check(const std::filesystem::path& eboot) {
     switch (dcp::check_game_version(eboot)) {
-    case dcp::GameVersion::Supported: return {true, true, "Game version: latest patch (1.03)", ""};
+    case dcp::GameVersion::Supported: return {true, true, "Game version: supported patch (1.03)", ""};
     case dcp::GameVersion::Unsupported:
-        return {false, true, "Not the latest patch (1.03), or another region's copy: update the game on your PS4/PS5 and "
-                             "dump it again", "[wrong version]"};
+        return {false, true, "Unsupported patch or region: this build requires the matching decrypted patch 1.03 dump",
+                "[wrong version]"};
     default: return {false, true, "eboot.bin could not be read"};
     }
 }
@@ -408,9 +422,18 @@ std::vector<Check> validate_dump(const std::string& dir) {
     // Optional, but the game loads it whenever it is there, so an encrypted copy stops the game.
     const std::string libc = find_ci(dir, "sce_module/libc.prx");
     dcp::FileState ls = libc.empty() ? dcp::FileState::Ok : dcp::exe_state(libc);
+#ifdef __APPLE__
+    if (libc.empty()) out.push_back({false, true, "sce_module/libc.prx missing (matching decrypted module required on macOS)"});
+#else
     if (libc.empty()) out.push_back({false, false, "sce_module/libc.prx missing (optional; built-in libc stubs are used)"});
+#endif
     else if (ls == dcp::FileState::Ok) out.push_back({true, false, "sce_module/libc.prx found"});
-    else out.push_back({false, true, dcp::exe_problem("sce_module/libc.prx", ls) + " (or delete it)",
+    else out.push_back({false, true, dcp::exe_problem("sce_module/libc.prx", ls) +
+#ifdef __APPLE__
+                        " (the matching decrypted module is required)",
+#else
+                        " (or delete it)",
+#endif
                         ls == dcp::FileState::Encrypted ? "[encrypted]" : "[bad file]"});
     return out;
 }
@@ -434,6 +457,7 @@ struct Game {
     pid_t proc = 0;
     unsigned long exit_code = 0;   // exit status, or 128 + signal number when killed by a signal (shell convention)
     bool failed = false;           // last run exited non-zero (or could not start)
+    bool stopping = false;
     std::vector<std::string> tail; // last lines of the log after a failure
     bool show_tail = false;        // open the log popup on the next frame
     std::string error;             // launch error
@@ -450,13 +474,7 @@ std::vector<std::string> log_tail(const std::string& path, size_t n) {
     return {d.begin(), d.end()};
 }
 
-std::string exe_dir() {  // folder of this binary (/proc/self/exe resolves symlinks)
-    char buf[4096];
-    ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
-    std::string s = n > 0 ? std::string(buf, size_t(n)) : ".";
-    size_t slash = s.find_last_of('/');
-    return slash == std::string::npos ? "." : slash == 0 ? "/" : s.substr(0, slash);
-}
+std::string exe_dir() { return dcp::platform::executable_directory(); }
 
 void set_env(const char* k, const std::string& v) {  // "" removes it; inherited by dcp_run
     if (v.empty()) unsetenv(k);
@@ -468,6 +486,11 @@ bool start_game(Game& g, const Settings& s, const std::string& user, const std::
     if (access(exe.c_str(), X_OK) != 0) { g.error = "dcp_run not found next to the launcher (" + exe + ")"; return false; }
     std::string eboot = find_ci(s.dump, "eboot.bin");
     if (eboot.empty()) { g.error = "eboot.bin not found in " + s.dump; return false; }
+    eboot = std::filesystem::absolute(eboot).string();
+    if (!s.saves.empty() && !writable_directory(s.saves)) {
+        g.error = "Save folder is missing or not writable: " + s.saves;
+        return false;
+    }
     std::vector<std::string> args = {exe, eboot, "--render", "--window"};
     if (s.fullscreen) args.push_back("--fullscreen");
     if (s.uhd) args.push_back("--4k");
@@ -494,6 +517,10 @@ bool start_game(Game& g, const Settings& s, const std::string& user, const std::
     // Custom save folder: the game's DCP_SAVE_ROOT override, set in our environment (inherited by the child).
     set_env("DCP_SAVE_ROOT", s.saves);
     set_env("DCP_LANGUAGE", s.language);
+#ifdef __APPLE__
+    // Rosetta reads this at process startup, before guest CPUID detection.
+    if (!std::getenv("ROSETTA_ADVERTISE_AVX")) set_env("ROSETTA_ADVERTISE_AVX", "1");
+#endif
     // Same user dir as ours, whatever the save folder is: the game reads input.ini and identity.ini from it (without
     // this it uses the save folder's parent, so a custom save folder would mean another online account than ours).
     if (const char* d = std::getenv("DCP_USER_DIR"); !d || !*d) set_env("DCP_USER_DIR", user);
@@ -514,15 +541,24 @@ bool start_game(Game& g, const Settings& s, const std::string& user, const std::
     posix_spawn_file_actions_adddup2(&fa, 1, 2);
     dcp::platform::close_spawn_descriptors(&fa);
     const std::string dir = exe_dir();
-    posix_spawn_file_actions_addchdir_np(&fa, dir.c_str());
+    int cd = dcp::platform::spawn_chdir(&fa, dir.c_str());
+    if (cd != 0) {
+        posix_spawn_file_actions_destroy(&fa);
+        g.error = "cannot set game working directory: " + std::string(std::strerror(cd));
+        return false;
+    }
     pid_t pid = 0;
     int rc = dcp::platform::spawn(&pid, exe.c_str(), &fa, argv.data(), environ);
     posix_spawn_file_actions_destroy(&fa);
     // glibc reports a failed exec / file action (log not writable) as the spawn's own error.
     if (rc != 0) { g.error = "cannot start dcp_run: " + std::string(std::strerror(rc)) + " (log " + log_path + ")"; return false; }
     g.proc = pid;
-    g.failed = false, g.tail.clear(), g.error.clear();
+    g.failed = false, g.stopping = false, g.tail.clear(), g.error.clear();
     return true;
+}
+
+void stop_game(Game& g) {
+    if (g.proc && kill(g.proc, SIGTERM) == 0) g.stopping = true;
 }
 
 // Called each frame: notices the game's exit.
@@ -531,7 +567,8 @@ void poll_game(Game& g, const std::string& log_path) {
     if (!g.proc || waitpid(g.proc, &status, WNOHANG) != g.proc) return;
     g.exit_code = WIFEXITED(status) ? unsigned(WEXITSTATUS(status)) : WIFSIGNALED(status) ? 128u + WTERMSIG(status) : 1u;
     g.proc = 0;
-    g.failed = g.exit_code != 0;
+    g.failed = g.exit_code != 0 && !(g.stopping && WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM);
+    g.stopping = false;
     if (g.failed) g.tail = log_tail(log_path, 30), g.show_tail = true;
 }
 
@@ -605,73 +642,6 @@ void apply_theme(float scale) {
 
 // ---- artwork from the user's dump: the PS4 store images in sce_sys (decoded with SDL's own PNG loader) ----
 
-struct Tex {
-    GLuint id = 0;
-    int w = 0, h = 0;
-};
-
-// The few GL calls made here, through SDL_GL_GetProcAddress (no -lGL link; ImGui's backend loads its own).
-struct Gl {
-    void(APIENTRY* GenTextures)(GLsizei, GLuint*);
-    void(APIENTRY* DeleteTextures)(GLsizei, const GLuint*);
-    void(APIENTRY* BindTexture)(GLenum, GLuint);
-    void(APIENTRY* TexParameteri)(GLenum, GLenum, GLint);
-    void(APIENTRY* PixelStorei)(GLenum, GLint);
-    void(APIENTRY* TexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
-    void(APIENTRY* Viewport)(GLint, GLint, GLsizei, GLsizei);
-    void(APIENTRY* ClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
-    void(APIENTRY* Clear)(GLbitfield);
-    void(APIENTRY* ReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);  // test screenshots only (optional)
-} gl;
-
-bool load_gl() {  // after the context is current
-    bool ok = true;
-    auto get = [&](auto& fn, const char* name) {
-        fn = reinterpret_cast<std::remove_reference_t<decltype(fn)>>(SDL_GL_GetProcAddress(name));
-        ok = ok && fn;
-    };
-    get(gl.GenTextures, "glGenTextures"), get(gl.DeleteTextures, "glDeleteTextures");
-    get(gl.BindTexture, "glBindTexture"), get(gl.TexParameteri, "glTexParameteri");
-    get(gl.PixelStorei, "glPixelStorei"), get(gl.TexImage2D, "glTexImage2D"), get(gl.Viewport, "glViewport");
-    get(gl.ClearColor, "glClearColor"), get(gl.Clear, "glClear");
-    const bool need = ok;
-    get(gl.ReadPixels, "glReadPixels");
-    return need;
-}
-
-// PNG -> RGBA8 texture; {} on failure (or empty path). win: also make it the window icon.
-Tex load_texture(const std::string& path, SDL_Window* win = nullptr) {
-    Tex t;
-    if (path.empty()) return t;
-    SDL_Surface* png = SDL_LoadPNG(path.c_str());
-    // ABGR8888 = R, G, B, A bytes in memory (GL_RGBA / GL_UNSIGNED_BYTE), rows packed (pitch = w * 4).
-    SDL_Surface* rgba = png ? SDL_ConvertSurface(png, SDL_PIXELFORMAT_ABGR8888) : nullptr;
-    if (png) SDL_DestroySurface(png);
-    if (!rgba) return t;
-    const int w = rgba->w, h = rgba->h;
-    if (w <= 0 || h <= 0 || w > 8192 || h > 8192) { SDL_DestroySurface(rgba); return t; }
-    std::vector<uint8_t> px(size_t(w) * h * 4);
-    for (int y = 0; y < h; ++y)
-        std::memcpy(px.data() + size_t(y) * w * 4, static_cast<const uint8_t*>(rgba->pixels) + size_t(y) * rgba->pitch,
-                    size_t(w) * 4);
-    SDL_DestroySurface(rgba);
-    gl.GenTextures(1, &t.id);
-    gl.BindTexture(GL_TEXTURE_2D, t.id);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, GLsizei(w), GLsizei(h), 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    t.w = int(w), t.h = int(h);
-    if (win)
-        if (SDL_Surface* icon = SDL_CreateSurfaceFrom(int(w), int(h), SDL_PIXELFORMAT_ABGR8888, px.data(), int(w * 4))) {
-            SDL_SetWindowIcon(win, icon);  // copies the pixels
-            SDL_DestroySurface(icon);
-        }
-    return t;
-}
-
 // Background + logo (also the window icon) for the current dump folder; reloaded when the folder changes. The binary
 // itself has no icon: it would have to embed the game's art.
 struct Art {
@@ -681,14 +651,12 @@ struct Art {
         if (d == dump) return;
         dump = d;
         for (Tex* t : {&bg, &logo})
-            if (t->id) gl.DeleteTextures(1, &t->id), *t = {};
+            free_texture(*t);
         if (d.empty()) return;
         bg = load_texture(find_ci(d, "sce_sys/pic0.png"));
         logo = load_texture(find_ci(d, "sce_sys/icon0.png"), win);
     }
 };
-
-ImTextureID tex_id(const Tex& t) { return ImTextureID(intptr_t(t.id)); }
 
 // Fills the display with the art ("cover": crop, keep aspect), then darkens it so text stays readable; a plain
 // gradient without art.
@@ -816,6 +784,9 @@ struct UpdateJob {
         if (th.joinable()) th.join();
     }
     void check() {
+#ifdef __APPLE__
+        return;
+#endif
         if (th.joinable()) th.join();
         {
             std::lock_guard<std::mutex> lk(mu);
@@ -830,6 +801,9 @@ struct UpdateJob {
     }
     // Downloads res.asset next to appimage, verifies it and renames it over appimage.
     void download(const std::string& appimage) {
+#ifdef __APPLE__
+        return;
+#endif
         if (th.joinable()) th.join();
         dcp::net::update::Asset a;
         {
@@ -889,7 +863,7 @@ const ImVec4 kGood(0.55f, 0.85f, 0.45f, 1), kBad(0.97f, 0.45f, 0.38f, 1), kWarn(
     kDim(0.66f, 0.62f, 0.55f, 1);
 
 // Release notes (net/update.h NoteLine) as wrapped ImGui text.
-void draw_notes(const std::vector<dcp::net::update::NoteLine>& lines, ImFont* font_tag, float scale) {
+[[maybe_unused]] void draw_notes(const std::vector<dcp::net::update::NoteLine>& lines, ImFont* font_tag, float scale) {
     using dcp::net::update::NoteLine;
     for (const NoteLine& l : lines) {
         switch (l.kind) {
@@ -1383,7 +1357,12 @@ struct FolderBrowser {
         // SD cards / USB drives: /run/media/<user>/<label> (SteamOS), and older /run/media/<label> mount points.
         // DCP_LAUNCHER_MEDIA_ROOT replaces /run/media (tests).
         const char* mr = std::getenv("DCP_LAUNCHER_MEDIA_ROOT");
-        const std::string media = mr && *mr ? mr : "/run/media";
+        const std::string media = mr && *mr ? mr :
+#ifdef __APPLE__
+            "/Volumes";
+#else
+            "/run/media";
+#endif
         struct stat ms {};
         stat(media.c_str(), &ms);
         for (const std::string& a : subdirs(media)) {
@@ -1576,20 +1555,6 @@ struct Script {
     }
 };
 
-// Back buffer -> PNG (test screenshots), before the swap.
-bool save_screenshot(const std::string& path, int w, int h) {
-    if (!gl.ReadPixels || w <= 0 || h <= 0) return false;
-    std::vector<uint8_t> px(size_t(w) * h * 4), out(px.size());
-    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
-    gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    for (int y = 0; y < h; ++y) std::memcpy(out.data() + size_t(y) * w * 4, px.data() + size_t(h - 1 - y) * w * 4, size_t(w) * 4);
-    for (size_t i = 3; i < out.size(); i += 4) out[i] = 255;
-    SDL_Surface* s = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_ABGR8888, out.data(), w * 4);
-    const bool ok = s && SDL_SavePNG(s, path.c_str());
-    if (s) SDL_DestroySurface(s);
-    std::fprintf(stderr, "script: screenshot %s %s\n", path.c_str(), ok ? "saved" : SDL_GetError());
-    return ok;
-}
 
 }  // namespace
 
@@ -1602,6 +1567,10 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--tab") == 0 && i + 1 < argc) first_tab = argv[++i];
         else if (std::strcmp(argv[i], "--updated") == 0 && i + 1 < argc) updated_from = argv[++i], first_tab = "Update";
         else if (std::strcmp(argv[i], "--update-check") == 0) {
+#ifdef __APPLE__
+            std::puts("macOS builds: https://github.com/runty/OpenCrown-PC/releases (automatic replacement disabled)");
+            return 0;
+#else
             dcp::net::update::Result r = dcp::net::update::check(OPENCROWN_VERSION);
             if (!r.ok) {
                 std::printf("update check failed: %s\n", r.error.c_str());
@@ -1614,18 +1583,56 @@ int main(int argc, char** argv) {
             else std::printf("v%s is out, but has no Linux build newer than v%s\n", r.latest.c_str(), OPENCROWN_VERSION);
             std::printf("%s", dcp::net::update::notes_text(r.notes).c_str());
             return 0;
+#endif
         }
 
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--validate-dump") == 0 && i + 1 < argc) {
+            auto checks = validate_dump(argv[i + 1]);
+            for (const auto& c : checks) std::printf("%s %s\n", c.ok ? "OK" : c.required ? "FAIL" : "NOTE", c.text.c_str());
+            return dump_ok(checks) ? 0 : 1;
+        }
+    }
     const std::string user = dcp::user_dir();
-    SDL_CreateDirectory((user + "/logs").c_str());  // creates user too
+    const std::string logs = dcp::platform::log_directory(user);
+    SDL_CreateDirectory(user.c_str());
+    SDL_CreateDirectory(logs.c_str());
+#ifdef __APPLE__
+    if (!selftest) {
+        std::freopen((logs + "/launcher.log").c_str(), "a", stderr);
+        std::freopen((logs + "/launcher.log").c_str(), "a", stdout);
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
+        std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    }
+#endif
     const std::string settings_path = user + "/launcher.ini", input_path = user + "/input.ini",
-                      log_path = user + "/logs/last_run.log", saves = user + "/saves";
+                      log_path = logs + "/last_run.log", saves = user + "/saves";
     Settings set;
     load_settings(settings_path, set);
+#ifdef __APPLE__
+    set.check_updates = false; // upstream assets are AppImages/Windows binaries
+    set.renderer = "gpu"; // Metal is the supported Mac launcher path.
+#endif
     const std::string fallback_name = valid_name(set.name) ? set.name : random_player_name();
     if (!valid_name(set.name)) {
         set.name = fallback_name;
         if (!selftest) save_settings(settings_path, set);
+    }
+    bool configure = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--configure") == 0) configure = true;
+        else if (std::strcmp(argv[i], "--dump") == 0 && i + 1 < argc) set.dump = argv[++i];
+        else if (std::strcmp(argv[i], "--saves") == 0 && i + 1 < argc) set.saves = argv[++i], set.saves_chosen = true;
+    }
+    if (configure) {
+        auto checks = validate_dump(set.dump);
+        if (!dump_ok(checks)) { std::fprintf(stderr, "launcher: %s\n", dump_problem(checks).c_str()); return 1; }
+        if (!set.saves.empty() && !writable_directory(set.saves)) {
+            std::fprintf(stderr, "launcher: save folder must exist and be writable\n"); return 1;
+        }
+        bool ok = save_settings(settings_path, set);
+        if (ok) std::printf("Launcher configured.\n");
+        return ok ? 0 : 1;
     }
     Controls ctl = load_controls(input_path);
     std::string status;  // one-line feedback under the Controls table
@@ -1641,9 +1648,11 @@ int main(int argc, char** argv) {
     Script script;
     if (const char* s = std::getenv("DCP_LAUNCHER_PAD_SCRIPT"); s && *s && !selftest) script.init(s);
     const bool gm = game_mode(), steam = under_steam();
+#ifndef __APPLE__
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#endif
     float scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
     if (!(scale > 0.0f)) scale = 1.0f;
     // Steam Deck (Game Mode, or started by Steam on a Deck): 25% larger text and touch targets on the 7" 1280x800
@@ -1662,7 +1671,10 @@ int main(int argc, char** argv) {
         if (std::sscanf(s, "%dx%d", &w, &h) == 2 && w >= 320 && h >= 240) win_w = w, win_h = h;
     }
     SDL_Window* win = SDL_CreateWindow("OpenCrownPC Launcher", win_w, win_h,
-                                       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+#ifndef __APPLE__
+                                       SDL_WINDOW_OPENGL |
+#endif
+                                       SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
                                            (gm ? SDL_WINDOW_FULLSCREEN : 0) | (selftest ? SDL_WINDOW_HIDDEN : 0));
     if (!win) {
         error_box("OpenCrownPC Launcher", SDL_GetError());
@@ -1670,13 +1682,10 @@ int main(int argc, char** argv) {
     }
     const float min_w = 820 * scale, min_h = 540 * scale;
     scale *= deck;
-    SDL_GLContext glctx = SDL_GL_CreateContext(win);
-    if (!glctx || (SDL_GL_MakeCurrent(win, glctx), !load_gl())) {
-        error_box("OpenCrownPC Launcher (OpenGL 3.3 needed)", SDL_GetError());
+    if (!launcher_graphics_init(win)) {
+        error_box("OpenCrown launcher graphics", SDL_GetError());
         return 1;
     }
-    SDL_GL_MakeCurrent(win, glctx);
-    SDL_GL_SetSwapInterval(1);
     SDL_SetWindowMinimumSize(win, std::min(int(min_w * deck), win_w), std::min(int(min_h * deck), win_h));
 
     IMGUI_CHECKVERSION();
@@ -1687,7 +1696,7 @@ int main(int argc, char** argv) {
     apply_theme(scale);
     // A system sans (Noto / Ubuntu / Liberation / DejaVu, in that order: the first ones are closest to Segoe UI on
     // Windows) reads better than the built-in bitmap font; fall back to that.
-    const char* font_ui = first_font({"/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    const char* font_ui = first_font({"/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
                                       "/usr/share/fonts/noto/NotoSans-Regular.ttf",
                                       "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
                                       "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
@@ -1705,7 +1714,7 @@ int main(int argc, char** argv) {
     // Headings: a bold serif (Palatino on Windows) suits the game's storybook look.
     ImFont* font_head = nullptr;
     ImFont* font_nav = nullptr;
-    if (const char* f = first_font({"/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+    if (const char* f = first_font({"/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf", "/System/Library/Fonts/Times.ttc", "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
                                     "/usr/share/fonts/noto/NotoSerif-Bold.ttf",
                                     "/usr/share/fonts/google-noto/NotoSerif-Bold.ttf",
                                     "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
@@ -1717,10 +1726,14 @@ int main(int argc, char** argv) {
         font_head = io.Fonts->AddFontFromFileTTF(f, 27.0f * scale);
         font_nav = io.Fonts->AddFontFromFileTTF(f, 19.0f * scale);
     }
-    ImGui_ImplSDL3_InitForOpenGL(win, glctx);
+    if (!launcher_gui_init()) {
+        error_box("OpenCrown launcher UI", SDL_GetError());
+        return 1;
+    }
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);  // Pad feeds the gamepad keys
-    ImGui_ImplOpenGL3_Init("#version 330");
 
+
+    Uint64 next_dump_check = 0;
     Game game;
     ConnTest conn;
     Art art;
@@ -1749,6 +1762,7 @@ int main(int argc, char** argv) {
     bool type_saves = false;       // Save Folder page shows a path field (after a dialog failure)
     std::string saves_buf;
     std::vector<Check> checks = validate_dump(set.dump);
+    std::fprintf(stderr, "launcher: dump %s\n", dump_ok(checks) ? "available" : "unavailable");
     int frames = 0;
     bool quit = false;
     // Gamepad / touch (Steam Deck Game Mode).
@@ -1787,7 +1801,7 @@ int main(int argc, char** argv) {
         bool script_log = false, script_stop = false;
         if (script.active())
             script.step(script_frame++, game.proc != 0, win, &shot_path, &script_log, &script_stop, &quit);
-        if (script_stop && game.proc) kill(game.proc, SIGTERM);
+        if (script_stop) stop_game(game);
         if (game.proc && !script.active()) SDL_WaitEventTimeout(nullptr, 100);  // idle while the game runs
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -1842,7 +1856,7 @@ int main(int argc, char** argv) {
             if (g_pick_failed) {  // no folder dialog on this desktop: say so, and offer the typed path instead
                 g_pick_failed = false;
                 std::fprintf(stderr, "launcher: folder dialog failed: %s\n", g_pick_error.c_str());
-                pick_msg = "No folder dialog on this desktop (it needs xdg-desktop-portal or zenity): type the path.";
+                pick_msg = "The folder dialog could not open: type the path instead.";
                 if (g_pick_target == 1) page = 4, type_saves = true, saves_buf = set.saves;
                 else page = 0;
                 pick_unavailable = true;  // from now on the built-in browser, opened right away
@@ -1900,13 +1914,19 @@ int main(int argc, char** argv) {
         if (was_quiet && !quiet) pad.swallow();  // the press that ended a binding capture does not act again
         was_quiet = quiet;
 
-        ImGui_ImplOpenGL3_NewFrame();
+        launcher_gui_new_frame();
         ImGui_ImplSDL3_NewFrame();
         if (pad.pressed(Pad::A)) a_tweak = (slider_id && gx.NavId == slider_id) || (sharpen_id && gx.NavId == sharpen_id);
         pad.feed(io, quiet, a_tweak);
         ImGui::NewFrame();
         touch.apply(input_log);
         bool slider_active = false;
+        if (SDL_GetTicks() >= next_dump_check && !set.dump.empty()) {
+            bool was_ok = dump_ok(checks);
+            checks = validate_dump(set.dump);
+            if (was_ok != dump_ok(checks)) std::fprintf(stderr, "launcher: dump %s\n", dump_ok(checks) ? "available" : "unavailable");
+            next_dump_check = SDL_GetTicks() + 2000;
+        }
         art.update(dump_ok(checks) ? set.dump : "", win);
         draw_background(art, io.DisplaySize);
         ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -2004,6 +2024,9 @@ int main(int argc, char** argv) {
                 else if (!u_res.ok) state = "Update check failed";
                 else if (u_res.have_target) state = "Update available: " + u_res.target_tag, col = kGold, avail = true;
                 else state = "Up to date (v" OPENCROWN_VERSION ")";
+#ifdef __APPLE__
+                state = "macOS development build";
+#endif
                 const bool sel = page == 6;
                 if (font_nav) ImGui::PushFont(font_nav);
                 ImVec2 p = ImGui::GetCursorScreenPos();
@@ -2185,6 +2208,9 @@ int main(int argc, char** argv) {
                 ImGui::TextColored(kDim, "The game renders at 3840x2160 with its Pro assets; the window scales the picture.");
                 ImGui::Spacing();
                 {
+#ifdef __APPLE__
+                    ImGui::TextUnformatted("Renderer: Metal");
+#else
                     static const char* const kRendererIds[] = {"auto", "gpu", "gl"};
                     static const char* const kRendererNames[] = {"Auto", "SDL GPU (Vulkan)", "OpenGL"};
                     int r = 0;
@@ -2195,6 +2221,7 @@ int main(int argc, char** argv) {
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(220 * scale);
                     if (ImGui::Combo("##renderer", &r, kRendererNames, 3)) set.renderer = kRendererIds[r];
+#endif
                 }
                 ImGui::Spacing();
                 {
@@ -2460,6 +2487,11 @@ int main(int argc, char** argv) {
                 if (have_log && ImGui::Button("Open log##bug")) open_in_explorer(log_path);
                 if (!ident.ok) ImGui::TextColored(kBad, "No online identity: %s", ident.error.c_str());
             } else if (t == 6) {
+#ifdef __APPLE__
+                ImGui::Text("Current development version: v%s", OPENCROWN_VERSION);
+                ImGui::TextWrapped("Automatic app replacement is not available for macOS. Get macOS builds from the fork's release page.");
+                if (ImGui::Button("Open macOS release page")) open_in_explorer("https://github.com/runty/OpenCrown-PC/releases");
+#else
                 const dcp::net::update::Result& r = u_res;
                 if (!updated_from.empty())
                     ImGui::TextColored(kGood, "Updated to v%s (from v%s).", OPENCROWN_VERSION, updated_from.c_str());
@@ -2556,6 +2588,7 @@ int main(int argc, char** argv) {
                                                     : u_checked              ? "Could not check for updates (see above)."
                                                                              : "Not checked yet: use Check again.");
                 ImGui::EndChild();
+#endif
             }
         }
         ImGui::EndChild();
@@ -2611,12 +2644,16 @@ int main(int argc, char** argv) {
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.98f, 0.78f, 0.40f, 1));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.12f, 0.07f, 0.03f, 1));
             if (font_nav) ImGui::PushFont(font_nav);
-            ImGui::BeginDisabled(!can_play);
-            if (ImGui::Button(running ? "Running..." : "PLAY", play) || (pad_play && can_play)) {  // Start = Play
+            ImGui::BeginDisabled(!can_play && !running);
+            if (ImGui::Button(running ? "Stop game" : "PLAY", play) || (pad_play && can_play)) {
+                if (running) stop_game(game);
+                else {  // Start = Play
                 save_settings(settings_path, set);
                 if (!start_game(game, set, user, log_path)) game.failed = true;
+                }
             }
             ImGui::EndDisabled();
+            if (running && ImGui::IsItemHovered()) ImGui::SetTooltip("Stops the game. Return to town to save progress first.");
             if (font_nav) ImGui::PopFont();
             ImGui::PopStyleColor(4);
         }
@@ -2712,14 +2749,12 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        int w, h;
-        SDL_GetWindowSizeInPixels(win, &w, &h);
-        gl.Viewport(0, 0, w, h);
-        gl.ClearColor(0.09f, 0.09f, 0.11f, 1);
-        gl.Clear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        if (!shot_path.empty()) save_screenshot(shot_path, w, h);
-        SDL_GL_SwapWindow(win);
+        if (selftest && frames == 9)
+            if (const char* path = std::getenv("DCP_LAUNCHER_SELFTEST_SHOT")) shot_path = path;
+        if (!launcher_present(shot_path)) {
+            std::fprintf(stderr, "launcher: render failed: %s\n", SDL_GetError());
+            return 4;
+        }
         first = false;
         if (selftest && ++frames >= 10) quit = true;
     }
@@ -2740,10 +2775,11 @@ int main(int argc, char** argv) {
     }
     if (!selftest && !relaunched) save_settings(settings_path, set);
 
-    ImGui_ImplOpenGL3_Shutdown();
+    free_texture(art.bg); free_texture(art.logo);
+    launcher_graphics_shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-    SDL_GL_DestroyContext(glctx);
+
     SDL_DestroyWindow(win);
     SDL_Quit();
     // A lobby session still waiting on the network (bad server, slow DNS) must not keep the process alive after the

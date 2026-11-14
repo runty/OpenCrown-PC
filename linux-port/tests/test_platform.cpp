@@ -4,8 +4,10 @@
 #include <csignal>
 #include "platform/socket.h"
 #include "platform/spawn.h"
+#include "platform/paths.h"
 #include <sys/wait.h>
 #include <cstdlib>
+#include <filesystem>
 
 #include <cstdio>
 #include <cstring>
@@ -62,6 +64,7 @@ static void test_spawn(const char* executable) {
     posix_spawn_file_actions_init(&actions);
     CHECK(posix_spawn_file_actions_adddup2(&actions, output[1], STDOUT_FILENO) == 0);
     CHECK(dcp::platform::close_spawn_descriptors(&actions) == 0);
+    CHECK(dcp::platform::spawn_chdir(&actions, "/") == 0);
     char descriptor[32];
     std::snprintf(descriptor, sizeof descriptor, "%d", inherited);
     char* arguments[] = {const_cast<char*>(executable), const_cast<char*>("--spawn-child"), descriptor, nullptr};
@@ -85,11 +88,23 @@ static void test_spawn(const char* executable) {
 
 int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[1], "--spawn-child") == 0) {
+        char cwd[16]{};
+        if (!getcwd(cwd, sizeof cwd) || std::strcmp(cwd, "/") != 0) return 4;
         int descriptor = std::atoi(argv[2]);
         if (fcntl(descriptor, F_GETFD) != -1 || errno != EBADF) return 2;
         return write(STDOUT_FILENO, "stdio-ok", 8) == 8 ? 0 : 3;
     }
-    test_spawn(argv[0]);
+    std::string executable = std::filesystem::absolute(argv[0]).string();
+    test_spawn(executable.c_str());
+    auto executable_dir = dcp::platform::executable_directory();
+    CHECK(!executable_dir.empty() && executable_dir[0] == '/');
+    std::string previous_home = std::getenv("HOME") ? std::getenv("HOME") : "";
+    setenv("HOME", "/tmp/OpenCrown Café", 1);
+#ifdef __APPLE__
+    CHECK(dcp::platform::default_user_directory() == "/tmp/OpenCrown Café/Library/Application Support/OpenCrown");
+#endif
+    if (previous_home.empty()) unsetenv("HOME");
+    else setenv("HOME", previous_home.c_str(), 1);
     test_single_step();
     const size_t size = size_t(sysconf(_SC_PAGESIZE));
     void* memory = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

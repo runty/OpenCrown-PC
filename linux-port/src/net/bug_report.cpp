@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 // Launcher bug report session (bug_report.h).
 #include "net/bug_report.h"
 
@@ -247,6 +250,14 @@ std::string ascii_line(std::string s) {
 }  // namespace
 
 std::string os_description() {
+#ifdef __APPLE__
+    char version[64]{};
+    size_t size = sizeof version;
+    std::string name = "macOS";
+    if (sysctlbyname("kern.osproductversion", version, &size, nullptr, 0) == 0) name += " " + std::string(version);
+    utsname u{};
+    return ascii_line(name + (uname(&u) == 0 ? " (Darwin " + std::string(u.release) + ", " + u.machine + ")" : ""));
+#else
     // Distribution from os-release (PRETTY_NAME), kernel release and machine from uname - never uname's nodename
     // (the host name).
     std::string name;
@@ -263,6 +274,7 @@ std::string os_description() {
     utsname u{};
     std::string kernel = uname(&u) == 0 ? std::string("Linux ") + u.release + ", " + u.machine : "Linux";
     return ascii_line((name.empty() ? "Linux" : name) + " (" + kernel + ")");
+#endif
 }
 
 std::string report_log(const std::string& log_path, const Identity& id) {

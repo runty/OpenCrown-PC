@@ -20,7 +20,8 @@ struct Identity {
 // dcp_run uses for input.ini), else default_user_dir(). The launcher passes its own user dir as DCP_USER_DIR, so both
 // always use the same file.
 std::string identity_dir();
-// Host user data folder (saves/, identity.ini, input.ini, logs): ${XDG_DATA_HOME:-$HOME/.local/share}/OpenCrown.
+// Host user data folder: ~/Library/Application Support/OpenCrown on macOS;
+// ${XDG_DATA_HOME:-$HOME/.local/share}/OpenCrown on Linux.
 std::string default_user_dir();
 
 // Reads <dir>/identity.ini, creating it (and dir) when missing. A present but unreadable / malformed file is left

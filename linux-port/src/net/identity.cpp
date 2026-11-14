@@ -1,3 +1,4 @@
+#include "platform/paths.h"
 // Online identity (identity.h). Paths are UTF-8 strings like the rest of the user-dir code (getenv, ifstream).
 #include "net/identity.h"
 
@@ -105,13 +106,7 @@ std::string identity_dir() {
 }
 
 std::string default_user_dir() {
-    if (const char* x = std::getenv("XDG_DATA_HOME"); x && *x == '/') return strip_slashes(x) + "/OpenCrown";
-    const char* home = std::getenv("HOME");
-    if (!home || !*home) {
-        const passwd* pw = getpwuid(getuid());
-        home = pw && pw->pw_dir ? pw->pw_dir : ".";
-    }
-    return strip_slashes(home) + "/.local/share/OpenCrown";
+    return strip_slashes(dcp::platform::default_user_directory());
 }
 
 Identity load_identity(const std::string& dir) {

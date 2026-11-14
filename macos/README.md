@@ -1,5 +1,9 @@
 # Mac development build
 
+The [Mac launcher and app bundle](app-bundle.md) now package the runtime into
+a relocatable, ad-hoc-signed `OpenCrown.app`, with external game data and state.
+
+
 The x86-64 headless runner builds on Apple silicon and runs the supported
 Dragon's Crown Pro patch 1.03 dump under Rosetta. Build directories and test
 state belong outside the source checkout and game dump.
@@ -71,7 +75,7 @@ limit so the render thread can finish their readback. Logs identify the Metal
 driver and swapchain size. `DCP_PROBE='68840*'` provides scene evidence and
 `MTL_DEBUG_LAYER=1` enables Metal API validation for a diagnostic run.
 
-The rendered suite includes thirteen tests on the reference Mac, including
+The rendered suite includes fourteen tests on the reference Mac, including
 SDL audio/mixing and virtual-controller regressions, plus exact-pixel checks for Metal
 uniforms, alpha blending, scissor orientation and two-texture mask sampling.
 The visible smoke run reaches TITLE and INN, writes all three PNGs, and exits 0
@@ -87,6 +91,6 @@ and exact limits. [CoreAudio playback and controller reconnect](audio-input-smok
 now work on the reference host, with a 256-frame Apple audio period to prevent
 the intermittent pops observed at 1024 frames. A successful adventure clear,
 ImGui name/chat overlays, long-session audio/drift and output-device changes,
-measured performance, the launcher workflow, Linux regression
-execution and packaged-app tests remain open in the
+measured performance, Linux regression execution, fresh-account and clean-machine
+packaged-app tests remain open in the
 [milestone plan](../docs/macos-port-plan.md).

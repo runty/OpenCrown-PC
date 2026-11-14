@@ -14,7 +14,9 @@ Felix with 351 EXP and 47 gold. See the [gameplay smoke record](../macos/gamepla
 CoreAudio playback and physical controller reconnect now work on the reference
 host; see the [audio/input record](../macos/audio-input-smoke.md). The Harpy
 defeated the character; a successful adventure clear, overlays, long-session
-audio/drift, output-device changes, measured performance and packaged-app
+audio/drift, output-device changes and measured performance remain open. A
+[Metal launcher and relocatable local app bundle](../macos/app-bundle.md) now
+pass reference-host checks; fresh-account/clean-machine and distribution
 validation remain open.
 The milestone tracker below is the execution checklist. A milestone is
 complete only when its acceptance checks have evidence attached to its issue.
@@ -387,15 +389,21 @@ Use the measured save/reload session and frame timings to update the remaining M
 
 **Acceptance**
 
-- [ ] Browse, validate, Play, stop and relaunch work without a Terminal session.
+- [x] Browse, validate, Play, stop and relaunch work without a Terminal session.
 - [ ] Paths with spaces/Unicode and a missing/reconnected dump disk work correctly.
 - [ ] From Finder, the launcher sets the measured CPU environment before starting
   the sibling runner. Log effective features and exercise required operations on
   the guest and worker threads. Confirm fonts and controller prompts in the
   launcher and in-game overlays on a clean account.
-- [ ] Settings survive relaunch and reach the runner; bad inputs have useful errors.
-- [ ] Updates cannot select an incompatible platform asset; no report is sent
+- [x] Settings survive relaunch and reach the runner; bad inputs have useful errors.
+- [x] Updates cannot select an incompatible platform asset; no report is sent
   during automated tests.
+
+The [launcher/bundle record](../macos/app-bundle.md) covers a Metal frontend,
+native folder selection, two full launcher Play/Stop cycles, spaces/Unicode,
+settings persistence and a simulated missing/reconnected external path. Native
+launch and a player-operated 4K run work on the reference account. Actual disk
+unplug/replug and the clean-account clause remain unverified.
 
 **Deliverable:** functional Mac launcher and documented state/log locations.
 
@@ -455,7 +463,7 @@ Use the measured save/reload session and frame timings to update the remaining M
 - [ ] A fresh user can open the copied app from Finder, locate the external
   dump, start the sibling runner with working CPU detection, and reload a save
   after relaunch. Verify fonts, libraries and shaders without developer tools.
-- [ ] Signature verification passes; state survives app replacement.
+- [x] Signature verification passes; state survives app replacement.
 - [ ] Pipeline wrapper reproduces the pinned bundle and fails clearly for a
   missing disk, unsupported dump, missing Rosetta or failed step.
 

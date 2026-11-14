@@ -2,6 +2,13 @@
 #include <spawn.h>
 
 namespace dcp::platform {
+inline int spawn_chdir(posix_spawn_file_actions_t* actions, const char* path) {
+#ifdef __APPLE__
+    return posix_spawn_file_actions_addchdir(actions, path);
+#else
+    return posix_spawn_file_actions_addchdir_np(actions, path);
+#endif
+}
 inline int close_spawn_descriptors(posix_spawn_file_actions_t* actions) {
 #ifdef __APPLE__
     // spawn() applies CLOEXEC_DEFAULT, while file actions preserve explicit stdio.

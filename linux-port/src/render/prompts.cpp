@@ -198,7 +198,7 @@ struct Fonts {
         if (const char* e = std::getenv("DCP_PROMPT_FONT")) paths.push_back(e);
         // Common distro locations (Debian/Ubuntu, Fedora, Arch, SteamOS): DejaVu Sans Bold first, Liberation Sans
         // Bold (Arial metrics) next, then a regular face and Noto Sans Symbols 2 for arrows.
-        for (const char* f : {"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        for (const char* f : {"/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Apple Symbols.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
                               "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf", "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
                               "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                               "/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf",
