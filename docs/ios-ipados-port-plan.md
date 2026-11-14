@@ -2,7 +2,7 @@
 
 The first release target is offline Dragon’s Crown Pro (CUSA10454, patch 1.03) on an iPhone 17 Pro Max and an iPad mini (A20 Pro). Build one arm64 iOS app on the Mac, sign it for both devices and launch it from each Home Screen. Acceptance requires a playable town and adventure loop on each device, including touch, a controller, audio and a save that survives termination. Keep the tested Mac build available for comparisons.
 
-The Mac implementation at `784fe46` executes the game's x86-64 instructions through Rosetta. It supplies a working reference for loader results, gameplay, saves and the SDL Metal renderer. Eight game shaders already compile and link with the iPhoneOS 27.2 SDK. Device CPU execution, shader draws and sustained performance are still to be measured. [Mac verification](../macos/app-bundle.md) · [Gameplay fixture](../macos/gameplay-smoke.md) · [Earlier feasibility study](macos-port-plan.md#phase-2-feasibility-on-ios-and-ipados)
+The Mac implementation at `784fe46` executes the game's x86-64 instructions through Rosetta. It supplies a working reference for loader results, gameplay, saves and the SDL Metal renderer. Eight game shaders already compile and link with the iPhoneOS 27.2 SDK. The iPad now executes real modules and renders TITLE/INN. The matching Simulator save-data prompt sustains about 59.5 fps after a renderer fix; sustained physical gameplay on both devices remains to be measured. [Mac verification](../macos/app-bundle.md) · [Gameplay fixture](../macos/gameplay-smoke.md) · [Earlier feasibility study](macos-port-plan.md#phase-2-feasibility-on-ios-and-ipados)
 
 ## Execution design and first decision
 
@@ -41,17 +41,26 @@ Before choosing a translator, run a small bake-off. Inspect available lifters fo
 
 ## Delivery and estimates
 
-### Current execution order while devices are away
+### Current execution order — 2026-11-14
 
 | Milestone | Evidence and remaining gate |
 | --- | --- |
 | P0 | Both physical devices cold-launch the signed shell and export diagnostics. Passed. |
-| P1 | Both pass the original 146-check synthetic corpus. The expanded host corpus passes 1,906 checks across 85 routines plus independent SIMD/x87 oracle suites; actual libc startup returns zero on arm64 Mac. Real-module proof on both physical devices remains open. |
-| P2 | Real modules load, relocate, execute and start workers on arm64. Continue executed-target discovery and fix explicitly reported services/instructions until TITLE and INN; then compare event order and save reopening. No successful game boot is claimed. |
-| P3 | All three SDK shader targets and synthetic Metal replay/readback pass. Real animated loading frames now render on native arm64 Mac and both simulators. The static loading-text region matches the Mac reference exactly on native host/tablet, with at most one channel-value difference on phone. TITLE, INN and town images remain open. |
-| P4 | Touch/controller/audio adapters, live diagnostics and cooperative pause/stop are integrated. Host concurrency/lifecycle checks pass. Actual gameplay, sound, ergonomics, reconnect, interruptions and mobile frame pacing remain acceptance work. |
-| P5 | Files import and local transactional save/checkpoint recovery pass host fixtures, including simulated process loss. Build/sign scripts exist. Verify provider behavior, two real save/reloads per device and repeat installation. Disposable iCloud handoff/conflict work precedes any live-save writes. |
-| P6 | Requires the physical devices, actual adventure completion and recorded sustained gameplay. Open. |
+| P1 | iPad passes the expanded 1,906-check / 85-routine probe, then executes actual libc startup and the game. The iPhone passed the original synthetic corpus and remains away; current real-module proof on that phone is pending. |
+| P2 | The iPad reaches TITLE and copied-Felix INN with checked component/frame advancement and no error. Two cold launches and reopening the same working save are still required; retained file hashes alone do not pass this milestone. |
+| P3 | Visible TITLE passes on iPad and both simulators; visible INN and Felix pass on iPad and native host. Native Town reaches a component marker but still stops at missing coverage while the image is loading. Town pixels and physical-phone scenes remain open. |
+| P4 | Real interactive audio/input adapters run. The user reports severe iPad save-dialog stalls; the matching Simulator reproduction is reduced from roughly two-second replay stalls to about 10 ms and 59.46 fps. Clean fix installed on iPad with 20 files retained exactly; physical performance, controls/reconnect and interruption qualification remain pending. |
+| P5 | Files import and transactional save recovery pass host fixtures. Repeated iPad installs preserve assets and save/checkpoint files. Same-working-save character reload, two new-progress save/reloads, provider behavior and disposable iCloud handoff/conflicts still need qualification. |
+| P6 | Both-device town/combat loops, sustained physical timing and adventure completion remain open. No playable-release claim. |
+
+Continue without user input in this order:
+
+1. Resolve actually executed Town entries on the native arm64 host, using bounded original-byte control-flow evidence; inspect final frames separately from component counters. Continue through combat rather than treating a startup marker as gameplay acceptance.
+2. Keep the qualified 50,292-entry core as the isolated comparison baseline for the save-dialog fix. Verify its performance on iPad when the foreground is available; another app currently occupies it, so do not interrupt that test.
+3. Cold-reopen the existing diagnostic working save without restoring the original seed. Verify Felix in the game, then separately create new progress and save/reload it. Never use normal player roots or live cloud progress for these experiments.
+4. Qualify real input/audio/lifecycle on the iPad, and run the same current app/core on the actual iPhone when it returns. Simulator success does not substitute for either device.
+5. Finish disposable cloud-provider handoff/conflict cases and sustained gameplay measurements before enabling live progress writes or declaring the port complete.
+
 
 The immediate critical path is real-module startup, then live replay and a
 simulator play/save loop. In parallel, preserve reproducible source/dependency
