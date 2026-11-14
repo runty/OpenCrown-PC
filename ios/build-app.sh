@@ -28,6 +28,21 @@ cp "$source_root/ios/app.mm" "$output/Source/main.mm"
 cp "$game_output/$library_platform/libcpu-fixtures.a" "$output/Source/"
 cp "$game_output/$library_platform/libfreetype.a" "$output/Source/"
 cp "$game_output/$library_platform/libdcp-fp80.a" "$output/Source/"
+python3 - "$game_output/$library_platform/artifact.json" "$output/Source" "$library_platform" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+metadata=Path(sys.argv[1]);destination=Path(sys.argv[2])
+if not metadata.is_file():
+    raise SystemExit('Missing game artifact manifest; rebuild ios/game/build.py first')
+data=json.loads(metadata.read_text())
+expected={'libcpu-fixtures.a','libfreetype.a','libdcp-fp80.a'}
+if data.get('schema')!=1 or data.get('platform')!=sys.argv[3] or set(data.get('libraries',{}))!=expected:
+    raise SystemExit('Invalid game artifact manifest or target platform')
+for name,wanted in data['libraries'].items():
+    if hashlib.sha256((destination/name).read_bytes()).hexdigest()!=wanted:
+        raise SystemExit('Game artifact changed while packaging: '+name)
+(destination/'build-inputs.json').write_text(json.dumps(data,indent=2)+'\n')
+PY
 renderer="$build_root/ios-render/$platform_library"
 if [[ $platform == simulator ]]; then renderer="$build_root/ios-render/simulator"; fi
 cp "$renderer/libopencrown-mobile-replay.a" "$renderer/libopencrown-mobile-metal.a" "$renderer/sdl/libSDL3.a" "$output/Source/"

@@ -114,6 +114,9 @@ extern "C" Memory *__remill_function_return(State &, uint64_t, Memory *memory) {
 extern "C" Memory *__remill_function_call(State &state, uint64_t address,
                                           Memory *memory) {
   ++memory->calls;
+  if (memory->stopOnFault) {
+    [[clang::musttail]] return dispatch(state, address, memory);
+  }
   try {
     return dispatch(state, address, memory);
   } catch (const std::runtime_error &error) {
@@ -125,6 +128,9 @@ extern "C" Memory *__remill_function_call(State &state, uint64_t address,
 }
 extern "C" Memory *__remill_jump(State &state, uint64_t address,
                                  Memory *memory) {
+  if (memory->stopOnFault) {
+    [[clang::musttail]] return dispatch(state, address, memory);
+  }
   try {
     return dispatch(state, address, memory);
   } catch (const std::runtime_error &error) {
@@ -136,6 +142,9 @@ extern "C" Memory *__remill_jump(State &state, uint64_t address,
 }
 extern "C" Memory *__remill_missing_block(State &state, uint64_t address,
                                           Memory *memory) {
+  if (memory->stopOnFault) {
+    [[clang::musttail]] return dispatch(state, address, memory);
+  }
   try {
     return dispatch(state, address, memory);
   } catch (const std::runtime_error &error) {

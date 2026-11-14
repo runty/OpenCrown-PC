@@ -792,6 +792,27 @@ for platform, target, sdk in platforms:
         platform + "-archive.log",
     )
     archive_temporary.replace(archive)
+    write_json(
+        directory / "artifact.json",
+        {
+            "schema": 1,
+            "platform": platform,
+            "target": target,
+            "trace_hash": trace_hash.hexdigest(),
+            "entrypoints": len(definitions),
+            "native_libc_bulk": bool(native_bulk),
+            "complete_current_backend": all(
+                v["status"] == "current" for v in provenance.values()
+            ),
+            "backend_sha256": hashlib.sha256(
+                json.dumps(backend_snapshot, sort_keys=True).encode()
+            ).hexdigest(),
+            "libraries": {
+                name: sha256(directory / name)
+                for name in ["libcpu-fixtures.a", "libfreetype.a", "libdcp-fp80.a"]
+            },
+        },
+    )
     if platform == "mac":
         (root / "cli.cpp").write_text(
             '#include <cstdio>\nextern "C" const char *dcp_cpu_report();\nint main(){puts(dcp_cpu_report());}\n'

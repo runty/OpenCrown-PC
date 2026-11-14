@@ -46,13 +46,16 @@ Only then may the guest release capture and backing memory. The main loop never
 waits synchronously for the guest while an unload request needs servicing.
 
 The first readable frame is saved as `frame-000001.png`. `--every 60` also saves
-every sixtieth frame; `--every 0` disables periodic images. `report.json` contains
+every sixtieth frame; `--every 0` disables periodic images. The first drawn
+frame and `frame-final.png` are also saved. RGB spatial variation is checked on
+readback; alpha changes alone do not establish visible content. `report.json` contains
 the complete guest report, consumed/rendered frame counts, last display size,
 draw/flip information, BC fallback count, elapsed time, cancellation/timeout
 status and unload acknowledgement. The same JSON is printed on stdout.
 
-Exit 0 requires `guest.booted=true`, at least one readable rendered frame, no
-guest/render error and no timeout. Exit 1 reports missing coverage, an incomplete
+Exit 0 requires `guest.booted=true`, at least one readable rendered frame, a
+drawn frame, a nonuniform RGB readback, no guest/render error and no timeout.
+Nonuniform pixels alone do not prove a recognizable scene; inspect the PNGs. Exit 1 reports missing coverage, an incomplete
 checkpoint or a rendering/runtime failure. Exit 2 indicates invalid arguments,
 setup/report-writing failure or an expired cancellation grace period. A game
 that executed instructions but produced no frames is explicitly a failed
@@ -97,3 +100,11 @@ These measurements were on macOS 27.2. Rebuild SDL/renderer with the intended
 deployment target before claiming macOS 15 compatibility. This runner does not
 silently rebuild or modify caller-supplied caches. Third party licenses remain
 in the supplied game/renderer `ThirdPartyNotices` directories.
+
+The 2026-11-14 frozen 5,435-entry archive advances to 197 drawn frames, 985
+submissions and 197 vblanks before missing trace `201bea00`. All saved images
+remain uniform black, so `nonuniform_frame_seen=false` and exit 1 correctly
+rejects the run. Evidence is in `ios-host-content/run` on the external build
+root. The synthetic ordering fixture explicitly marks its uniform-color output
+with `nonuniform_content_required=false`; this exemption never applies to the
+real game executable.

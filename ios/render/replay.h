@@ -15,6 +15,8 @@ public:
   bool initialize(void *sdl_window, bool debug, std::string *error);
   PumpResult pump(uint32_t timeout_ms, ReplayFrame *frame, std::string *error);
   bool write_png(const std::string &path, std::string *error);
+  bool write_png(const std::string &path, std::string *error,
+                 bool *spatial_variation);
   bool present(int width, int height);
   bool suspend(bool value);
   uint64_t decoded_uploads() const;

@@ -7,7 +7,7 @@ images, relocations, LLVM IR, object archives and game data remain outside this
 repository. The builder rejects a different eboot or libc SHA-256.
 
 Use the [bootstrap workflow](../BOOTSTRAP.md) to build the pinned Remill
-backend with all thirteen local patches, SoftFloat helpers/FP80 lowerer, FreeType
+backend with all sixteen local patches, SoftFloat helpers/FP80 lowerer, FreeType
 and platform dependencies. Rebuild both `remill-lift-23` and `amd64_avx` after
 semantics changes and relift the complete corpus. Cache roots are configurable
 with builder options and their corresponding `DCP_*` variables. Exact extended

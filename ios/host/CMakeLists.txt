@@ -28,7 +28,7 @@ option(DCP_BUILD_HOST_FIXTURE "Build a separate synthetic lifecycle executable, 
 if(DCP_BUILD_HOST_FIXTURE)
   add_executable(opencrown-aot-host-fixture main.mm fixture-runtime.cpp)
   target_include_directories(opencrown-aot-host-fixture PRIVATE "${DCP_SOURCE}/ios" "${DCP_SOURCE}/linux-port/src")
-  target_compile_definitions(opencrown-aot-host-fixture PRIVATE DCP_AOT)
+  target_compile_definitions(opencrown-aot-host-fixture PRIVATE DCP_AOT DCP_HOST_SYNTHETIC_FIXTURE)
   target_compile_options(opencrown-aot-host-fixture PRIVATE -fobjc-arc -Wall -Wextra -Werror)
   target_link_libraries(opencrown-aot-host-fixture PRIVATE
     "${DCP_RENDER_CACHE}/libopencrown-mobile-replay.a" "${DCP_RENDER_CACHE}/libopencrown-mobile-metal.a"

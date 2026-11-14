@@ -74,6 +74,9 @@ int main(int argc, char **argv) {
     assert(frame.draws == 1 && frame.width == 64 && frame.height == 64 &&
            frame.vblank == 321);
     assert(replay.write_png(argv[1], &error));
+    bool varied = true;
+    assert(replay.write_png(std::string(argv[1]) + ".uniform.png", &error, &varied));
+    assert(!varied); // A real draw and readable image need not contain spatial content.
     assert(replay.pump(0, &frame, &error) == dcp::mobile::PumpResult::Empty);
   }
   shutdown_aot_capture();

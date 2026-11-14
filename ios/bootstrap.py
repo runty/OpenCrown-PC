@@ -42,6 +42,9 @@ PATCHES = [
     "remill-startup-lane-insert.patch",
     "remill-startup-permute128.patch",
     "remill-startup-dword-shifts.patch",
+    "remill-sse41-rounding.patch",
+    "remill-confirmed-packed-float.patch",
+    "remill-confirmed-packed-integer.patch",
 ]
 
 
@@ -544,6 +547,37 @@ def main():
             llvm,
         ],
     )
+    run(
+        "tail-dispatch",
+        [
+            sys.executable,
+            SOURCE / "ios/cpu/review/tail-dispatch.py",
+            "--output",
+            root / "tail-dispatch-probe",
+            "--backend-root",
+            backend,
+            "--llvm",
+            llvm,
+        ],
+    )
+    run(
+        "thread-cancel",
+        [SOURCE / "ios/game/test-thread-cancel.sh", root / "thread-cancel-probe"],
+    )
+    for review in ["rounding", "confirmed-packed"]:
+        run(
+            review,
+            [
+                sys.executable,
+                SOURCE / f"ios/cpu/review/{review}.py",
+                "--output",
+                root / f"{review}-probe",
+                "--backends",
+                backend,
+                "--llvm",
+                llvm,
+            ],
+        )
     builder = [
         sys.executable,
         SOURCE / "ios/game/build.py",

@@ -45,6 +45,12 @@ PumpResult Replay::pump(uint32_t timeout_ms, ReplayFrame *info,
   }
 }
 bool Replay::write_png(const std::string &path, std::string *error) {
+  return write_png(path, error, nullptr);
+}
+bool Replay::write_png(const std::string &path, std::string *error,
+                       bool *spatial_variation) {
+  if (spatial_variation)
+    *spatial_variation = false;
   if (!backend_) {
     if (error)
       *error = "Metal replay has not been initialized";
@@ -63,6 +69,12 @@ bool Replay::write_png(const std::string &path, std::string *error) {
       *error = "Cannot write the captured frame PNG";
     return false;
   }
+  if (spatial_variation)
+    for (size_t i = 3; i < rgb.size(); i += 3)
+      if (rgb[i] != rgb[0] || rgb[i + 1] != rgb[1] || rgb[i + 2] != rgb[2]) {
+        *spatial_variation = true;
+        break;
+      }
   return true;
 }
 bool Replay::present(int width, int height) {

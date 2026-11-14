@@ -2,6 +2,9 @@
 #include <cstddef>
 #include <cstdint>
 
+// PS4/BSD cancellation join result (distinct from the ECANCELED error code).
+inline constexpr uint64_t kDcpThreadCanceledResult = 1;
+
 struct DcpThreadHooks {
   void *context = nullptr;
   uint64_t (*run)(void *context, uint64_t guest_pc,
@@ -10,6 +13,9 @@ struct DcpThreadHooks {
   void *(*pointer)(void *context, uint64_t address, size_t bytes,
                    bool writing) = nullptr;
   void (*register_range)(void *context, void *address, size_t bytes) = nullptr;
+  // Called outside service locks after cancellation/global stop changes.
+  // Cleared after successful stop/join, before the old context may be freed.
+  void (*cancellation_changed)(void *context) = nullptr;
 };
 // Initialize once before creating guest workers, after all previous workers
 // have joined.
@@ -18,6 +24,8 @@ uint64_t
 dcp_thread_current_handle(); // zero on a caller not created by this adapter
 bool dcp_thread_stopping();  // includes global stop, callback stop and
                              // current-thread cancellation
+bool dcp_thread_current_cancelled(); // only this guest worker's cancel request
+bool dcp_thread_shutdown_requested(); // adapter/host shutdown, excluding per-worker cancel
 bool dcp_thread_attributes(uint64_t handle, void *destination32);
 const char *dcp_thread_error();
 // Bounded cooperative stop. A false result requires retaining hooks/context and

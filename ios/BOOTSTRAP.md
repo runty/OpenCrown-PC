@@ -80,6 +80,9 @@ The script applies these checked local Remill patches, in order:
 11. `remill-startup-lane-insert.patch`
 12. `remill-startup-permute128.patch`
 13. `remill-startup-dword-shifts.patch`
+14. `remill-sse41-rounding.patch`
+15. `remill-confirmed-packed-float.patch`
+16. `remill-confirmed-packed-integer.patch`
 
 The FP80 stage downloads the checked official SoftFloat archive, builds helper
 libraries for all three targets and the host LLVM lowerer, and runs direct,
@@ -165,3 +168,11 @@ round trips require separate verification. The fixed bundle ID remains
 `com.wadscorp.opencrown.mobile`; the app builder currently owns its product
 configuration. CPU translation coverage remains incremental and specific to
 the validated executable hashes.
+
+The bootstrap also runs the observed rounding/packed instruction reviews, bounded
+tail-dispatch regression and native/sanitized worker-cancellation regression.
+Their limits are documented in [SIMD review](cpu/review/confirmed-simd.md),
+[dispatch review](cpu/review/tail-dispatch.md) and
+[cancellation review](game/thread-cancel.md). Game packaging verifies archive
+SHA-256 values from the selected platform's `artifact.json`; the app exports
+that identity separately from its frontend source build ID.

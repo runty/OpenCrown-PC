@@ -32,6 +32,7 @@ struct Worker {
   std::mutex lock;
   std::condition_variable cv;
   bool done = false;
+  bool finishing = false; // Protected by lock; cancellation cannot interrupt TLS cleanup.
   std::atomic<bool> detached{false};
   std::mutex join_lock;
   uint64_t result = 0;
@@ -64,6 +65,20 @@ std::string error;
 uint64_t next_queue = 0x1000;
 thread_local Worker *current = nullptr;
 thread_local std::array<uint64_t, 256> specific{};
+bool shutting_down() {
+  return stop.load() || (hooks.stopping && hooks.stopping(hooks.context));
+}
+void notify_cancellation() {
+  void (*callback)(void *) = nullptr;
+  void *context = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(state_lock);
+    callback = hooks.cancellation_changed;
+    context = hooks.context;
+  }
+  if (callback)
+    callback(context);
+}
 
 template <class T> T load(uint64_t address) {
   T value;
@@ -146,8 +161,16 @@ void run_worker(std::shared_ptr<Worker> value, uint64_t pc, uint64_t argument) {
     if (!hooks.run)
       throw std::runtime_error("thread service has no guest execution hook");
     result = hooks.run(hooks.context, pc, argument);
-    if (!dcp_thread_stopping()) {
+    {
+      std::lock_guard<std::mutex> lock(value->lock);
+      value->finishing = true;
+      if (value->cancel.exchange(false))
+        result = kDcpThreadCanceledResult;
+    }
+    if (!shutting_down()) {
       for (unsigned i = 0; i < keys.size(); ++i) {
+        if (shutting_down())
+          break;
         uint64_t destructor = 0;
         {
           std::lock_guard<std::mutex> lock(state_lock);
@@ -222,9 +245,10 @@ void dcp_thread_init(DcpThreadHooks callbacks) {
 }
 uint64_t dcp_thread_current_handle() { return current ? handle(*current) : 0; }
 bool dcp_thread_stopping() {
-  return stop.load() || (current && current->cancel.load()) ||
-         (hooks.stopping && hooks.stopping(hooks.context));
+  return shutting_down() || dcp_thread_current_cancelled();
 }
+bool dcp_thread_current_cancelled() { return current && current->cancel.load(); }
+bool dcp_thread_shutdown_requested() { return shutting_down(); }
 bool dcp_thread_attributes(uint64_t id, void *destination) {
   auto value = worker(id);
   if (!value || !destination)
@@ -241,6 +265,7 @@ const char *dcp_thread_error() {
 }
 bool dcp_thread_stop_and_join(uint32_t timeout_ms) {
   stop = true;
+  notify_cancellation();
   std::vector<std::shared_ptr<Worker>> pending;
   {
     std::lock_guard<std::mutex> lock(state_lock);
@@ -270,6 +295,10 @@ bool dcp_thread_stop_and_join(uint32_t timeout_ms) {
       if (value->thread.joinable())
         value->thread.join();
     }
+  }
+  if (joined) {
+    std::lock_guard<std::mutex> lock(state_lock);
+    hooks.cancellation_changed = nullptr;
   }
   return joined;
 }
@@ -342,8 +371,18 @@ bool dcp_thread_service(const char *name, const uint64_t a[6],
     }
     if (named(name, "scePthreadDetach"))
       value->detached = true;
-    else
-      value->cancel = true;
+    else {
+      bool changed = false;
+      {
+        std::lock_guard<std::mutex> lock(value->lock);
+        if (!value->done && !value->finishing) {
+          value->cancel = true;
+          changed = true;
+        }
+      }
+      if (changed)
+        notify_cancellation();
+    }
   } else if (named(name, "scePthreadYield") || named(name, "sched_yield")) {
     std::this_thread::yield();
   } else if (named(name, "scePthreadSetprio") ||

@@ -108,14 +108,25 @@ thread_local uint64_t mainThread = 0;
 thread_local std::vector<std::recursive_mutex *> heldMutexes;
 Engine &engine() { return *currentEngine; }
 bool pollRuntime() {
+  auto cancelled = [] {
+    return currentEngine && !currentEngine->stop.load() &&
+           !dcp_thread_shutdown_requested() && dcp_thread_current_cancelled() &&
+           (!currentMemory || !currentMemory->atomicLock.owns_lock());
+  };
+  if (cancelled())
+    throw GuestThreadExit(kDcpThreadCanceledResult);
   if (currentEngine && currentEngine->paused.load() &&
       (!currentMemory || !currentMemory->atomicLock.owns_lock())) {
     std::unique_lock<std::mutex> lock(currentEngine->pauseMutex);
     currentEngine->pauseChanged.wait(lock, [] {
-      return !currentEngine->paused.load() || currentEngine->stop.load();
+      return !currentEngine->paused.load() || currentEngine->stop.load() ||
+             dcp_thread_stopping();
     });
   }
-  return (currentEngine && currentEngine->stop.load()) || dcp_thread_stopping();
+  if (cancelled())
+    throw GuestThreadExit(kDcpThreadCanceledResult);
+  return (currentEngine && currentEngine->stop.load()) ||
+         dcp_thread_shutdown_requested();
 }
 void stopEngine(Engine &target) {
   {
@@ -271,6 +282,12 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
         throw std::runtime_error("bootstrap stopped while sleeping");
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    returnToGuest(state, *memory, 0);
+  } else if (name == "sceSystemServiceGetStatus") {
+    // Same foreground/no-pending-system-events status as the desktop adapter.
+    // SceSystemServiceStatus is eventNum plus flags/reserved bytes (0x84).
+    if (r.rdi.qword)
+      guestFill(*memory, r.rdi.qword, 0, 0x84);
     returnToGuest(state, *memory, 0);
   } else if (name == "sceNetCtlGetState" || name == "sceNpGetState") {
     // Offline mobile release: no address, no PSN sign-in, no network callbacks.
@@ -677,14 +694,14 @@ Memory *dispatch(State &state, uint64_t pc, Memory *memory) {
   if (key == exitPC)
     return memory;
   if (key >= hleBase && key < hleBase + std::size(imports) * 16)
-    return service(state, key, memory);
+    [[clang::musttail]] return service(state, key, memory);
   const auto trace = std::lower_bound(
       std::begin(traces), std::end(traces), key,
       [](const Trace &entry, uint64_t address) { return entry.pc < address; });
   if (trace != std::end(traces) && trace->pc == key) {
     if (key == ebootEntry)
       engine().enteredEboot = true;
-    return trace->function(state, pc, memory);
+    [[clang::musttail]] return trace->function(state, pc, memory);
   }
   throw std::runtime_error("missing trace: " + hex(key));
 }
@@ -744,6 +761,11 @@ extern "C" const char *dcp_cpu_report() {
        [](void *context, void *address, size_t size) {
          addRegion(static_cast<Engine *>(context)->primary,
                    static_cast<uint8_t *>(address), size);
+       },
+       [](void *context) {
+         auto &target = *static_cast<Engine *>(context);
+         std::lock_guard<std::mutex> lock(target.pauseMutex);
+         target.pauseChanged.notify_all();
        }});
   dcp_gnm_init(
       {&memory,
@@ -1008,7 +1030,7 @@ extern "C" Memory *__remill_sync_hyper_call(State &state, Memory *,
 extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
   if (pollRuntime())
     throw std::runtime_error("bootstrap stopped");
-  if (++engine().steps > 10000000 && !engine().interactive)
+  if (++engine().steps > 100000000 && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
   const uint64_t observedPC = canonical(pc);
   if (observedPC >= 0x20000000 && observedPC < 0x30000000) {

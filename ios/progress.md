@@ -1,5 +1,50 @@
 # Device port progress
 
+## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
+
+The goal remains active while the reference devices are away. The sixteen-patch
+backend adds observed ROUND, packed float and packed integer forms. Rounding
+passes 13,824,000 masked native-oracle comparisons, 2,560,000 suppression
+invariance checks and two fault-before-write cases. Another 10,208,000 packed
+value/control checks pass. Rosetta forces MXCSR exception masks; unmasked ROUND
+checks are separate AOT properties. Packed float sticky exception flags and
+architectural guest #XM delivery remain outside this coverage. See
+[review boundaries](cpu/review/confirmed-simd.md).
+
+A real worker exhausted its native stack through a non-tail Remill jump bridge.
+The production bridges and game dispatcher now require tail branches. A lifted
+regression executes 1,100,003 entries per route on a 128 KiB requested pthread
+stack, with zero entry-SP growth and 127 checks passing. Disassembly also verifies
+the real game dispatcher's service B and trace BR. See
+[tail dispatch](cpu/review/tail-dispatch.md).
+
+The game then exercised per-worker cancellation, which previously stopped the
+entire runtime. Cancellation now exits only the selected worker with the PS4
+canceled result 1, wakes parked execution, preserves TLS cleanup and retires its
+notification context after successful joins. Native, ASan/UBSan and TSAN variants
+each pass 885 adapter checks. A repeat of the actual-runtime lifecycle fixture
+passes 27 sessions, with maximum measured stop latency 30.2 ms in this run.
+These are startup and cleanup results, not physical-device gameplay acceptance.
+See [cancellation scope](game/thread-cancel.md).
+
+Discovery has progressed beyond 12,000 trace entries with current backend
+provenance. A frozen 5,435-entry archive produces 197 captured/drawn frames and
+985 submissions before the next missing target. Its actual PNG readbacks remain
+uniform black; TITLE, INN and recognizable real-game images have **not passed**.
+The native Mac reference renders the create-save prompt at vblank 200. The AOT
+runtime still needs additional initialization paths before that comparison can
+establish matching content. Live discovery continues in the external cache.
+
+The host now requires nonuniform RGB content, drawn frames and the runtime's
+TITLE checkpoint for success. It saves a final image before ordered unload.
+The simulator preserves the first nonuniform game snapshot rather than freezing
+its initial black frame. Uniform-render fixtures still pass and explicitly skip
+the real-game content requirement. Game library manifests bind the three copied
+archives to their platform, trace hash and backend; packaging checks their SHA-256
+values, and exported app diagnostics retain the artifact identity. Both iOS SDKs
+compile the latest app source. A fresh complete app link is still pending the
+next useful frozen corpus. The devices retain the older probe.
+
 ## 2026-11-13 — Real modules and mobile host integration in progress
 
 The active goal is to complete the iOS port as far as possible while the physical

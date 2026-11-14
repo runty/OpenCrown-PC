@@ -139,6 +139,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   BOOL _storageBusy;
   BOOL _sceneAvailable;
   BOOL _restoring;
+  BOOL _snapshotHasContent;
   dispatch_queue_t _diagnosticQueue;
   std::mutex _diagnosticStateLock;
   NSString *_sessionID;
@@ -343,6 +344,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   _lastHeartbeat = 0;
   _presentedFrames = _replayedFrames = _replayedDraws = 0;
   _peakFootprint = _peakResident = 0;
+  _snapshotHasContent = NO;
   _gameIntervals = FrameIntervals{};
   _drawableIntervals = FrameIntervals{};
   _hostError = nil;
@@ -547,11 +549,15 @@ UIButton *button(NSString *title, id target, SEL action) {
     _gameIntervals.observe(sender.timestamp);
     _replayedDraws += frame.draws;
 #if TARGET_OS_SIMULATOR
-    if (_replayedFrames == 1 && std::getenv("DCP_SIM_UI_SNAPSHOT"))
-      _replay->write_png(
+    if (frame.draws && !_snapshotHasContent &&
+        std::getenv("DCP_SIM_UI_SNAPSHOT")) {
+      bool varied = false;
+      if (_replay->write_png(
           [documents() stringByAppendingPathComponent:@"first-game-frame.png"]
               .fileSystemRepresentation,
-          &error);
+          &error, &varied))
+        _snapshotHasContent = varied;
+    }
 #endif
   }
   int width = 0, height = 0;
@@ -776,6 +782,14 @@ UIButton *button(NSString *title, id target, SEL action) {
   char platformError[512]{};
   dcp_platform_copy_error(platformError, sizeof(platformError));
   const auto thermal = NSProcessInfo.processInfo.thermalState;
+  static NSDictionary *gameArtifact;
+  static dispatch_once_t artifactOnce;
+  dispatch_once(&artifactOnce, ^{
+    NSURL *url = [NSBundle.mainBundle URLForResource:@"build-inputs" withExtension:@"json"];
+    NSData *data = url ? [NSData dataWithContentsOfURL:url] : nil;
+    id value = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    gameArtifact = [value isKindOfClass:NSDictionary.class] ? value : @{};
+  });
   NSMutableDictionary *memory = [memorySnapshot() mutableCopy];
   if ([memory[@"available"] boolValue]) {
     _peakFootprint = std::max(
@@ -790,6 +804,8 @@ UIButton *button(NSString *title, id target, SEL action) {
   return @{
     @"build_id" : NSBundle.mainBundle.infoDictionary[@"DCPBuildID"]
         ?: @"unknown",
+    @"game_artifact" : gameArtifact,
+    @"nonuniform_snapshot_saved" : @(_snapshotHasContent),
     @"session_id" : _sessionID ?: @"unknown",
     @"session_started_unix" : @(_sessionStarted),
     @"timestamp" : @([NSDate.date timeIntervalSince1970]),

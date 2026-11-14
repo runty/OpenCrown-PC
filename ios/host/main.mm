@@ -170,6 +170,8 @@ int main(int argc, char **argv) {
       std::unique_ptr<dcp::mobile::Replay> replay;
       std::string hostError, guestText;
       uint64_t rendered = 0, consumed = 0, decoded = 0;
+      uint64_t drawnFrames = 0, drawCalls = 0;
+      bool nonuniformSeen = false;
       dcp::mobile::ReplayFrame last{};
       bool stopSent = false, timedOut = false, graceExpired = false,
            unloaded = false;
@@ -199,17 +201,24 @@ int main(int argc, char **argv) {
         if (frame.width > 0 && frame.height > 0) {
           last = frame;
           ++rendered;
+          if (frame.draws) {
+            ++drawnFrames;
+            drawCalls += frame.draws;
+          }
           if (rendered == 1 ||
+              (frame.draws && drawnFrames == 1) ||
               (options.every && rendered % options.every == 0)) {
             char filename[80];
             std::snprintf(filename, sizeof(filename), "frame-%06llu.png",
                           static_cast<unsigned long long>(rendered));
+            bool varied = false;
             if (!replay->write_png((options.output / filename).string(),
-                                   &error) &&
+                                   &error, &varied) &&
                 hostError.empty()) {
               hostError = error;
               requestStop();
             }
+            nonuniformSeen |= varied;
           }
           if (window) {
             int width = 0, height = 0;
@@ -255,6 +264,14 @@ int main(int argc, char **argv) {
           while (pump()) {
           }
           if (replay) {
+            if (rendered) {
+              std::string error;
+              bool varied = false;
+              if (!replay->write_png((options.output / "frame-final.png").string(),
+                                     &error, &varied) && hostError.empty())
+                hostError = error;
+              nonuniformSeen |= varied;
+            }
             decoded = replay->decoded_uploads();
             if (!replay->suspend(true) && hostError.empty())
               hostError = "Metal GPU drain failed";
@@ -304,7 +321,13 @@ int main(int argc, char **argv) {
       bool guestError = guest &&
                         [guest[@"error"] isKindOfClass:NSString.class] &&
                         [guest[@"error"] length] > 0;
-      bool success = booted && rendered > 0 && hostError.empty() &&
+#ifdef DCP_HOST_SYNTHETIC_FIXTURE
+      constexpr bool contentRequired = false;
+#else
+      constexpr bool contentRequired = true;
+#endif
+      bool success = booted && rendered > 0 && drawnFrames > 0 &&
+                     (!contentRequired || nonuniformSeen) && hostError.empty() &&
                      !guestError && !timedOut && !graceExpired;
       NSDictionary *report = @{
         @"success" : @(success),
@@ -312,6 +335,10 @@ int main(int argc, char **argv) {
         @"host_error" : string(hostError),
         @"rendered_frames" : @(rendered),
         @"consumed_frames" : @(consumed),
+        @"drawn_frames" : @(drawnFrames),
+        @"draw_calls" : @(drawCalls),
+        @"nonuniform_frame_seen" : @(nonuniformSeen),
+        @"nonuniform_content_required" : @(contentRequired),
         @"width" : @(last.width),
         @"height" : @(last.height),
         @"last_draws" : @(last.draws),
