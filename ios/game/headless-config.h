@@ -7,7 +7,7 @@
 namespace dcp::game {
 struct HeadlessConfig {
   std::string scene = "TITLE";
-  uint64_t trace_budget = 100000000, vblank_budget = 1800;
+  uint64_t trace_budget = 100000000, vblank_budget = 7200;
 };
 inline uint64_t bounded_count(const char *text, uint64_t fallback,
                               uint64_t maximum, const char *name) {

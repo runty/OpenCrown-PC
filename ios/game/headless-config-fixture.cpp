@@ -11,7 +11,7 @@ int main() {
   };
   const auto standard = dcp::game::headless_config(nullptr, nullptr, nullptr);
   require(standard.scene == "TITLE" && standard.trace_budget == 100000000 &&
-          standard.vblank_budget == 1800);
+          standard.vblank_budget == 7200);
   const auto inn = dcp::game::headless_config("INN", "10000000000", "216000");
   require(inn.scene == "INN" && inn.trace_budget == 10000000000 &&
           inn.vblank_budget == 216000);

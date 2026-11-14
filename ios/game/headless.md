@@ -11,7 +11,7 @@ checkpoint stop and ignores these harness environment overrides.
 | --- | --- | --- |
 | `DCP_CHECKPOINT_SCENE` | `TITLE` | 1–15 uppercase letters, digits or underscores |
 | `DCP_MAX_TRACE_ENTRIES` | 100,000,000 | 1–10,000,000,000 |
-| `DCP_MAX_VBLANKS` | 1,800 | 1–216,000 |
+| `DCP_MAX_VBLANKS` | 7,200 | 1–216,000 |
 | `DCP_INPUT_SCRIPT` | Built-in boot input | Path to a text file, maximum 1 MiB |
 
 The input file uses exactly the desktop runner's parser and button/left-stick
@@ -81,3 +81,8 @@ The deadline fixture verifies 1,006 cases and 60 actual waits with 5 ms of work
 between them (about 1.002 s total); this is timer validation, not a game FPS claim.
 The updated real runtime passes 27 lifecycle sessions (maximum stop 37.8 ms)
 and all six bounded headless failure/configuration cases.
+
+The default vblank budget is 7,200: the earlier 1,800-vblank limit could stop
+fresh startup before the original Mac reference's TITLE transition. Explicit
+small-budget negative tests remain unchanged. Longer startup still needs a
+matching outer process timeout; a larger budget does not satisfy a checkpoint.
