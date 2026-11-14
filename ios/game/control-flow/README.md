@@ -63,13 +63,13 @@ python3 test.py \
 
 The test assembles authored x86-64 routines, requires the object to contain no unresolved relocations, builds its own small ELF carrier and atlas, then runs the actual CLI. It never executes the generated x86 code.
 
-The 65-function matrix accepts 27 owners / 28 tables, covering ordinary,
+The 109-function matrix accepts 52 owners / 53 tables, covering ordinary,
 copied-index, interposed-MOV, full 64-bit and zero-extended narrow guards, and
-nested tables. Thirty-eight owners reject, including stale/partial extensions,
+nested tables. Fifty-seven owners reject, including stale/partial extensions,
 source/index/base clobbers, direct and table-edge proof bypasses, ambiguous upper
 bits, unresolved CFG, overlapping case entry, excessive bounds and external tails.
 Four incomplete owners separately exercise speculative candidate labeling and
-exact unresolved/external site records without entering the accepted set. Additional owned failures cover prepared-image mismatch, overlapping atlas owners, and malformed ELF bounds. Nested discovery requires more than one pass. `results.json` records 74 checks with zero failures and artifact hashes.
+exact unresolved/external site records without entering the accepted set. Additional owned failures cover prepared-image mismatch, overlapping atlas owners, and malformed ELF bounds. Nested discovery requires more than one pass. `results.json` records 118 checks with zero failures and artifact hashes.
 
 
 ## Separate conditional compile-only tier
@@ -90,7 +90,7 @@ The guard recognizer allows up to eight flag-preserving MOV/MOVZX/MOVSX/MOVSXD,
 LEA or NOP instructions between CMP and unsigned JA. Every intervening path must
 be sequential and leave the indexed value unchanged. Flag/index clobbers, an
 alternate entry, or an accepted table edge into that dependency chain reject.
-The 65-function regression matrix now passes 74 checks.
+The complete regression matrix currently passes 118 checks across 109 functions.
 
 `--noreturn-provenance MAP.json` binds independently derived declarations to
 matching module/ELF/image records and captures the map hash in provenance. The
@@ -98,3 +98,14 @@ bootstrap's [import derivation](../noreturn/README.md) validates both stack-fail
 thunks from original relocation/GOT/PLT bytes, without game-address literals.
 Only the declared call fallthrough terminates; this is not `nounwind` and does
 not change runtime code or dispatch.
+
+## Table-base copies and target lifetime
+
+Bounded full 64-bit MOV chains may carry the RIP-relative table base to the
+register consumed by ADD. Partial copies reject. The index must remain live
+until the indexed MOVSXD, the base until ADD, and the computed target through
+JMP. Up to eight independent whitelisted instructions may follow ADD; dead
+base/index cleanup is allowed, while target-alias writes, calls, branches and
+alternate entries reject. Guard flags retain their stricter lifetime through
+JA. The owned matrix includes clobber, partial-copy, instruction-count and
+direct/table-edge bypass counterexamples.

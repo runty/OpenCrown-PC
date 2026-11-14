@@ -1,5 +1,22 @@
 # Device port progress
 
+## 2026-11-14 — Expanded CPU suite verified on the returned iPad
+
+The player reconnected the iPad mini A20 Pro. Clean source `cc0d767` replaces
+its earlier probe without uninstalling the data container. Fresh diagnostics
+identify `iPad19,1` and pass all 1,906 checks across 85 authored translated
+routines / 84 native-reference routines, with two workers and zero failures.
+This is synthetic CPU execution, explicitly not a game-startup result. The
+iPhone remains on its earlier probe and was not contacted.
+
+The native core now links 48,366 entry points after a separate compile-only
+prefetch of original direct branch destinations in a long unwind owner. A
+real iPhoneOS archive is compiling for hardware startup/render/memory testing.
+Generic full-width table-base copies and independent post-ADD cleanup now pass
+118 checks / 109 owned functions; isolated conditional-tier tests also pass.
+TITLE/INN, physical game frames and actual save reopening remain unverified.
+The desktop app and live Mac/iCloud progress are untouched.
+
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
 The native corpus now links 47,980 entry points after scheduled-comparison,

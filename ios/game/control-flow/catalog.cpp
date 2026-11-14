@@ -107,7 +107,49 @@ int main(int argc, char **argv) {
       at = prev[at][0];
       w.push_back(at);
     }
-    if (w.size() < 4 || seen[w[1]].kind != XED_ICLASS_ADD)
+    if (w.size() < 4)
+      continue;
+    // The computed target stays live through bounded independent cleanup.
+    // Flags, the consumed index, and the table base may be dead after ADD.
+    xed_decoded_inst_t jump;
+    decode(pc, jump);
+    auto target_reg = xed_decoded_inst_get_reg(&jump, XED_OPERAND_REG0);
+    if (xed_reg_class(target_reg) != XED_REG_CLASS_GPR ||
+        xed_get_register_width_bits64(target_reg) != 64)
+      continue;
+    bool found_add = false;
+    for (size_t k = 1; k < w.size() && k <= 9; ++k) {
+      xed_decoded_inst_t x;
+      decode(w[k], x);
+      auto kind = seen[w[k]].kind;
+      auto dest = xed_decoded_inst_get_reg(&x, XED_OPERAND_REG0);
+      if (kind == XED_ICLASS_ADD && dest == target_reg) {
+        found_add = true;
+        break;
+      }
+      if (kind != XED_ICLASS_MOV && kind != XED_ICLASS_MOVZX &&
+          kind != XED_ICLASS_MOVSX && kind != XED_ICLASS_MOVSXD &&
+          kind != XED_ICLASS_LEA && kind != XED_ICLASS_NOP &&
+          kind != XED_ICLASS_XOR && kind != XED_ICLASS_AND &&
+          kind != XED_ICLASS_OR && kind != XED_ICLASS_ADD &&
+          kind != XED_ICLASS_SUB && kind != XED_ICLASS_INC &&
+          kind != XED_ICLASS_DEC && kind != XED_ICLASS_CMP &&
+          kind != XED_ICLASS_TEST)
+        break;
+      bool clobber = false;
+      const auto *inst = xed_decoded_inst_inst(&x);
+      for (unsigned j = 0; j < xed_inst_noperands(inst); ++j) {
+        const auto *op = xed_inst_operand(inst, j);
+        auto name = xed_operand_name(op);
+        if (xed_operand_is_register(name) && xed_operand_written(op) &&
+            xed_get_largest_enclosing_register(
+                xed_decoded_inst_get_reg(&x, name)) == target_reg)
+          clobber = true;
+      }
+      if (clobber)
+        break;
+    }
+    if (!found_add)
       continue;
     std::reverse(w.begin(), w.end());
     ++candidates;

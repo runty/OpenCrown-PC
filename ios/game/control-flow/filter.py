@@ -115,17 +115,43 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
         if len(w) < 6:
             fail("short predecessor window")
         j = w[-1]
-        add = w[-2]
-        md = re.fullmatch(r"add (r\w+), (r\w+)", add["asm"])
         mj = re.fullmatch(r"jmp (r\w+)", j["asm"])
-        if not (md and mj):
-            fail("unrecognized ADD/JMP tail")
-        dst, breg = md.groups()
-        if mj.group(1) != dst or dst == breg:
-            fail("ADD/JMP register identity")
+        if not mj:
+            fail("unrecognized register JMP")
+        dst = mj.group(1)
+        addi = None
+        breg = None
+        cleanup_kinds = {
+            "MOV",
+            "MOVZX",
+            "MOVSX",
+            "MOVSXD",
+            "LEA",
+            "NOP",
+            "XOR",
+            "AND",
+            "OR",
+            "ADD",
+            "SUB",
+            "INC",
+            "DEC",
+            "CMP",
+            "TEST",
+        }
+        for k in range(len(w) - 2, max(-1, len(w) - 11), -1):
+            z = w[k]
+            md = re.fullmatch(r"add " + dst + r", (r\w+)", z["asm"])
+            if md:
+                addi = k
+                breg = md.group(1)
+                break
+            if z["kind"] not in cleanup_kinds or writes(z, {dst}):
+                fail("post-ADD cleanup clobbers target or changes control flow")
+        if addi is None or dst == breg:
+            fail("unrecognized ADD/JMP register identity")
         mi = None
         idx = None
-        for k in range(len(w) - 3, max(-1, len(w) - 9), -1):
+        for k in range(addi - 1, max(-1, addi - 8), -1):
             mm = re.fullmatch(
                 r"movsxd " + dst + r", dword ptr \[" + breg + r"\+(r\w+)\*4\]",
                 w[k]["asm"],
@@ -142,15 +168,29 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
             fail("unrecognized or clobbered signed32 indexed load")
         ai = None
         disp = None
+        base_source = breg
+        base_copies = []
         for k in range(mi - 1, max(-1, mi - 9), -1):
+            z = w[k]
             ma = re.fullmatch(
-                r"lea " + breg + r", ptr \[rip([+-]0x[0-9a-f]+)\]", w[k]["asm"]
+                r"lea " + base_source + r", ptr \[rip([+-]0x[0-9a-f]+)\]", z["asm"]
             )
             if ma:
+                if base_source == idx:
+                    fail("base materialization clobbers indexed value")
                 ai = k
                 disp = int(ma.group(1), 16)
                 break
-            if writes(w[k], {idx, breg, dst}) or w[k]["kind"].startswith(
+            cp = re.fullmatch(r"mov " + base_source + r", (\w+)", z["asm"])
+            if cp and operand_width(cp.group(1)) == 64:
+                if base_source == idx or family(cp.group(1)) == idx:
+                    fail("base copy overlaps live indexed value")
+                base_copies.append(z["pc"])
+                base_source = cp.group(1)
+                continue
+            # Before the indexed load the old target value is not live. Track
+            # only the current base source and index through full64 copies.
+            if writes(z, {idx, base_source}) or z["kind"].startswith(
                 ("J", "CALL", "RET")
             ):
                 break
@@ -393,6 +433,15 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                 guard=cmp["pc"],
                 index=idx,
                 index_copy=copy,
+                **(
+                    dict(
+                        base_copies=base_copies,
+                        target_add=w[addi]["pc"],
+                        post_add_cleanup=[z["pc"] for z in w[addi + 1 : -1]],
+                    )
+                    if base_copies or addi + 1 < len(w) - 1
+                    else {}
+                ),
                 guard_width=narrow_width if narrow_guard else 64 if wide_guard else 32,
                 protected_pcs=sorted(protected_pcs),
                 index_definitions=definitions,

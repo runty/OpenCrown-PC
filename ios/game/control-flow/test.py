@@ -28,7 +28,9 @@ def run(cmd, name):
         )
 
 
-def function(name, pre, body="", badcase="", tableoverride=None):
+def function(
+    name, pre, body="", badcase="", tableoverride=None, before_add="", post_add=""
+):
     start = f"fixture_{name}"
     labels = [start + "_case" + str(i) for i in range(3)]
     default = start + "_default"
@@ -48,7 +50,10 @@ def function(name, pre, body="", badcase="", tableoverride=None):
         [
             f"{start}_load:",
             "movsxd rdx, dword ptr [rcx+rax*4]",
+            *before_add.splitlines(),
             "add rdx, rcx",
+            f"{start}_post:",
+            *post_add.replace("@DEFAULT", default).splitlines(),
             f"{start}_dispatch:",
             "jmp rdx",
         ]
@@ -431,6 +436,360 @@ fixtures.update(
         ),
     }
 )
+# Computed-target lifetime and full64 table-base copy regressions.
+fixtures.update(
+    {
+        "base_copy64": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rdx,[rip+@TABLE]\nmov rcx,rdx",
+            True,
+            "",
+        ),
+        "base_copy64_source_reused": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rdx,[rip+@TABLE]\n"
+            "mov rcx,rdx\n"
+            "mov rdx,0x123",
+            True,
+            "",
+        ),
+        "base_copy64_chain": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rdx,[rip+@TABLE]\n"
+            "mov r8,rdx\n"
+            "mov rcx,r8",
+            True,
+            "",
+        ),
+        "base_copy64_other_source": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea r9,[rip+@TABLE]\nmov rcx,r9",
+            True,
+            "",
+        ),
+        "base_copy_post_xor": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rdx,[rip+@TABLE]\nmov rcx,rdx",
+            True,
+            "",
+        ),
+        "post_xor_base": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_xor_index": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_xor_other": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_mov_base": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_mov_index": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_read_target": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_movzx": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_movsx": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_movsxd": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_lea": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_nop": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_add": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_sub": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_and": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_or": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_inc": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_dec": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_cmp": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_test": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_eight": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "post_bad_target64": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_target32": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_target16": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_target8": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_target_lea": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_call": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_branch": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_bad_nine": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "base_bad_clobber": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rdx,[rip+@TABLE]\n"
+            "mov rcx,rdx\n"
+            "mov rcx,99",
+            False,
+            "",
+        ),
+        "base_bad_source": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rdx,[rip+@TABLE]\n"
+            "mov rdx,99\n"
+            "mov rcx,rdx",
+            False,
+            "",
+        ),
+        "base_bad_copy32": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rdx,[rip+@TABLE]\nmov ecx,edx",
+            False,
+            "",
+        ),
+        "base_bad_copy16": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rdx,[rip+@TABLE]\nmov cx,dx",
+            False,
+            "",
+        ),
+        "base_bad_index": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rdx,[rip+@TABLE]\n"
+            "mov rcx,rdx\n"
+            "mov eax,99",
+            False,
+            "",
+        ),
+        "base_bad_source_index": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rax,[rip+@TABLE]\nmov rcx,rax",
+            False,
+            "",
+        ),
+        "base_bad_alternate": (
+            "test esi,esi\n"
+            "jnz fixture_base_bad_alternate_copy\n"
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rdx,[rip+@TABLE]\n"
+            "fixture_base_bad_alternate_copy:\n"
+            "mov rcx,rdx",
+            False,
+            "",
+        ),
+        "post_bad_alternate": (
+            "test esi,esi\n"
+            "jnz fixture_post_bad_alternate_post\n"
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "post_table_bypass": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "base_bad_before_add": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "target_bad_before_add": (
+            "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+    }
+)
+post_add_fixtures = {
+    "base_copy64": "",
+    "base_copy64_source_reused": "",
+    "base_copy64_chain": "",
+    "base_copy64_other_source": "",
+    "base_copy_post_xor": "xor ecx,ecx",
+    "post_xor_base": "xor ecx,ecx",
+    "post_xor_index": "xor eax,eax",
+    "post_xor_other": "xor ecx,edi",
+    "post_mov_base": "mov rcx,99",
+    "post_mov_index": "mov eax,99",
+    "post_read_target": "mov r9,rdx",
+    "post_movzx": "movzx r9d,byte ptr [rdi]",
+    "post_movsx": "movsx r9d,word ptr [rdi]",
+    "post_movsxd": "movsxd r9,dword ptr [rdi]",
+    "post_lea": "lea r9,[rbx+7]",
+    "post_nop": "nop",
+    "post_add": "add r9d,1",
+    "post_sub": "sub r9d,1",
+    "post_and": "and r9d,7",
+    "post_or": "or r9d,7",
+    "post_inc": "inc r9d",
+    "post_dec": "dec r9d",
+    "post_cmp": "cmp edx,2",
+    "post_test": "test edx,edx",
+    "post_eight": "nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop",
+    "post_bad_target64": "mov rdx,99",
+    "post_bad_target32": "mov edx,99",
+    "post_bad_target16": "xor dx,dx",
+    "post_bad_target8": "mov dl,1",
+    "post_bad_target_lea": "lea rdx,[rdx+1]",
+    "post_bad_call": "call .Lnormal_target",
+    "post_bad_branch": "jnz @DEFAULT",
+    "post_bad_nine": "nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop",
+    "base_bad_clobber": "",
+    "base_bad_source": "",
+    "base_bad_copy32": "",
+    "base_bad_copy16": "",
+    "base_bad_index": "",
+    "base_bad_source_index": "",
+    "base_bad_alternate": "",
+    "post_bad_alternate": "xor ecx,ecx",
+    "post_table_bypass": "xor ecx,ecx",
+    "base_bad_before_add": "",
+    "target_bad_before_add": "",
+}
+before_add_fixtures = {
+    "base_copy64": "",
+    "base_copy64_source_reused": "",
+    "base_copy64_chain": "",
+    "base_copy64_other_source": "",
+    "base_copy_post_xor": "",
+    "post_xor_base": "",
+    "post_xor_index": "",
+    "post_xor_other": "",
+    "post_mov_base": "",
+    "post_mov_index": "",
+    "post_read_target": "",
+    "post_movzx": "",
+    "post_movsx": "",
+    "post_movsxd": "",
+    "post_lea": "",
+    "post_nop": "",
+    "post_add": "",
+    "post_sub": "",
+    "post_and": "",
+    "post_or": "",
+    "post_inc": "",
+    "post_dec": "",
+    "post_cmp": "",
+    "post_test": "",
+    "post_eight": "",
+    "post_bad_target64": "",
+    "post_bad_target32": "",
+    "post_bad_target16": "",
+    "post_bad_target8": "",
+    "post_bad_target_lea": "",
+    "post_bad_call": "",
+    "post_bad_branch": "",
+    "post_bad_nine": "",
+    "base_bad_clobber": "",
+    "base_bad_source": "",
+    "base_bad_copy32": "",
+    "base_bad_copy16": "",
+    "base_bad_index": "",
+    "base_bad_source_index": "",
+    "base_bad_alternate": "",
+    "post_bad_alternate": "",
+    "post_table_bypass": "",
+    "base_bad_before_add": "xor ecx,ecx",
+    "target_bad_before_add": "mov edx,99",
+}
 text = [".intel_syntax noprefix", ".text", ".org 0x100"]
 tables = []
 for name, (pre, accepted, badcase) in fixtures.items():
@@ -443,9 +802,18 @@ for name, (pre, accepted, badcase) in fixtures.items():
             f"fixture_{name}_case2",
         ]
         if name == "scheduled_table_bypass"
+        else [f"fixture_{name}_case0", f"fixture_{name}_post", f"fixture_{name}_case2"]
+        if name == "post_table_bypass"
         else None
     )
-    code, data = function(name, pre, badcase=badcase, tableoverride=override)
+    code, data = function(
+        name,
+        pre,
+        badcase=badcase,
+        tableoverride=override,
+        before_add=before_add_fixtures.get(name, ""),
+        post_add=post_add_fixtures.get(name, ""),
+    )
     text += code
     tables += data
 specials = ["table_bypass32", "table_bypass_copy"]
@@ -642,6 +1010,11 @@ assert any(
     and row["reason"] == "accepted table creates alternate protected-path entry"
     for row in scheduled_rejections
 ), "scheduled table-edge bypass must be rejected"
+assert any(
+    row["dispatch"] == symbols["fixture_post_table_bypass_dispatch"]
+    and row["reason"] == "accepted table creates alternate protected-path entry"
+    for row in scheduled_rejections
+), "table edge bypassing ADD into cleanup must be rejected"
 manifest = json.loads((out / "catalog/provenance.json").read_text())
 assert len(manifest["passes"]) >= 2
 
