@@ -1,5 +1,47 @@
 # Device port progress
 
+## 2026-11-14 — Physical save-dialog fix, cold reloads and native Town
+
+Clean `4fd1796` with the qualified 50,292-entry core passes a 180.16-second
+interactive run on iPad mini A20 Pro: 9,064 rendered frames, complete inspected
+Create save data Yes/No image, replay median/p95/p99 9.68/10.13/10.17 ms, and
+zero audio underruns/clipping. The final frame-arrival window has 16.67 ms median
+and 33.34 ms p95. This qualifies the stalled prompt's improvement on hardware,
+not sustained gameplay or a hands-on controller test.
+
+The same physical working-save UUID is then reopened twice by new processes,
+without restoring the seed: 5,479 / 5,421 frames and 127,649,949 /
+126,660,272 translated entries in about147.36 /138.73 seconds. Both INN gates
+pass with no error; both final images show Felix LV1 at Dragon's Haven Inn.
+All ten preexisting save/checkpoint/image files keep their exact hashes. This
+qualifies actual character reopening from the retained working folder, separately
+from creating and saving new progress. Normal player and live Mac/iCloud saves
+are untouched. The app returns to normal launcher mode after testing.
+
+The iPad Simulator also reopens the same working copy after process replacement,
+with no reseeding and unchanged source/normal roots. It passes both INN gates
+(4,762 /4,613 frames); the second image shows Felix but some incomplete labels,
+so general animation/text rendering remains open. Both physical reload images
+are complete.
+
+Three bounded original table batches bring all SDK archives to 50,327 entries.
+The native arm64/Metal host now passes visible Town: Felix outside the Inn,
+5,862 frames /145,518,001 trace entries in191.74 seconds, no errors and unload
+acknowledged. A same-coverage unrestricted-mapping baseline also passes Town
+(5,662 frames /188.55 seconds); extra table entries establish that progress.
+The new ordered DirectMemory adapter independently preserves the original
+unsigned relative-address contract, using a 4 GiB reservation and about2.04 GiB
+in that Town run. The earlier intermittent string fault's exact failing resource
+operands remain unresolved; no causal claim follows from two healthy runs.
+
+DirectMemory fixtures pass 563 checks native/ThreadSanitizer and all SDK
+compilations. Bounded configuration/runtime negatives pass24/24, input services
+95 native/ASan+UBSan, and actual runtime lifecycle passes all27 sessions with
+maximum stop38.42 ms. The original mapping trio needs502 MiB; initial explicit
+maps need1,424–1,616 MiB, but later caller-sized maps make lifetime usage an open
+qualification item. A 3 GiB fallback replaces an insufficient2 GiB fallback.
+Physical Town/new memory-adapter validation and adventure/combat remain next.
+
 ## 2026-11-14 — Save-dialog rendering stalls reproduced and reduced
 
 An isolated interactive iPhone Simulator run reproduces the player's Create

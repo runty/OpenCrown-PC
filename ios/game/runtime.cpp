@@ -1,4 +1,5 @@
 #include "../cpu/runtime.h"
+#include "direct-memory.h"
 #include "file-services.h"
 #include "font-services.h"
 #include "ime-services.h"
@@ -65,6 +66,7 @@ struct Engine {
   DcpGameHostHooks host{};
   std::vector<Module> modules;
   std::vector<std::unique_ptr<Mapping>> allocations;
+  dcp::game::DirectMemoryArena directMemory;
   std::vector<std::unique_ptr<std::recursive_mutex>> mutexes;
   std::vector<std::string> events;
   std::map<std::string, uint64_t> eventCounts;
@@ -486,10 +488,13 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     write64(*memory, r.r9.qword, offset);
     returnToGuest(state, *memory, 0);
   } else if (name == "sceKernelMapDirectMemory") {
-    auto address =
-        allocate(*memory, r.rsi.qword, std::max<uint64_t>(65536, r.r9.qword));
-    if (address >= (uint64_t(1) << 40))
-      throw std::runtime_error("direct memory exceeds guest GPU address width");
+    const auto bytes = r.rsi.qword;
+    const auto address = engine().directMemory.allocate(
+        bytes, std::max<uint64_t>(65536, r.r9.qword));
+    const uint64_t page = getpagesize();
+    addRegion(*memory, reinterpret_cast<uint8_t *>(address),
+              (bytes + page - 1) & ~(page - 1));
+    recordEvent("DirectMemory map 0x" + hex(address) + " bytes 0x" + hex(bytes));
     write64(*memory, r.rdi.qword, address);
     returnToGuest(state, *memory, 0);
   } else if (name == "sceKernelMapNamedFlexibleMemory" ||
@@ -682,6 +687,10 @@ uint64_t invoke(uint64_t pc, Memory &memory, uint64_t a = 0, uint64_t b = 0,
       context << "rdi=0x" << hex(r.rdi.qword)
               << " rsi=0x" << hex(r.rsi.qword)
               << " r12=0x" << hex(r.r12.qword)
+              << " r13=0x" << hex(r.r13.qword)
+              << " r14=0x" << hex(r.r14.qword)
+              << " r15=0x" << hex(r.r15.qword)
+              << " rbx=0x" << hex(r.rbx.qword)
               << " rbp=0x" << hex(r.rbp.qword)
               << " rsp=0x" << hex(r.rsp.qword);
       try {
@@ -690,6 +699,42 @@ uint64_t invoke(uint64_t pc, Memory &memory, uint64_t a = 0, uint64_t b = 0,
         const uint64_t caller = read64(memory, r.rbp.qword + 8);
         context << " frame_return=0x" << hex(caller)
                 << " canonical_return=0x" << hex(canonical(caller));
+        // Original owner/callee prologues identify these saved registers and
+        // resource fields only for this exact observed fault/caller pair.
+        // Bounds and mapped-range checks apply to every diagnostic read.
+        if (canonical(state.gpr.rip.qword) == 0x2057cbef &&
+            canonical(caller) == 0x20062e0b) {
+          try {
+            if (r.rbp.qword < 0x28 || r.r13.qword > UINT64_MAX - 0x188)
+              throw std::runtime_error("invalid diagnostic resource address");
+            const uint64_t index = read64(memory, r.rbp.qword - 0x20);
+            const uint64_t callerRBX = read64(memory, r.rbp.qword - 0x28);
+            uint32_t count = 0;
+            guestRead(memory, r.r13.qword + 0x178, &count, sizeof(count));
+            const uint64_t table = read64(memory, r.r13.qword + 0x180);
+            context << " resource_index=0x" << hex(index)
+                    << " caller_rbx=0x" << hex(callerRBX)
+                    << " resource_count=0x" << hex(count)
+                    << " resource_table=0x" << hex(table);
+            if (r.rsi.qword >= (uint64_t(1) << 32)) {
+              const uint64_t candidate = r.rsi.qword - (uint64_t(1) << 32);
+              bool mapped = false;
+              try {
+                mapped = guestPointer(memory, candidate, 1) != nullptr;
+              } catch (const std::runtime_error &) {
+              }
+              context << " offset_wrap_candidate=0x" << hex(candidate)
+                      << " candidate_mapped=" << (mapped ? "true" : "false");
+            }
+            if (index < count && index <= (UINT64_MAX - table) / 4) {
+              uint32_t offset = 0;
+              guestRead(memory, table + index * 4, &offset, sizeof(offset));
+              context << " resource_offset=0x" << hex(offset);
+            }
+          } catch (const std::runtime_error &) {
+            context << " resource_operands=unavailable";
+          }
+        }
       } catch (const std::runtime_error &) {
         context << " frame_return=unavailable";
       }
@@ -1098,6 +1143,7 @@ extern "C" const char *dcp_cpu_report() {
     dcp::render::shutdown_aot_capture();
   }
   const bool checkpointComplete = engine().booted.load() && firstError.empty() && error.empty() && joined;
+  const auto directMemory = engine().directMemory.stats();
   std::ostringstream out;
   out << "{\"backend\":\"Remill AOT real modules\",\"stage\":\"" << stage
       << "\",\"steps\":" << engine().steps
@@ -1105,6 +1151,11 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"game_code_executed\":"
       << (engine().enteredEboot ? "true" : "false")
       << ",\"guest_workers\":" << engine().workersStarted
+      << ",\"direct_memory\":{\"placement\":\"ordered_reserved_span\""
+      << ",\"base\":" << directMemory.base
+      << ",\"capacity_bytes\":" << directMemory.capacity
+      << ",\"used_bytes\":" << directMemory.used
+      << ",\"mappings\":" << directMemory.allocations << "}"
       << ",\"libc_strlen_checks\":" << engine().libcChecks
       << ",\"libc_start_result\":" << engine().libcResult
       << ",\"title_seen\":" << (engine().titleSeen.load() ? "true" : "false")

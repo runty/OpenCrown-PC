@@ -86,3 +86,36 @@ Headless runs can select an [INN checkpoint and desktop-format input script](hea
 Reports retain the requested scene, observation flag and exact script SHA-256.
 The default remains TITLE plus 120 advancing flips/vblanks; interactive mobile
 play ignores headless overrides.
+
+
+## DirectMemory address layout
+
+The original resource converter stores an unsigned 32-bit difference between a
+name slot and its resource header; the consumer zero-extends it before adding
+the header address. Original initialization maps the header arena before its
+two data arenas. Unrestricted independent native mappings do not preserve that
+order. The mobile DirectMemory service now suballocates increasing addresses
+from one reserved span, keeping these differences representable without
+changing guest pointers or weakening mapped-range checks.
+
+The preferred span is 4 GiB, with a 3 GiB reservation attempt if that fails.
+Only allocated pages become read/write and only those ranges enter the guest
+registry. No existing mapping is replaced and no unbounded address-hint search
+is used. Exhaustion fails explicitly. The original initializer alone requires
+about 1.4–1.6 GiB; a native Town run uses 2.04 GiB across 57 mappings. Lifetime
+usage through combat still needs qualification; these are not lifetime bounds.
+All backing storage remains owned until workers stop and renderer unload is
+acknowledged.
+
+```sh
+./ios/game/test-direct-memory.sh /Volumes/office/Build/OpenCrown/direct-memory-verification
+```
+
+The fixture checks the original offset representation (including the extra
+4 GiB produced by reversed real regions), concurrent nonoverlapping allocations,
+alignment, invalid/exhausted requests and preserved contents. Native and
+ThreadSanitizer runs pass 563 checks; all three SDK targets compile. Actual
+runtime lifecycle and bounded headless checks are separate. Failure-only
+`fault_context` now records checked resource operands for the previously
+observed string-pointer fault. That old intermittent failure has not recurred
+in the latest same-core comparison, so its exact causal operands remain open.
