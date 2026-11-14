@@ -28,6 +28,12 @@ struct Memory {
       std::make_shared<std::vector<Region>>();
   const std::atomic<bool> *stopping = nullptr;
   bool (*cancelled)() = nullptr;
+  // Optional complete set of signals for the bound runtime poll callback.
+  // Generic callers leave these empty and their callback runs on every poll.
+  struct PollSignals {
+    const std::atomic<bool> *paused = nullptr, *serviceStop = nullptr,
+                            *workerCancel = nullptr;
+  } poll;
   bool stopOnFault = false;
   std::unique_lock<GuestAtomicMutex> atomicLock;
   std::string fault;

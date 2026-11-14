@@ -139,6 +139,8 @@ NSString *thermalName(NSProcessInfoThermalState state) {
 
 @interface GameController : UIViewController {
   SDL_Window *_gameWindow;
+  BOOL _needsPresent;
+  int _presentWidth, _presentHeight;
   std::unique_ptr<dcp::mobile::Replay> _replay;
   std::unique_ptr<dcp::storage::SaveTransactions> _saves;
   uint64_t _presentedFrames;
@@ -687,7 +689,9 @@ UIButton *button(NSString *title, id target, SEL action) {
   [self emitLiveDiagnostics:NO];
   SDL_Event event;
   while (SDL_PollEvent(&event))
-    if (event.type == SDL_EVENT_QUIT) {
+    if (event.type == SDL_EVENT_WINDOW_EXPOSED)
+      _needsPresent = YES;
+    else if (event.type == SDL_EVENT_QUIT) {
       _hostError = @"SDL requested game shutdown.";
       NSLog(@"OpenCrown %@", _hostError);
       dcp_game_request_stop();
@@ -732,6 +736,7 @@ UIButton *button(NSString *title, id target, SEL action) {
     if (_diagnosticStartup)
       dcp::mobile::recordCompleted(_completedFrames, frame.flip, CACurrentMediaTime());
     ++_replayedFrames;
+    _needsPresent = YES;
     _gameIntervals.observe(sender.timestamp);
     _replayedDraws += frame.draws;
     if (frame.draws && !_snapshotHasContent &&
@@ -746,8 +751,14 @@ UIButton *button(NSString *title, id target, SEL action) {
   }
   int width = 0, height = 0;
   SDL_GetWindowSizeInPixels(_gameWindow, &width, &height);
+  if (!_needsPresent && width == _presentWidth && height == _presentHeight)
+    return;
+  _needsPresent = YES;
   const double presentStart = CACurrentMediaTime();
   if (_replay->present(width, height)) {
+    _needsPresent = NO;
+    _presentWidth = width;
+    _presentHeight = height;
     ++_presentedFrames;
     _drawableIntervals.observe(sender.timestamp);
   }
@@ -777,6 +788,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   [content bringSubviewToFront:self.pauseButton];
 }
 - (void)activeChanged:(BOOL)active {
+  if (active) _needsPresent = YES;
   _gameIntervals.last = _drawableIntervals.last = 0;
   self.displayLink.paused = !active;
   if (!active && _replay && !_replay->suspend(true)) {
@@ -815,6 +827,8 @@ UIButton *button(NSString *title, id target, SEL action) {
                                         completion:nil];
 }
 - (void)unloadRenderer {
+  _needsPresent = YES;
+  _presentWidth = _presentHeight = 0;
   [self.imeAlert dismissViewControllerAnimated:NO completion:nil];
   self.imeAlert = nil;
   [self.displayLink invalidate];
@@ -999,7 +1013,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   memory[@"peak_measurement"] =
       @"Maximum session heartbeat samples; not OS high-water marks";
   NSDictionary *settled = nil;
-  if (_diagnosticStartup && [_lastGuest[@"checkpoint_complete"] boolValue])
+  if (_diagnosticStartup && dcp::mobile::completedInScene(_lastGuest))
     settled = dcp::mobile::settledTiming(_completedFrames,
         [_lastGuest[@"checkpoint_observed_flip"] unsignedLongLongValue],
         [_lastGuest[@"checkpoint_settle_frames"] unsignedLongLongValue]);

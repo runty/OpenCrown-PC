@@ -247,6 +247,10 @@ uint64_t dcp_thread_current_handle() { return current ? handle(*current) : 0; }
 bool dcp_thread_stopping() {
   return shutting_down() || dcp_thread_current_cancelled();
 }
+const std::atomic<bool> *dcp_thread_stop_flag() { return &stop; }
+const std::atomic<bool> *dcp_thread_current_cancel_flag() {
+  return current ? &current->cancel : nullptr;
+}
 bool dcp_thread_current_cancelled() { return current && current->cancel.load(); }
 bool dcp_thread_shutdown_requested() { return shutting_down(); }
 bool dcp_thread_attributes(uint64_t id, void *destination) {

@@ -6,6 +6,12 @@
 #include <vector>
 
 namespace dcp::mobile {
+inline bool completedInScene(NSDictionary *guest) {
+  return [guest[@"checkpoint_complete"] boolValue] &&
+         [guest[@"checkpoint_scene"] isEqual:guest[@"current_scene"]] &&
+         ![guest[@"checkpoint_scene_changed"] boolValue];
+}
+
 struct CompletedFrame {
   uint64_t flip;
   double seconds;

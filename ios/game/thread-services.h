@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -24,6 +25,10 @@ uint64_t
 dcp_thread_current_handle(); // zero on a caller not created by this adapter
 bool dcp_thread_stopping();  // includes global stop, callback stop and
                              // current-thread cancellation
+// The service flag is process-lifetime. The worker flag is valid on its host
+// thread until the original worker invocation and TLS cleanup return.
+const std::atomic<bool> *dcp_thread_stop_flag();
+const std::atomic<bool> *dcp_thread_current_cancel_flag();
 bool dcp_thread_current_cancelled(); // only this guest worker's cancel request
 bool dcp_thread_shutdown_requested(); // adapter/host shutdown, excluding per-worker cancel
 bool dcp_thread_attributes(uint64_t handle, void *destination32);

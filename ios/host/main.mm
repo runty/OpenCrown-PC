@@ -334,7 +334,7 @@ int main(int argc, char **argv) {
                      (!contentRequired || nonuniformSeen) && hostError.empty() &&
                      !guestError && !timedOut && !graceExpired;
       NSDictionary *timing = nil;
-      if (guest && [guest[@"checkpoint_complete"] boolValue])
+      if (dcp::mobile::completedInScene(guest))
         timing = dcp::mobile::settledTiming(completedFrames,
                                [guest[@"checkpoint_observed_flip"] unsignedLongLongValue],
                                [guest[@"checkpoint_settle_frames"] unsignedLongLongValue]);

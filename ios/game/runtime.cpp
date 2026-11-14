@@ -101,7 +101,7 @@ struct Engine {
       townComponentCalls{0}, goblinReadyUpdates{0}, componentReadErrors{0};
   std::atomic<bool> booted{false};
   dcp::game::HeadlessConfig headless;
-  std::atomic<bool> checkpointSeen{false};
+  std::atomic<bool> checkpointSeen{false}, checkpointSceneChanged{false};
   bool sceneInputEnabled = false;
   std::atomic<uint64_t> checkpointVblank{0}, checkpointFlip{0};
   std::atomic<uint64_t> checkpointStartNs{0}, checkpointElapsedNs{0};
@@ -212,6 +212,8 @@ void recordComponent(const char *name, const char *stage) {
     engine().componentStage = stage;
     if (!std::strcmp(name, "TITLE"))
       engine().titleSeen = true;
+    if (engine().checkpointSeen.load() && engine().headless.scene != name)
+      engine().checkpointSceneChanged = true;
     if (engine().headless.scene == name && !engine().checkpointSeen.load()) {
       engine().checkpointVblank = engine().vblanks.load();
       engine().checkpointFlip = dcp_gnm_stats().flips;
@@ -785,6 +787,7 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
   local.regions = target.primary.regions;
   local.stopping = &target.stop;
   local.cancelled = pollRuntime;
+  local.poll = {&target.paused, dcp_thread_stop_flag(), dcp_thread_current_cancel_flag()};
   local.stopOnFault = true;
   auto *previousEngine = currentEngine;
   auto *previousMemory = currentMemory;
@@ -916,6 +919,7 @@ extern "C" const char *dcp_cpu_report() {
          std::lock_guard<std::mutex> lock(target.pauseMutex);
          target.pauseChanged.notify_all();
        }});
+  memory.poll = {&engine().paused, dcp_thread_stop_flag(), dcp_thread_current_cancel_flag()};
   dcp_gnm_init(
       {&memory,
        [](void *context, uint64_t address, void *output, size_t bytes) {
@@ -1199,6 +1203,7 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_observed_vblank\":" << engine().checkpointVblank.load()
       << ",\"checkpoint_observed_flip\":" << engine().checkpointFlip.load()
       << ",\"checkpoint_elapsed_ns\":" << engine().checkpointElapsedNs.load()
+      << ",\"checkpoint_scene_changed\":" << (engine().checkpointSceneChanged ? "true" : "false")
       << ",\"input_script_sha256\":" << jsonString(engine().inputScriptHash)
       << ",\"checkpoint_complete\":"
       << (checkpointComplete ? "true" : "false")

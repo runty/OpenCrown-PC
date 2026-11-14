@@ -151,6 +151,30 @@ void outerAtomicExcludesContender() {
         "cross-unit outer lock fully released");
 }
 
+unsigned signalPolls = 0;
+void boundPollSignals() {
+  Memory memory;
+  std::atomic<bool> paused{false}, serviceStop{false}, workerCancel{false}, stopped{false};
+  memory.stopping = &stopped;
+  memory.cancelled = [] { ++signalPolls; return false; };
+  memory.poll = {&paused, &serviceStop, &workerCancel};
+  read64(memory, Memory::base);
+  check(signalPolls == 0, "clear bound runtime signals");
+  for (auto *flag : {&paused, &serviceStop, &workerCancel}) {
+    const auto before = signalPolls;
+    *flag = true;
+    read64(memory, Memory::base);
+    *flag = false;
+    check(signalPolls == before + 1, "each pending signal calls the lifecycle handler");
+  }
+  stopped = true;
+  rejects([&] { read64(memory, Memory::base); }, "stop precedes clear bound signals");
+  stopped = false;
+  memory.poll = {};
+  read64(memory, Memory::base);
+  check(signalPolls == 4, "unbound generic callback always runs");
+}
+
 void overlappingPages() {
   Memory memory;
   // Register the backing a second way. Alternate between a low guest address
@@ -607,6 +631,7 @@ int main() {
     bridges();
     outerAtomicExcludesContender();
     overlappingPages();
+    boundPollSignals();
     narrowAtomics();
     wideAtomics();
     concurrent();

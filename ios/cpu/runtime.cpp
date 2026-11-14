@@ -2,22 +2,36 @@
 #include <cfenv>
 #include <cstring>
 #include <mutex>
+#ifdef __APPLE__
+#include <os/lock.h>
+#endif
 
 namespace {
 constexpr size_t stripeCount = 64;
 constexpr uintptr_t pageSize = 4096;
+#ifdef __APPLE__
+struct StripeMutex {
+  os_unfair_lock value = OS_UNFAIR_LOCK_INIT;
+  void lock() noexcept { os_unfair_lock_lock(&value); }
+  void unlock() noexcept { os_unfair_lock_unlock(&value); }
+};
+#else
+using StripeMutex = std::mutex;
+#endif
 struct alignas(128) Stripe {
-  std::mutex mutex;
+  StripeMutex mutex;
 };
 std::array<Stripe, stripeCount> stripes;
 GuestAtomicMutex guestAtomics;
 thread_local unsigned exclusiveDepth = 0;
 std::mutex registryMutex;
 struct RegionCache {
-  std::shared_ptr<std::vector<Memory::Region>> registry;
+  const std::vector<Memory::Region> *registry = nullptr;
   std::array<Memory::Region, 8> regions{};
 };
-thread_local RegionCache cache;
+thread_local RegionCache regionCache{};
+// Only the miss path needs a nontrivial TLS initializer and destructor.
+thread_local std::shared_ptr<std::vector<Memory::Region>> registryOwner;
 
 // All aliases of the same host page use the same stripe, including a fixture
 // page addressed through both the synthetic guest base and a native mapping.
@@ -60,7 +74,7 @@ public:
   }
 
 private:
-  std::mutex *single_ = nullptr;
+  StripeMutex *single_ = nullptr;
   uint64_t held_ = 0;
   void acquire(uint64_t mask) {
     try {
@@ -117,30 +131,22 @@ static void recordFault(Memory &memory, const char *description) {
   memory.fault = description;
 }
 static void checkCancelled(const Memory &memory) {
-  if ((memory.stopping && memory.stopping->load()) ||
-      (memory.cancelled && memory.cancelled()))
+  if (memory.stopping && memory.stopping->load())
+    throw std::runtime_error("bootstrap stopped");
+  if (memory.poll.paused && memory.poll.serviceStop &&
+      !memory.poll.paused->load() && !memory.poll.serviceStop->load() &&
+      (!memory.poll.workerCancel || !memory.poll.workerCancel->load()))
+    return;
+  if (memory.cancelled && memory.cancelled())
     throw std::runtime_error("bootstrap stopped");
 }
-static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
-  if (!memory.bytes.empty() && size <= memory.bytes.size() &&
-      address >= Memory::base &&
-      address - Memory::base <= memory.bytes.size() - size)
-    return memory.bytes.data() + (address - Memory::base);
-  if (!memory.regions)
-    throw std::runtime_error("missing guest memory registry");
-  if (cache.registry != memory.regions) {
+[[gnu::noinline]] static uint8_t *lookupRegion(Memory &memory,
+                                               RegionCache &cache,
+                                               uint64_t address, size_t size) {
+  if (cache.registry != memory.regions.get()) {
     cache.regions = {};
-    cache.registry = memory.regions;
-  }
-  for (size_t i = 0; i < cache.regions.size(); ++i) {
-    const auto region = cache.regions[i];
-    const uint64_t base = reinterpret_cast<uint64_t>(region.data);
-    if (region.data && size <= region.size && address >= base &&
-        address - base <= region.size - size) {
-      if (i)
-        std::swap(cache.regions[0], cache.regions[i]);
-      return region.data + (address - base);
-    }
+    registryOwner = memory.regions;
+    cache.registry = registryOwner.get();
   }
   std::lock_guard<std::mutex> registryLock(registryMutex);
   for (const auto &region : *memory.regions) {
@@ -157,6 +163,28 @@ static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
   throw std::runtime_error(
       "guest memory access outside mapped range: " + std::to_string(address) +
       " size " + std::to_string(size));
+}
+static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
+  if (!memory.bytes.empty() && size <= memory.bytes.size() &&
+      address >= Memory::base &&
+      address - Memory::base <= memory.bytes.size() - size)
+    return memory.bytes.data() + (address - Memory::base);
+  if (!memory.regions)
+    throw std::runtime_error("missing guest memory registry");
+  auto &cache = regionCache;
+  if (cache.registry != memory.regions.get())
+    return lookupRegion(memory, cache, address, size);
+  for (size_t i = 0; i < cache.regions.size(); ++i) {
+    const auto region = cache.regions[i];
+    const uint64_t base = reinterpret_cast<uint64_t>(region.data);
+    if (region.data && size <= region.size && address >= base &&
+        address - base <= region.size - size) {
+      if (i)
+        std::swap(cache.regions[0], cache.regions[i]);
+      return region.data + (address - base);
+    }
+  }
+  return lookupRegion(memory, cache, address, size);
 }
 uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
   auto pointer = checkedPointer(memory, address, size);
@@ -427,7 +455,8 @@ void guestRead(Memory &memory, uint64_t address, void *output, size_t size) {
   if (size)
     std::memcpy(output, pointer, size);
 }
-bool guestMatches(Memory &memory, uint64_t address, const void *snapshot, size_t size) {
+bool guestMatches(Memory &memory, uint64_t address, const void *snapshot,
+                  size_t size) {
   const auto *pointer = checkedPointer(memory, address, size);
   AccessLock lock(pointer, size);
   return !size || std::memcmp(pointer, snapshot, size) == 0;
