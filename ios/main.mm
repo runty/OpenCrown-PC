@@ -3,6 +3,10 @@
 #import <sys/utsname.h>
 #import <unistd.h>
 
+#if DCP_CPU_FIXTURES
+extern "C" const char *dcp_cpu_report();
+#endif
+
 @interface ProbeController : UIViewController
 @end
 @implementation ProbeController
@@ -22,10 +26,18 @@
     NSURL *url = [NSURL fileURLWithPath:documents];
     NSNumber *available = nil;
     [url getResourceValue:&available forKey:NSURLVolumeAvailableCapacityForImportantUsageKey error:nil];
+    NSDictionary *cpu = @{@"status": @"not built"};
+#if DCP_CPU_FIXTURES
+    const char *report = dcp_cpu_report();
+    NSData *cpuData = [NSData dataWithBytes:report length:strlen(report)];
+    cpu = [NSJSONSerialization JSONObjectWithData:cpuData options:0 error:nil];
+#endif
     NSDictionary *diagnostic = @{
         @"build_id": info[@"DCPBuildID"] ?: @"unknown",
-        @"stage": @"P0 device shell",
-        @"guest_execution": @NO,
+        @"stage": @"device CPU probe",
+        @"cpu_fixtures": cpu,
+        @"synthetic_guest_execution": @(DCP_CPU_FIXTURES),
+        @"game_execution": @NO,
         @"architecture": @"arm64",
         @"machine": @(machine.machine),
         @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
@@ -52,7 +64,7 @@
         [text.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12]
     ]];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(exportLog:)];
-    NSLog(@"OpenCrown P0 diagnostics saved=%d %@", saved, text.text);
+    NSLog(@"OpenCrown CPU diagnostics saved=%d %@", saved, text.text);
 }
 - (void)exportLog:(UIBarButtonItem *)sender {
     NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;

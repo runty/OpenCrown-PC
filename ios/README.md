@@ -24,3 +24,27 @@ increase after terminating/relaunching and survive a repeat install.
 
 See the [implementation plan](../docs/ios-ipados-port-plan.md) and
 [progress record](progress.md).
+
+## Translated CPU fixtures
+
+The optional harness lifts eight synthetic x86-64 routines through the pinned
+Remill build and compiles their complete CPU-state entry points into a static
+arm64 library. Seven routines use native Rosetta x86-64 results as their oracle.
+Guest FS/TLS uses a distinct seeded guest-memory region on each worker.
+
+```sh
+python3 ios/cpu/build.py --remill /Volumes/office/Build/OpenCrown/cpu-backends --llvm /opt/homebrew/opt/llvm --output /Volumes/office/Build/OpenCrown/cpu-harness
+./ios/build-probe.sh /Volumes/office/Build/OpenCrown/ios-probe TEAM_ID /Volumes/office/Build/OpenCrown/cpu-harness
+```
+
+Build the dependency as recorded in progress.md first. The harness builder runs
+the native x86-64 oracle, builds and runs an arm64 Mac executable, and builds the
+iPhoneOS static library. The device app executes that library on launch and
+includes its results and corpus hash in diagnostics.json. Link errors expose
+unimplemented intrinsic bridges instead of silently substituting behavior.
+
+Coverage includes arithmetic and selected flags, conditional branches, rotation,
+unaligned load/store, direct/indirect translated calls, AVX bitwise operations,
+guest FS/TLS on two workers, checked memory boundaries and unresolved targets.
+The memory bridges record errors without unwinding through Remill's nounwind
+intrinsics. These fixtures precede the real-module and broader P1 CPU tests.

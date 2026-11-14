@@ -1,0 +1,10 @@
+[
+  {"name":"add", "flags":true, "assembly":"mov rax,rdi\nadd rax,rsi\nret"},
+  {"name":"branch", "flags":false, "assembly":"mov rax,rdi\nadd rax,rsi\njc carry\njz zero\nret\ncarry: mov rax,-1\nret\nzero: mov rax,77\nret"},
+  {"name":"shift", "flags":false, "assembly":"mov rax,rdi\nmov rcx,rsi\nrol rax,cl\nxor rax,rsi\nret"},
+  {"name":"memory", "flags":true, "memory":true, "assembly":"mov rax,[rdi]\nxor rax,rsi\nmov [rdi+8],rax\nret"},
+  {"name":"call", "flags":false, "assembly":"call callee\nadd rax,3\nret\n.p2align 4\ncallee: lea rax,[rdi+rsi*2]\nret"},
+  {"name":"indirect", "flags":false, "indirect":true, "assembly":"call rsi\nadd rax,5\nret\n.p2align 4\ncallee: lea rax,[rdi+9]\nret"},
+  {"name":"avx", "flags":false, "assembly":"vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpxor xmm2,xmm0,xmm1\nvmovq rax,xmm2\nvzeroupper\nret"},
+  {"name":"tls", "flags":false, "tls":true, "assembly":"mov rax,qword ptr fs:[0]\nadd rax,rsi\nret"}
+]
