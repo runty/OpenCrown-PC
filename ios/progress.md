@@ -1,5 +1,30 @@
 # Device port progress
 
+## 2026-11-14 — Real INN and the copied character load on the native host
+
+The frozen 50,292-entry core in `ios-game-50292` reaches Dragon's Haven Inn
+from the quiescent Felix copy. Native Metal run `ios-host-50292/run-inn` passes
+with 3,650 rendered frames / 114,571,041 trace entries in 168.21 seconds, one
+checked INN resource-ready observation, acknowledged unload and no guest/host
+error. Final PNG was inspected: the Inn interior and Felix at level1 are
+visible in the party list. This qualifies native character reopening; fresh
+progress/save/relaunch and physical INN are still pending.
+
+The checkpoint driver now releases scripted buttons/sticks after observing its
+requested component, retaining connection and continued real frame advancement.
+The 95-check input/service suite passes native/ASan+UBSan, configuration/runtime
+negatives remain24/24, and all27 lifecycle sessions pass (max stop65.3ms).
+A fresh TITLE regression passes3,035 frames /77,075,990 entries in93.29seconds;
+its inspected final image is the real title splash/PressX screen held by neutral
+input, rather than automatically pressing into the menu. Interactive Play is
+unchanged. The earlier physical title-menu result remains qualified.
+
+TOWN component observation is connected from original class/vtable/state
+evidence, separately from the Inn portal and constructor. A copied-Felix Town
+run is underway. Its visibility/movement/combat have not passed. All three
+SDK archives compile; the same seeded INN test is being packaged for the iPad.
+Live Mac/iCloud progress is untouched.
+
 ## 2026-11-14 — Seeded device-test support and 50,285-entry core
 
 The explicit seeded diagnostic variant restores a quiescent staged save into

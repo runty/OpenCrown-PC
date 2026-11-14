@@ -35,6 +35,9 @@ struct DcpOfflineHooks {
   // held. Must not reenter this adapter; guest file writers must be quiescent
   // at Umount.
   bool (*savedata_transaction)(void *context, bool begin) = nullptr;
+  // Optional checkpoint driver gate. False releases scripted buttons/sticks
+  // while keeping the pad connected. A real input producer takes precedence.
+  bool (*scripted_input_active)(void *context) = nullptr;
 };
 // Call with no active guest workers. Keeps all saves under the supplied
 // disposable root.

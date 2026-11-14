@@ -126,3 +126,16 @@ address is remembered, and stale RSI is deliberately ignored. Its report kind
 is `component_ready_transition`, followed by the same advancing-frame gate.
 Visible INN and actual character-save reopening remain separate acceptance work.
 Checkpoint anchors are initialized before publishing the observation flag.
+
+TOWN has a separate checked component-update marker: the original Town class
+vtables/tag and delivered/stored state0xa4 must match at the secondary callback.
+Constructor0, initial states and the Inn portal cannot satisfy it. This is
+post-initialization component activity; rendered Town and gameplay remain
+independent checks.
+
+Once the requested component is observed, the checkpoint driver releases all
+scripted buttons and sticks while retaining the connected pad. The game keeps
+updating/rendering for its required 120 advancing vblanks/flips. This prevents
+later script events from leaving the screen being verified. Interactive input
+producers retain priority. Reports identify `input_policy=neutral_after_checkpoint`
+for checkpoint runs; the source input file hash is still retained.

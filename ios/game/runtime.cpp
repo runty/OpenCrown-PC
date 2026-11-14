@@ -93,7 +93,7 @@ struct Engine {
   std::atomic<uint64_t> sceneObserverCalls{0}, sceneReadErrors{0},
       sceneInvalidNames{0};
   std::atomic<uint64_t> titleComponentCalls{0}, innReadyCalls{0},
-      componentReadErrors{0};
+      townComponentCalls{0}, componentReadErrors{0};
   std::atomic<bool> booted{false};
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false};
@@ -882,6 +882,9 @@ extern "C" const char *dcp_cpu_report() {
     };
     offline.save_root = files.save_root;
     offline.scripted_input = !engine().interactive;
+    offline.scripted_input_active = [](void *context) {
+      return !static_cast<Engine *>(context)->checkpointSeen.load();
+    };
     if (offline.scripted_input) {
       if (const char *path = std::getenv("DCP_INPUT_SCRIPT")) {
         constexpr size_t limit = 1024 * 1024;
@@ -1081,6 +1084,8 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_complete\":"
       << (checkpointComplete ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
+      << ",\"input_policy\":"
+      << jsonString(engine().interactive ? "platform" : "neutral_after_checkpoint")
       << ",\"checkpoint_observer\":"
       << jsonString(engine().headless.scene == "INN"
                         ? "component_ready_transition"
@@ -1089,6 +1094,7 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"visual_checkpoint_verified\":false"
       << ",\"title_component_calls\":" << engine().titleComponentCalls
       << ",\"inn_ready_helper_calls\":" << engine().innReadyCalls
+      << ",\"town_component_calls\":" << engine().townComponentCalls
       << ",\"component_observer_read_errors\":" << engine().componentReadErrors
       << ",\"requested_audio_cue\":" << jsonString(requestedCue)
       << ",\"cue_observer_name_argument\":\"rsi\""
@@ -1227,6 +1233,28 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     // entry and is cleared by the original helper. Visibility stays separate.
     if (phase == 0x81 && mode != 1)
       recordComponent("INN", "resources_ready_transition");
+  }
+  if (observedPC == 0x20295770) {
+    ++engine().townComponentCalls;
+    if (state.gpr.rdi.qword < 0xa8)
+      return;
+    const uint64_t object = state.gpr.rdi.qword - 0xa8;
+    uint8_t phase = 0;
+    try {
+      if (object > UINT64_MAX - 0x103 ||
+          canonical(read64(*currentMemory, object)) != 0x20b2bd28 ||
+          canonical(read64(*currentMemory, object + 0xa8)) != 0x20b2cdf8 ||
+          canonical(read64(*currentMemory, object + 0xb8)) != 0x2074ec18)
+        return;
+      guestRead(*currentMemory, object + 0x103, &phase, 1);
+    } catch (const std::runtime_error &) {
+      ++engine().componentReadErrors;
+      return;
+    }
+    // State0xa4 is entered after Town initialization; constructor0 and the Inn
+    // portal cannot match these class/vtable/tag and delivered-phase checks.
+    if (uint8_t(state.gpr.rsi.qword) == 0xa4 && phase == 0xa4)
+      recordComponent("TOWN", "active_update");
   }
 }
 

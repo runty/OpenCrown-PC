@@ -7,6 +7,7 @@
 namespace {
 std::array<uint8_t, 128> output;
 uint64_t frame = 0;
+bool script_active = true;
 unsigned checks = 0;
 void require(bool okay) {
   ++checks;
@@ -38,6 +39,7 @@ int main(int argc, char **argv) {
   hooks.pointer = pointer;
   hooks.vblank_count = [](void *) { return frame; };
   hooks.scripted_input = true;
+  hooks.scripted_input_active = [](void *) { return script_active; };
   hooks.save_root = argv[1];
   hooks.input_script = "# Same desktop syntax, deliberately out of order\n"
                        "30 0\n10 CROSS+LS_LEFT\n20 OPTIONS|LS_DOWN\n";
@@ -48,6 +50,10 @@ int main(int argc, char **argv) {
   read(9, 0);
   read(10, 0x4000, 0, 128);
   read(19, 0x4000, 0, 128);
+  read(20, 8, 128, 255);
+  script_active = false;
+  read(20, 0); // A held button/stick releases without disconnecting the pad.
+  script_active = true;
   read(20, 8, 128, 255);
   read(29, 8, 128, 255);
   read(30, 0);
@@ -74,6 +80,7 @@ int main(int argc, char **argv) {
   require(rejected);
   read(600, 0x4000); // A rejected script does not partially replace the source.
   hooks.input_script = "0 CROSS\n";
+  script_active = false; // The checkpoint driver must not suppress real input.
   hooks.input_read = [](void *, unsigned, DcpPlatformPad *pad) {
     pad->connected = 1;
     pad->buttons = 0x8000;

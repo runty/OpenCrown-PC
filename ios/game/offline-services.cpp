@@ -406,7 +406,9 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
         pad = {};
         pad.lx = pad.ly = pad.rx = pad.ry = 128;
       }
-    } else if (hooks.scripted_input && slot == 0) {
+    } else if (hooks.scripted_input && slot == 0 &&
+               (!hooks.scripted_input_active ||
+                hooks.scripted_input_active(hooks.context))) {
       uint64_t frame =
           hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
       if (!hooks.input_script.empty()) {
