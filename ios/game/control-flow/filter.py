@@ -210,9 +210,10 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
         guard = w[gi]
         # Scheduling may separate CMP and JA. Only a bounded straight-line
         # sequence of flag-preserving operations is supported. Its writes must
-        # leave the indexed value unchanged; the future table base is not live
-        # until its later LEA and may be overwritten here.
+        # preserve the index, except one proved32-bit copy of the unchanged
+        # compared32-bit value. The future table base is not live until LEA.
         ci = None
+        scheduled_index_copies = []
         scheduled_kinds = {"MOV", "MOVZX", "MOVSX", "MOVSXD", "LEA", "NOP"}
         for k in range(gi - 1, max(-1, gi - 10), -1):
             z = w[k]
@@ -221,8 +222,20 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                 break
             if z["kind"] not in scheduled_kinds:
                 fail("unsupported instruction between CMP and unsigned JA")
-            if writes(z, {idx, "rflags"}):
-                fail("scheduled instruction clobbers flags or indexed value")
+            if writes(z, {"rflags"}):
+                fail("scheduled instruction clobbers flags")
+            if writes(z, {idx}):
+                mv = re.fullmatch(r"mov (\w+), (\w+)", z["asm"])
+                if (
+                    z["kind"] == "MOV"
+                    and mv
+                    and operand_width(mv.group(1)) == operand_width(mv.group(2)) == 32
+                    and family(mv.group(1)) == idx
+                    and family(mv.group(2)) != idx
+                ):
+                    scheduled_index_copies.append((k, mv.group(1), mv.group(2)))
+                else:
+                    fail("scheduled instruction clobbers indexed value")
         if ci is None:
             fail("no bounded flag-preserving CMP/JA chain")
         cmp = w[ci]
@@ -230,6 +243,26 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
         if not cm:
             fail("guard compare is not register/immediate")
         creg, N = cm.group(1), int(cm.group(2), 16)
+        late_index_copy = None
+        if scheduled_index_copies:
+            if len(scheduled_index_copies) != 1:
+                fail("multiple scheduled index definitions are outside late-copy proof")
+            late_index, late_destination, late_source = scheduled_index_copies[0]
+            if operand_width(creg) != 32 or late_source != creg:
+                fail("late index copy does not match the32-bit compared value")
+            if any(
+                writes(w[q], {family(creg)})
+                for q in range(ci + 1, gi)
+                if q != late_index
+            ):
+                fail("scheduled late-copy source changed after CMP")
+            late_index_copy = dict(
+                pc=w[late_index]["pc"],
+                kind="Late32-bit index copy after CMP",
+                destination=late_destination,
+                source=late_source,
+                comparison_pc=cmp["pc"],
+            )
         wide_guard = creg == idx and bool(
             re.fullmatch(r"r(?:ax|bx|cx|dx|si|di|sp|bp|[89]|1[0-5])", creg)
         )
@@ -246,8 +279,10 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                 fail("alternate/absent predecessor within protected dispatch path")
         if guard["target"] in {z["pc"] for z in w[gi + 1 :]}:
             fail("guard default enters dispatch")
-        copy = None
-        if family(creg) != idx:
+        copy = late_index_copy["pc"] if late_index_copy else None
+        if late_index_copy:
+            definitions.append(late_index_copy)
+        elif family(creg) != idx:
             for k in range(ci - 1, -1, -1):
                 z = w[k]
                 pattern = (r"movzx (\w+), " if narrow_guard else r"mov (\w+), ") + creg
@@ -396,7 +431,7 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                     definitions = []
                 else:
                     fail("narrow guard lacks a dominating full-index MOVZX/copy proof")
-        elif not wide_guard and not zero_before(cmp["pc"]):
+        elif not wide_guard and not late_index_copy and not zero_before(cmp["pc"]):
             fail("index upper-zero/sign extension not dominated within bounded CFG")
         a = w[ai]
         table = a["pc"] + a["n"] + disp
@@ -450,6 +485,8 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                 table_sha256=hashlib.sha256(raw).hexdigest(),
             )
         )
+        if late_index_copy:
+            accepted[-1]["late_index_copy"] = late_index_copy
         if assumptions:
             accepted[-1]["conditional"] = True
             accepted[-1]["assumptions"] = assumptions

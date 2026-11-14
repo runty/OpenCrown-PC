@@ -109,3 +109,12 @@ base/index cleanup is allowed, while target-alias writes, calls, branches and
 alternate entries reject. Guard flags retain their stricter lifetime through
 JA. The owned matrix includes clobber, partial-copy, instruction-count and
 direct/table-edge bypass counterexamples.
+
+A separately tested extension permits exactly one full32-bit MOV from the exact
+compared32-bit register to the index between CMP and JA. The source must remain
+unchanged throughout the bounded schedule; the copy zero-extends the full index.
+Partial/64-bit copies, multiple definitions, mismatched source widths/registers,
+flag clobbers and alternate predecessors reject.
+`late-index-test.py` takes the same output/XED/LLVM options as `test.py`; its
+23 owned functions pass 50 checks. The existing 118-check matrix and 34-check
+conditional isolation/baseline comparison also pass with this extension.

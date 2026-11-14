@@ -11,9 +11,12 @@ iPhone remains on its earlier probe and was not contacted.
 
 The native core now links 48,366 entry points after a separate compile-only
 prefetch of original direct branch destinations in a long unwind owner. A
-real iPhoneOS archive is compiling for hardware startup/render/memory testing.
+matching real iPhoneOS archive now compiles for hardware startup/render/memory testing.
 Generic full-width table-base copies and independent post-ADD cleanup now pass
-118 checks / 109 owned functions; isolated conditional-tier tests also pass.
+118 checks / 109 owned functions. A separate proved32-bit index copy after
+CMP passes 50 checks / 23 owned functions; conditional isolation/baseline
+comparison passes 34 checks. A new executed branch is being added before
+packaging.
 TITLE/INN, physical game frames and actual save reopening remain unverified.
 The desktop app and live Mac/iCloud progress are untouched.
 
