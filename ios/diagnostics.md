@@ -54,3 +54,8 @@ terminated strings, snapshots while parked and wake-on-stop are checked. Native
 and ThreadSanitizer runs pass; the latter reports zero races. App and runtime
 sources also compile with strict warnings for both iPhoneOS and Simulator.
 Physical-device heartbeat and sustained gameplay measurements remain to verify.
+
+Session memory peaks are the maximum of heartbeat samples, explicitly labelled
+as sampled peaks rather than OS high-water marks. Final live exports retain
+the completed guest report and final launcher status, including errors, until
+a new session starts.

@@ -35,7 +35,9 @@ the installed LLVM prefix. A previously verified source extraction may be
 supplied with `--source`; the manifest marks it caller-supplied and hashes its
 compiled inputs. Fresh downloads verify the pinned archive hash. Outputs must
 be on mounted external volumes. Existing objects are reused by source/header
-and command hash; caches are never deleted.
+and command hash; caches are never deleted. Deterministic `libtool -D` archives
+keep unchanged helper manifests stable across repeated builds, avoiding spurious
+whole-corpus provenance invalidation.
 
 The host-only lowerer links Homebrew LLVM. Mobile helper archives contain
 portable C and SoftFloat, with no LLVM or host dynamic-library dependency:

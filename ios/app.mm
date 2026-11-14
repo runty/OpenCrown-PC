@@ -131,6 +131,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   uint64_t _presentedFrames;
   uint64_t _replayedFrames;
   uint64_t _replayedDraws;
+  uint64_t _peakFootprint, _peakResident;
   BOOL _running;
   BOOL _autoStarted;
   NSString *_hostError;
@@ -143,6 +144,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   NSString *_sessionID;
   NSString *_diagnosticPhase;
   NSDictionary *_metalInfo;
+  NSDictionary *_lastGuest;
   NSTimeInterval _sessionStarted;
   CFTimeInterval _lastHeartbeat;
   FrameIntervals _gameIntervals, _drawableIntervals;
@@ -337,8 +339,10 @@ UIButton *button(NSString *title, id target, SEL action) {
   _sessionID = NSUUID.UUID.UUIDString;
   _sessionStarted = [NSDate.date timeIntervalSince1970];
   _diagnosticPhase = @"validation";
+  _lastGuest = nil;
   _lastHeartbeat = 0;
   _presentedFrames = _replayedFrames = _replayedDraws = 0;
+  _peakFootprint = _peakResident = 0;
   _gameIntervals = FrameIntervals{};
   _drawableIntervals = FrameIntervals{};
   _hostError = nil;
@@ -346,9 +350,9 @@ UIButton *button(NSString *title, id target, SEL action) {
     std::lock_guard<std::mutex> lock(_diagnosticStateLock);
     _saveError = nil;
   }
+  self.status.text = @"Checking game files and recovering local saves…";
   [self emitLiveDiagnostics:YES];
   [self updateButtons];
-  self.status.text = @"Checking game files and recovering local saves…";
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
     NSString *failure = nil;
     try {
@@ -477,10 +481,7 @@ UIButton *button(NSString *title, id target, SEL action) {
       dcp_platform_set_paused(1);
       self->_running = NO;
       self->_diagnosticPhase = @"stopped";
-      NSMutableDictionary *report = [[self diagnosticSnapshot] mutableCopy];
-      report[@"guest"] = guest;
-      [self queueDiagnostic:report filename:@"diagnostics.json"];
-      [self emitLiveDiagnostics:YES];
+      self->_lastGuest = guest;
       NSString *saveError = [self currentSaveError];
       NSString *error = self->_hostError.length
                             ? self->_hostError
@@ -495,6 +496,8 @@ UIButton *button(NSString *title, id target, SEL action) {
                        @"audio/platform error."
                      : @"Game stopped. Local save checkpoints are available.");
       [self updateButtons];
+      [self queueDiagnostic:[self diagnosticSnapshot] filename:@"diagnostics.json"];
+      [self emitLiveDiagnostics:YES];
     });
   });
 }
@@ -773,6 +776,17 @@ UIButton *button(NSString *title, id target, SEL action) {
   char platformError[512]{};
   dcp_platform_copy_error(platformError, sizeof(platformError));
   const auto thermal = NSProcessInfo.processInfo.thermalState;
+  NSMutableDictionary *memory = [memorySnapshot() mutableCopy];
+  if ([memory[@"available"] boolValue]) {
+    _peakFootprint = std::max(
+        _peakFootprint, [memory[@"phys_footprint_bytes"] unsignedLongLongValue]);
+    _peakResident = std::max(
+        _peakResident, [memory[@"resident_bytes"] unsignedLongLongValue]);
+  }
+  memory[@"sampled_peak_phys_footprint_bytes"] = @(_peakFootprint);
+  memory[@"sampled_peak_resident_bytes"] = @(_peakResident);
+  memory[@"peak_measurement"] =
+      @"Maximum session heartbeat samples; not OS high-water marks";
   return @{
     @"build_id" : NSBundle.mainBundle.infoDictionary[@"DCPBuildID"]
         ?: @"unknown",
@@ -781,7 +795,7 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"timestamp" : @([NSDate.date timeIntervalSince1970]),
     @"phase" : _diagnosticPhase ?: @"launcher",
     @"os" : NSProcessInfo.processInfo.operatingSystemVersionString,
-    @"guest" : guestSnapshot(),
+    @"guest" : _lastGuest ?: guestSnapshot(),
     @"captured_game_frames" : @(_replayedFrames),
     @"drawable_presents" : @(_presentedFrames),
     @"replayed_game_frames" : @(_replayedFrames),
@@ -799,7 +813,7 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"metal" : _metalInfo ?: @{},
     @"thermal_state" : thermalName(thermal),
     @"thermal_state_raw" : @(thermal),
-    @"memory" : memorySnapshot(),
+    @"memory" : memory,
     @"launcher_status" : self.status.text ?: @""
   };
 }
@@ -839,15 +853,14 @@ UIButton *button(NSString *title, id target, SEL action) {
 }
 - (void)recordStartupFailure:(NSString *)error stage:(NSString *)stage {
   _diagnosticPhase = stage;
-  NSMutableDictionary *report = [[self diagnosticSnapshot] mutableCopy];
-  report[@"frontend_error"] = error ?: @"unknown startup error";
-  report[@"guest"] = @{
+  _hostError = error ?: @"unknown startup error";
+  _lastGuest = @{
     @"booted" : @NO,
     @"game_code_executed" : @NO,
     @"stage" : stage,
     @"error" : error ?: @"unknown startup error"
   };
-  [self queueDiagnostic:report filename:@"diagnostics.json"];
+  [self queueDiagnostic:[self diagnosticSnapshot] filename:@"diagnostics.json"];
   [self emitLiveDiagnostics:YES];
 }
 - (void)shareDiagnostics {

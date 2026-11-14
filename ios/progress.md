@@ -31,8 +31,12 @@ forms, immediate lane selection and upper-register clearing. Software x87
 uses SoftFloat 3e and an LLVM pass that replaces executable FP80 values with
 exact i80 storage. Direct and lowered-IR suites each pass 153,228 native-oracle
 checks; the real libc FSCALE routine passes 19,800 vectors. Unknown extended
-operations fail explicitly. The eight Remill patches and full-corpus refresh
-now cover 2,246 initial real traces; discovery continues beyond that count.
+operations fail explicitly. A frozen 2,355-trace candidate builds for all three targets. Its real-module
+simulator runs reach libc start and 18 workers on iPhone 17 Pro Max and iPad mini
+(A17 Pro) simulated models, then stop at VMOVMSKPS, matching the arm64 host.
+The new movemask patch passes 38,400 full-register native-oracle checks; the
+nine-patch corpus refresh is in progress. These are simulated models, not the
+physical iPad mini A20 Pro.
 See [FP80 boundaries and evidence](cpu/fp80/README.md).
 
 `game/build.py` produces Mac, iPhoneOS and simulator libraries. `advance.py`
@@ -64,8 +68,12 @@ check. CMake's SDK selection also misidentified normalized iPhoneSimulator paths
 and embedded device shaders. Case-insensitive selection plus explicit AIR
 targets now pass all 24 Mac/device/simulator artifact checks. The assembled
 simulator app initializes Metal and presents while the guest starts; no captured
-game frames have yet been observed. Presentation counts alone do not prove that
-the game has rendered.
+game frames have yet been observed. The 2,355-trace app presents 478/506 blank
+drawables on phone/tablet simulators before the CPU gap; these are explicitly
+zero captured game frames. Pause and touch controls appear above the Metal view.
+The one-second live heartbeat reports startup progress before the first frame,
+and retains the final guest error/status for Share after shutdown. Presentation
+counts alone do not prove that the game has rendered.
 
 Host input/audio tests cover four pad slots, multitouch serialization, disconnect
 state, clipping/downmix and 400,000 concurrent ring-buffer frames. The sink requests

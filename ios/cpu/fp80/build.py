@@ -180,7 +180,7 @@ for platform, target, sdk in platforms:
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         objects = list(pool.map(compile, inputs))
     run(
-        ["xcrun", "libtool", "-static", "-o", directory / "libdcp-fp80.a", *objects],
+        ["xcrun", "libtool", "-static", "-D", "-o", directory / "libdcp-fp80.a", *objects],
         platform + "-archive.log",
     )
     print(platform, "built", len(objects), "objects", flush=True)

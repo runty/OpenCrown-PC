@@ -71,6 +71,7 @@ The script applies these checked local Remill patches, in order:
 6. `remill-avx-extract.patch`
 7. `remill-packed-shifts.patch`
 8. `remill-x87-control.patch`
+9. `remill-movemask.patch`
 
 The FP80 stage downloads the checked official SoftFloat archive, builds helper
 libraries for all three targets and the host LLVM lowerer, and runs direct,

@@ -98,6 +98,8 @@ backend_snapshot = {
     "sse_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/SSE.cpp"),
     "avx_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/AVX.cpp"),
     "x87_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/X87.cpp"),
+    "dataxfer_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/DATAXFER.cpp"),
+    "mmx_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/MMX.cpp"),
     "fp80_lower_sha256": sha256(fp80_lower),
     "fp80_manifest_sha256": sha256(fp80_output / "manifest.json"),
 }

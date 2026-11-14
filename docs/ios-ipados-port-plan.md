@@ -6,6 +6,12 @@ The Mac implementation at `784fe46` executes the game's x86-64 instructions thro
 
 ## Execution design and first decision
 
+The selected implementation is Remill AOT with signed arm64 traces, explicit
+guest memory/dispatch and typed HLE. The original decision criteria below remain
+the acceptance bar; expanded host tests do not substitute for real-routine
+execution and gameplay on both devices. See [current evidence](../ios/progress.md)
+and [reproducible build](../ios/BOOTSTRAP.md).
+
 Start with ahead-of-time translation (AOT). At build time on the Mac, lift reachable x86-64 code from the player's matching eboot and libc into C or LLVM IR, compile it to arm64 and link it into the signed app. Record hashes of both inputs so the runtime can reject mismatched game data. Generated game-specific code, maps, archives, binaries and progress stay in the player's private build tree. A new executable revision needs a matching rebuild. The mobile app loads assets and guest data, starts worker threads and renders within one process. [Apple code signing](https://developer.apple.com/documentation/xcode/using-the-latest-code-signature-format) · [Rosetta on Mac](https://developer.apple.com/documentation/apple-silicon/about-the-rosetta-translation-environment)
 
 Before choosing a translator, run a small bake-off. Inspect available lifters for x86-64 long mode, AVX/SSE, flags, indirect control flow, reproducible output and ability to compile offline for arm64 iOS. Compare the most promising candidate against an interpreter on the same microprograms and real hot routines. The interpreter also provides a possible route for unresolved blocks if profiling supports it. Define a common guest state and memory interface before mixing the two. Stop after five active development days for a feasibility report if neither can execute the fixtures correctly. Budget the next stage from measured coverage and timings.
@@ -34,6 +40,25 @@ Before choosing a translator, run a small bake-off. Inspect available lifters fo
 7. **P6 — Playable acceptance.** Run a 30-minute town/combat loop per device at a recorded resolution and refresh rate. Collect p50/p95 frame intervals, game simulation speed, audio gaps, peak memory, thermal state, dropped frames and any OS termination logs. Aim initially for 60 Hz (16.7 ms per frame). If sustained rendering requires a 30 fps preset, verify real-time gameplay and audio at that preset and publish the per-device result. **Pass** when both devices finish the loop at the declared preset, complete an adventure, save and cold-reload, with no crash, corrupted slot or sustained slowdown. Re-run the Mac regression suite after changes to shared code.
 
 ## Delivery and estimates
+
+### Current execution order while devices are away
+
+| Milestone | Evidence and remaining gate |
+| --- | --- |
+| P0 | Both physical devices cold-launch the signed shell and export diagnostics. Passed. |
+| P1 | Both pass the original 146-check synthetic corpus. The expanded host corpus passes 1,840 checks plus independent SIMD/x87 oracle suites; actual libc startup returns zero on arm64 Mac. Real-module proof on both physical devices remains open. |
+| P2 | Real modules load, relocate, execute and start workers on arm64. Continue executed-target discovery and fix explicitly reported services/instructions until TITLE and INN; then compare event order and save reopening. No successful game boot is claimed. |
+| P3 | All three SDK shader targets and synthetic Metal replay/readback pass. Simulator Metal initializes. Connect and verify actual captured game frames after startup coverage; present counts alone are insufficient. |
+| P4 | Touch/controller/audio adapters, live diagnostics and cooperative pause/stop are integrated. Host concurrency/lifecycle checks pass. Actual gameplay, sound, ergonomics, reconnect, interruptions and mobile frame pacing remain acceptance work. |
+| P5 | Files import and local transactional save/checkpoint recovery pass host fixtures, including simulated process loss. Build/sign scripts exist. Verify provider behavior, two real save/reloads per device and repeat installation. Disposable iCloud handoff/conflict work precedes any live-save writes. |
+| P6 | Requires the physical devices, actual adventure completion and recorded sustained gameplay. Open. |
+
+The immediate critical path is real-module startup, then live replay and a
+simulator play/save loop. In parallel, preserve reproducible source/dependency
+pins and build the signed universal app. When hardware returns, install the same
+qualified build and close each phone/tablet gate separately. Devices being away
+does not prevent host/simulator implementation, and does not waive the physical
+acceptance criteria.
 
 P0 → P1 → P2 is the critical path. A synthetic Metal draw, fixture capture and import prototype can proceed independently. Live rendering and controls need P2. File-free CI can build the shell and run synthetic CPU/render fixtures. Real-game acceptance runs privately on each device with the same signed build, recording commit, dump hashes, device/OS, input route, log and result. Track phone and tablet passes separately.
 

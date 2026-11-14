@@ -37,6 +37,7 @@ PATCHES = [
     "remill-avx-extract.patch",
     "remill-packed-shifts.patch",
     "remill-x87-control.patch",
+    "remill-movemask.patch",
 ]
 
 
