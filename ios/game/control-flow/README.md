@@ -1,0 +1,72 @@
+# Conservative internal switch atlas
+
+These are authored generic host tools and synthetic fixtures, integrated into the mobile bootstrap. There are no game bytes, addresses, tables, or module maps in these source files. They read an explicit caller-supplied ELF, prepared flat image, and a previously validated unwind atlas. They never lift code, execute the input, edit a trace cache, install software, or contact devices.
+
+## CLI
+
+```sh
+python3 catalog.py \
+  --image /path/to/module.image \
+  --elf /path/to/module.elf \
+  --atlas /path/to/unwind-atlas/entries.json \
+  --module MODULE_NAME \
+  --base CANONICAL_BASE \
+  --xed-root /path/to/remill-install \
+  --trace-directory /path/to/traces \
+  --passes 3 \
+  --output /Volumes/office/Build/OpenCrown/switch-analysis
+```
+
+`--base` uses normal Python integer syntax, such as `0x400000`. The atlas is either a JSON list compatible with the existing unwind parser's `entries.json` (integer canonical addresses), or a TSV with `module`, `canonical_start`, and `canonical_end` (hex text). The producer is responsible for validating those unwind anchors. One module is selected per invocation; invoke independently for each module/base/image.
+
+`--xed-root` supplies the existing matching host XED installation (`include/xed/xed-interface.h`, `lib/libxed.a`). `--cxx` can select the host C++ compiler. No dependency is downloaded. The scanner/validator executables build under `output/tools`. `--noreturn CANONICAL_ADDRESS` is repeatable and must only name independently verified nonreturning callees; its default is empty, with no hidden routine address. `--trace-directory` is optional, read-only, and only controls the missing-target snapshot. Output must be a separate analysis directory on a mounted external volume, never an artifact directory or these sources.
+
+`--passes 1..8` bounds analysis expansion. Every pass starts with all selected unwind entries plus provisional case/default roots from earlier passes. Provisional roots support discovery of nested dispatches; they never become published targets merely because they were decoded. Only the final pass's fully validated owners are published, without silently retaining earlier rejected owners.
+
+## Acceptance
+
+The scanner decodes from instruction anchors and follows direct control-flow edges. The recognizer accepts only the explicit RIP-relative-base/signed32-offset/ADD/indirect-JMP sequence with an unsigned JA guard and a small fixed bound (at most4096 slots). Scheduling independent instructions between LEA and MOVSXD is permitted only if they preserve the participating registers and control flow. Guard/index copies require unchanged register equivalence and a dominating copy on every protected predecessor path. A 32-bit guard also needs an independently dominating zero/sign-extension proof for the full index; a 64-bit comparison of the exact full index already bounds the whole indexed value.
+
+An 8/16-bit guard additionally requires dominating full-register MOVZX/copy
+definitions that bound the entire indexed value to the compared width. Partial
+destination writes, stale extensions, high-byte guards and source clobbers reject.
+Zero/copy proof dependency PCs are protected against both direct and recognized
+table-edge bypasses.
+
+Every accepted table must match an immutable, uniquely file-backed span of the original ELF byte-for-byte. All case/default targets must stay within the owning nonoverlapping unwind range. Alternate predecessors into the protected guard/dispatch path are rejected, including accepted table edges. The validator then walks the owning function from its unwind entry with all recognized tables: every declared dispatch and case must be reached, with no decode failures, unresolved indirect jumps, overlapping instruction intervals, or external branches. Direct calls retain the return continuation; explicitly configured nonreturning calls terminate the path.
+
+The current ELF helper supports little-endian x86-64 ELF program headers including SCE RELRO mappings and requires one executable file mapping starting at image offset0. It validates file/memory/load bounds, atlas ranges, and prepared-image identity. Non-load SCE metadata segments may legitimately have file bytes with memsz0; they do not become runtime mappings.
+
+This is a deliberately conservative static catalog, not proof of whole-game reachability. Preloaded loop table bases, ABI-dependent callee-saved proofs, pointer tables, ambiguous narrow guards, unresolved functions, and otherwise valid external tail branches remain excluded. Those shapes require a distinct reviewed extension or separate evidence. There is no silent success fallback.
+
+## Outputs and integration
+
+- `all-targets.txt`: sorted unique canonical case/default addresses accepted in the final pass.
+- `missing-targets.txt`: those addresses absent from the optional trace-directory snapshot; without a trace directory, all accepted entries are missing.
+- `incomplete-owner-targets.txt` / `incomplete-owner-tables.json`: separate speculative candidates, with unresolved indirect PCs and external direct edges recorded in canonical addresses. Every published table, default, case and proof dependency must be reached/decoded inside the owner, without decoding failures or overlaps. Unknown exits may still bypass those dependencies through unseen paths; these are not complete-owner proofs.
+- `prefetch-targets.txt` / `missing-prefetch-targets.txt`: compilation union of accepted targets and the explicitly incomplete candidates.
+- `entries.json`: each target's owning bounds, source dispatch/table, table slots, and default role.
+- `accepted-tables.json`: guard/index proof windows, bounded offsets, source/table hashes, and original ELF offsets.
+- `rejected-owners.json`: incomplete or conflicting CFGs, retained for review rather than prefetch.
+- `provenance.json`: input/source/output SHA256 values, pass counts, configured nonreturning addresses, and explicit limitations. Per-pass raw boundaries, candidates, rejections, CFG results, and provisional roots remain available.
+
+The bootstrap runs this independently for each prepared module after producing the validated unwind atlas, then passes `missing-prefetch-targets.txt` to the batch lifter. Compiling a candidate changes neither exact-PC dispatch nor runtime checkpoint acceptance. A new unsupported lift/codegen operation still stops explicitly with its named log; completed peers remain cached. Runtime coverage remains an independent check. Keep the catalog output and original decoder inputs for reproducibility; no input bytes need to enter the public repository. The tools use the already provisioned XED dependency and copy no vendor source.
+
+## Owned tests
+
+```sh
+python3 test.py \
+  --output /Volumes/office/Build/OpenCrown/switch-fixtures \
+  --xed-root /path/to/remill-install \
+  --llvm-bin /path/to/llvm/bin
+```
+
+The test assembles authored x86-64 routines, requires the object to contain no unresolved relocations, builds its own small ELF carrier and atlas, then runs the actual CLI. It never executes the generated x86 code.
+
+The 36-function matrix accepts 13 owners / 14 tables, covering ordinary,
+copied-index, interposed-MOV, full 64-bit and zero-extended narrow guards, and
+nested tables. Twenty-three owners reject, including stale/partial extensions,
+source/index/base clobbers, direct and table-edge proof bypasses, ambiguous upper
+bits, unresolved CFG, overlapping case entry, excessive bounds and external tails.
+Four incomplete owners separately exercise speculative candidate labeling and
+exact unresolved/external site records without entering the accepted set. Additional owned failures cover prepared-image mismatch, overlapping atlas owners, and malformed ELF bounds. Nested discovery requires more than one pass. `results.json` records 45 checks with zero failures and artifact hashes.

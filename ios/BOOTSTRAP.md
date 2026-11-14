@@ -31,7 +31,7 @@ repository; the app's Files import supplies them separately.
 
 Use `--check` to validate tools, SDKs, mounted paths and executable hashes,
 and print the resolved configuration without creating a workspace. Use
-`--prepare-only` to build dependencies, host fixtures and seed module libraries
+`--prepare-only` to build dependencies, host fixtures and statically indexed module libraries
 without trace discovery, app generation or signing. A team is unnecessary in
 these modes. `--prepare-only` still compiles code; `--check` is the quick check.
 
@@ -40,6 +40,20 @@ indexes and compiles their indexed executable function entries. The reader
 checks CIE/FDE bounds, ordering, ranges and index consistency against the exact
 prepared image. These are static candidates, not evidence that every entry is
 reachable or executed. Owned malformed-ELF fixtures exercise rejection paths.
+
+A generic XED-based switch scanner then reads each module’s validated unwind
+entries and immutable ELF/image bytes. It accepts bounded relative tables only
+after register/guard proofs and complete per-owner CFG checks; ambiguous index
+upper bits, clobbers, unresolved jumps, overlapping instructions and external
+branches reject from the complete-owner set. A separate speculative prefetch
+tier retains locally guarded candidates with zero decode/reachability failures
+or overlaps, recording every unresolved/external site. Unknown exits may bypass
+local proof dependencies, so that tier does not count as complete-owner evidence.
+Exact-PC runtime dispatch and scene checkpoints are unchanged. Owned assembly
+fixtures check accepted/rejected shapes and candidate labeling.
+The output remains a speculative static catalog: real executed-target discovery
+still reports every unresolved runtime destination. See
+[scanner details](game/control-flow/README.md).
 
 Cached trace records preserve their original generation hashes. A helper/lowerer
 change refreshes only traces that used FP80 lowering; semantics or lifter changes
@@ -57,7 +71,7 @@ always retained. Arbitrary code bytes are not scanned for guessed entries. Unsup
 instructions and runtime failures stop the build explicitly. Exhausting the
 round budget is reported as **partial coverage**, then the current libraries
 and apps are built. A later invocation reuses those traces and continues.
-`--rounds 0` packages current coverage without discovery.
+`--rounds 0` builds statically indexed coverage and packages it without dynamic discovery.
 
 ## Dependency pins and patches
 

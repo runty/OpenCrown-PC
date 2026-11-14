@@ -2,6 +2,20 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+Bootstrap now reproduces the generic internal-switch scan for both original
+modules. The owned XED scanner/validator checks immutable table bytes, full-index
+bounds, copy/zero-extension dominance, alternate entries and instruction overlap.
+Review found and fixed three direct/table-edge proof-bypass counterexamples
+before integration. Its 36-function matrix passes 45 checks: 13 accepted owners /
+14 tables, 23 rejected owners, and four explicitly incomplete candidate owners.
+The latter keep unresolved/external PCs in separate metadata and never count as
+complete CFGs. Bootstrap may precompile those local candidates; actual dispatch
+and checkpoint acceptance remain unchanged. Fresh scans identify 3,573 missing
+prefetch destinations; a 3,952-target union with reviewed private tables is now
+compiling. The current 41,688-entry runtime still reports loading-stage targets,
+including the same `204dd973` in fresh and disposable Felix-seeded runs. Neither
+TITLE nor INN/save reopening has passed.
+
 Packaging now retains the actual version/build substitutions instead of letting
 the shell execute their names. Built bundles report version 0.2/build 1, and
 post-build verification records signature/profile memory-capability status.

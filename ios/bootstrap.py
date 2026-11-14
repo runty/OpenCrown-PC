@@ -655,6 +655,55 @@ def main():
         run(
             "game-unwind-lift", [*builder, "--lift-file", atlas / "missing-targets.txt"]
         )
+    switch_source = SOURCE / "ios/game/control-flow"
+    run(
+        "switch-atlas-fixtures",
+        [
+            sys.executable,
+            switch_source / "test.py",
+            "--output",
+            root / "switch-atlas-fixtures",
+            "--xed-root",
+            backend / "remill-install",
+            "--llvm-bin",
+            llvm / "bin",
+        ],
+    )
+    for module in json.loads((game / "prepared-modules.json").read_text())["modules"]:
+        name = module["name"]
+        switch_atlas = game / "switch-atlas" / name
+        run(
+            "game-switch-atlas-" + name,
+            [
+                sys.executable,
+                switch_source / "catalog.py",
+                "--image",
+                game / (name + ".image"),
+                "--elf",
+                game / (name + ".elf"),
+                "--atlas",
+                atlas / "entries.json",
+                "--module",
+                name,
+                "--base",
+                hex(module["canonical"]),
+                "--output",
+                switch_atlas,
+                "--xed-root",
+                backend / "remill-install",
+                "--trace-directory",
+                game / "traces",
+            ],
+        )
+        if (switch_atlas / "missing-prefetch-targets.txt").read_text().strip():
+            run(
+                "game-switch-lift-" + name,
+                [
+                    *builder,
+                    "--lift-file",
+                    switch_atlas / "missing-prefetch-targets.txt",
+                ],
+            )
     if not args.prepare_only and args.rounds:
         run(
             "game-discovery",
