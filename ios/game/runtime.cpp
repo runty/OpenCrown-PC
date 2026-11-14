@@ -172,7 +172,9 @@ void waitVblank() {
 }
 void recordFailure(const std::string &value) {
   std::lock_guard<std::mutex> lock(engine().diagnosticLock);
-  if (!engine().booted.load() && engine().firstError.empty() &&
+  const bool checkpointExit = engine().booted.load() &&
+      value.rfind("boot checkpoint complete", 0) == 0;
+  if (!checkpointExit && engine().firstError.empty() &&
       value.find("bootstrap stopped") == std::string::npos)
     engine().firstError = value;
 }
@@ -1011,15 +1013,19 @@ extern "C" const char *dcp_cpu_report() {
     firstError = engine().firstError;
     currentScene = engine().currentScene;
   }
+  const std::string threadError = dcp_thread_error();
+  const bool expectedThreadExit = threadError.empty() ||
+      threadError.rfind("boot checkpoint complete", 0) == 0 ||
+      threadError.rfind("bootstrap stopped", 0) == 0;
   if (!firstError.empty())
     error = firstError;
-  else if (*dcp_thread_error())
-    error = dcp_thread_error();
-  if (engine().booted.load() && firstError.empty()) {
+  else if (!threadError.empty())
+    error = threadError;
+  if (engine().booted.load() && firstError.empty() && expectedThreadExit) {
     stage = engine().headless.scene == "TITLE" ? "title" : "checkpoint";
     error.clear();
   }
-  if (engine().userStop.load() && joined) {
+  if (engine().userStop.load() && joined && firstError.empty() && expectedThreadExit) {
     stage = "stopped";
     error.clear();
   }
@@ -1031,10 +1037,11 @@ extern "C" const char *dcp_cpu_report() {
     dcp_ime_init({});
     dcp::render::shutdown_aot_capture();
   }
+  const bool checkpointComplete = engine().booted.load() && firstError.empty() && error.empty() && joined;
   std::ostringstream out;
   out << "{\"backend\":\"Remill AOT real modules\",\"stage\":\"" << stage
       << "\",\"steps\":" << engine().steps
-      << ",\"booted\":" << (engine().booted.load() ? "true" : "false")
+      << ",\"booted\":" << (checkpointComplete ? "true" : "false")
       << ",\"game_code_executed\":"
       << (engine().enteredEboot ? "true" : "false")
       << ",\"guest_workers\":" << engine().workersStarted
@@ -1045,8 +1052,9 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_seen\":" << (engine().checkpointSeen ? "true" : "false")
       << ",\"input_script_sha256\":" << jsonString(engine().inputScriptHash)
       << ",\"checkpoint_complete\":"
-      << (engine().booted.load() ? "true" : "false")
+      << (checkpointComplete ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
+      << ",\"scene_observer_name_argument\":\"rsi\""
       << ",\"current_scene\":" << jsonString(currentScene)
       << ",\"trace_hash\":\"" << traceHash << "\"";
 #ifdef DCP_NATIVE_LIBC_BULK
@@ -1110,7 +1118,8 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     char name[16]{};
     try {
       for (size_t i = 0; i < 15; ++i) {
-        guestRead(*currentMemory, state.gpr.rdi.qword + i, &name[i], 1);
+        // Native Mac probes confirm RSI=name; RDI is the scene-manager this pointer.
+        guestRead(*currentMemory, state.gpr.rsi.qword + i, &name[i], 1);
         if (!name[i])
           break;
       }
@@ -1207,7 +1216,6 @@ extern "C" int dcp_game_snapshot(DcpGameStats *output) {
   output->interactive = target->interactive.load();
   output->entered_game = target->enteredEboot.load();
   output->title_seen = target->titleSeen.load();
-  output->checkpoint_complete = target->booted.load();
   if (target->gnmReady.load()) {
     const auto gnm = dcp_gnm_stats();
     output->submits = gnm.submits;
@@ -1216,6 +1224,7 @@ extern "C" int dcp_game_snapshot(DcpGameStats *output) {
   }
   {
     std::lock_guard<std::mutex> metadata(target->diagnosticLock);
+    output->checkpoint_complete = target->booted.load() && target->firstError.empty();
     std::snprintf(output->current_scene, sizeof(output->current_scene), "%s",
                   target->currentScene.c_str());
     std::snprintf(output->first_error, sizeof(output->first_error), "%s",

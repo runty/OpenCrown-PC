@@ -2,6 +2,31 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+The native corpus now links 47,980 entry points after scheduled-comparison,
+termination-import and guarded/conditional prefetch work. The scanner regression
+passes 74 checks across 65 owned functions, conditional isolation passes 34
+checks across 11 functions, and import derivation passes 23 synthetic checks.
+Derived stack-failure thunk declarations bind checked ELF/GOT/PLT bytes to the
+typed fatal service, with content-addressed policy snapshots in bootstrap.
+Declarations mean noreturn, not nounwind; host diagnostic unwinding remains valid.
+The service/input suite now passes 82 checks native/ASan+UBSan and all SDK compiles.
+
+A review found the scene observer reading the scene-manager object in RDI rather
+than the scene name in RSI. Native Mac probe logs confirm RSI; the correction and
+report marker are now in the real runtime. Completion also retains late worker
+errors instead of suppressing everything after its checkpoint flag. The lifecycle
+fixture exposed an initialization-timing assumption; it now waits for observed
+translated progress on resume, and all 27 sessions pass. The current corrected
+runtime still has no accepted TITLE/INN checkpoint.
+
+An independently decoded 8 KiB owner explains a large remaining cluster: 125
+relative-table slots / 98 distinct cases, plus a default and shared loop head.
+Its 1,869 decoded instructions have no errors, overlaps or unresolved branches.
+Those destinations and two reviewed factory groups add 126 missing traces; the
+next fresh boot is running. Generic base-copy/post-ADD recognition is being
+prepared separately. Latest frozen Metal evidence remains loading content;
+no physical device, live Mac save or iCloud progress was touched.
+
 Bootstrap now reproduces the generic internal-switch scan for both original
 modules. The owned XED scanner/validator checks immutable table bytes, full-index
 bounds, copy/zero-extension dominance, alternate entries and instruction overlap.

@@ -163,15 +163,28 @@ Result session(const std::filesystem::path &root, unsigned index, Mode mode) {
     std::ofstream(root / "concurrent-rejection.json") << rejected << '\n';
   }
   if (cycles) {
-    for (unsigned cycle = 0; cycle < 3; ++cycle) {
+    auto resume_until_progress = [&] {
+      DcpGameStats before{}, after{};
+      dcp_game_snapshot(&before);
       dcp_game_set_paused(0);
-      std::this_thread::sleep_for(1ms);
+      const auto progress_deadline = Clock::now() + 5s;
+      do {
+        require_alive(future, host);
+        require(Clock::now() < progress_deadline,
+                "resume did not execute translated code within five seconds");
+        std::this_thread::sleep_for(1ms);
+        dcp_game_snapshot(&after);
+      } while (after.steps <= before.steps);
+    };
+    for (unsigned cycle = 0; cycle < 3; ++cycle) {
+      // Initialization can outlast a one-millisecond resume window. Wait for
+      // actual translated progress, rather than fixed timing guesses.
+      resume_until_progress();
       dcp_game_set_paused(1);
       hold(future, host, 2ms);
     }
     // Stop from running state as well as testing stop while initially parked.
-    dcp_game_set_paused(0);
-    std::this_thread::sleep_for(1ms);
+    resume_until_progress();
   }
   if (!precancel) {
     require_alive(future, host);

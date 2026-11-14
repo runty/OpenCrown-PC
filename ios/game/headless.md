@@ -86,3 +86,17 @@ The default vblank budget is 7,200: the earlier 1,800-vblank limit could stop
 fresh startup before the original Mac reference's TITLE transition. Explicit
 small-budget negative tests remain unchanged. Longer startup still needs a
 matching outer process timeout; a larger budget does not satisfy a checkpoint.
+
+Scene names use the pinned function’s second SysV argument (RSI); RDI carries
+the scene-manager object. Native Mac probe logs for the verified Felix reload
+show TITLE, INN and TOWN in RSI. The AOT observer previously read RDI; that
+diagnostic bug is corrected, and the report identifies
+`scene_observer_name_argument="rsi"`. Earlier negative observer flags do not prove
+a scene was absent, and no accepted TITLE/INN result was claimed from them.
+
+Completion now preserves genuine worker failures that arrive after the checkpoint
+flag is set, and reports checkpoint success only after error-free teardown. The
+lifecycle fixture waits for observed translated progress during each resume,
+rather than relying on a one-millisecond initialization window. All 27 sessions
+pass, alongside six bounded headless cases and 82 service/input checks in both
+native and ASan/UBSan runs. Physical device lifecycle remains separate.

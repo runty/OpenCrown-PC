@@ -180,6 +180,7 @@ def main():
         default=[],
         help="Canonical address of independently verified nonreturning routine; repeatable",
     )
+    ap.add_argument("--noreturn-provenance", type=Path)
     ap.add_argument("--trace-directory", type=Path)
     ap.add_argument("--cxx", default="clang++")
     args = ap.parse_args()
@@ -207,6 +208,21 @@ def main():
             raise ValueError("Prepared image differs from ELF load bytes")
     input_paths = {"image": image, "elf": elf_path, "atlas": atlas_path}
     input_hashes = {name: sha(path) for name, path in input_paths.items()}
+    noreturn_provenance = None
+    if args.noreturn_provenance:
+        path = args.noreturn_provenance.resolve()
+        document = json.loads(path.read_text())
+        matching = [r for r in document["targets"] if r["module"] == args.module]
+        allowed = {int(r["canonical"], 0) for r in matching}
+        if not set(args.noreturn) <= allowed or any(
+            r["elf_sha256"] != input_hashes["elf"]
+            or r["image_sha256"] != input_hashes["image"]
+            for r in matching
+        ):
+            raise ValueError(
+                "Noreturn declarations do not match their artifact-derived provenance"
+            )
+        noreturn_provenance = {"path": str(path), "sha256": sha(path)}
     source_hashes = {
         f.name: sha(f) for f in source.iterdir() if f.suffix in [".py", ".cpp"]
     }
@@ -308,6 +324,13 @@ def main():
         raise RuntimeError(
             "Analysis input or source changed during the run; outputs not published"
         )
+    if (
+        noreturn_provenance
+        and sha(Path(noreturn_provenance["path"])) != noreturn_provenance["sha256"]
+    ):
+        raise RuntimeError(
+            "Noreturn provenance changed during analysis; outputs not published"
+        )
     # Only final-pass accepted entries are published. Provisional roots never imply accepted targets.
     for name in [
         "all-targets.txt",
@@ -330,6 +353,7 @@ def main():
         "canonical_base": args.base,
         "passes": passes,
         "noreturn_canonical": args.noreturn,
+        "noreturn_provenance": noreturn_provenance,
         "inputs": input_hashes,
         "decoder": {
             "xed_library_sha256": decoder_hash,

@@ -49,6 +49,7 @@ def function(name, pre, body="", badcase="", tableoverride=None):
             f"{start}_load:",
             "movsxd rdx, dword ptr [rcx+rax*4]",
             "add rdx, rcx",
+            f"{start}_dispatch:",
             "jmp rdx",
         ]
     )
@@ -201,12 +202,247 @@ fixtures = {
     ),
     "guard16": ("movzx eax,si\ncmp ax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]", True, ""),
 }
+# CMP/JA scheduling regressions: original case0..2 domains are unchanged.
+fixtures.update(
+    {
+        "scheduled_mov": (
+            "mov eax,edi\ncmp eax,2\nmov r9d,7\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_stack_future_base": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "mov rcx,qword ptr [r13]\n"
+            "mov qword ptr [rbp-0x30],rcx\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_movzx": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "movzx r9d,byte ptr [rdi]\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_movsx": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "movsx r9d,word ptr [rdi]\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_movsxd": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "movsxd r9,dword ptr [rdi]\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_lea": (
+            "mov eax,edi\ncmp eax,2\nlea r9,[rbx+4]\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_nop": (
+            "mov eax,edi\ncmp eax,2\nnop\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_store": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "mov qword ptr [rbp-8],rdi\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_wide": (
+            "cmp rax,2\nmov r9d,7\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_copy32": (
+            "mov eax,esi\ncmp esi,2\nmov r9d,7\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_narrow_copy": (
+            "movzx eax,bl\ncmp bl,2\nmov r9d,7\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_narrow_same": (
+            "movzx eax,bl\ncmp al,2\nmov r9d,7\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_copy_source_after_cmp": (
+            "mov eax,esi\ncmp esi,2\nmov esi,99\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_eight": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "mov r9d,7\n"
+            "movzx r10d,byte ptr [rdi]\n"
+            "movsx r11d,word ptr [rdi]\n"
+            "movsxd r8,dword ptr [rdi]\n"
+            "lea r9,[rbx+4]\n"
+            "mov qword ptr [rbp-8],rdi\n"
+            "nop\n"
+            "nop\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            True,
+            "",
+        ),
+        "scheduled_add_flags": (
+            "mov eax,edi\ncmp eax,2\nadd r9d,1\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_test_flags": (
+            "mov eax,edi\ncmp eax,2\ntest r9d,r9d\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_inc_flags": (
+            "mov eax,edi\ncmp eax,2\ninc r9d\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_other_cmp": (
+            "mov eax,edi\ncmp eax,2\ncmp r9d,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_index32": (
+            "mov eax,edi\ncmp eax,2\nmov eax,99\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_index64": (
+            "mov eax,edi\ncmp eax,2\nmov rax,99\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_index_lea": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "lea rax,[rax+1]\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_index_movzx": (
+            "mov eax,edi\ncmp eax,2\nmovzx eax,al\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_call": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "call .Lnormal_target\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_alternate_schedule": (
+            "test esi,esi\n"
+            "jnz fixture_scheduled_alternate_schedule_enter\n"
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "fixture_scheduled_alternate_schedule_enter:\n"
+            "mov r9d,7\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_alternate_ja": (
+            "test esi,esi\n"
+            "jnz fixture_scheduled_alternate_ja_enter\n"
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "nop\n"
+            "fixture_scheduled_alternate_ja_enter:\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_copy_bypass": (
+            "mov eax,99\n"
+            "test edi,edi\n"
+            "jnz fixture_scheduled_copy_bypass_cmp\n"
+            "mov eax,esi\n"
+            "fixture_scheduled_copy_bypass_cmp:\n"
+            "cmp esi,2\n"
+            "nop\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_stale_copy": (
+            "mov eax,esi\nmov esi,3\ncmp esi,2\nnop\nja @DEFAULT\nlea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_nine": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "nop\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+        "scheduled_table_bypass": (
+            "mov eax,edi\n"
+            "cmp eax,2\n"
+            "fixture_scheduled_table_bypass_schedule:\n"
+            "mov r9d,7\n"
+            "ja @DEFAULT\n"
+            "lea rcx,[rip+@TABLE]",
+            False,
+            "",
+        ),
+    }
+)
 text = [".intel_syntax noprefix", ".text", ".org 0x100"]
 tables = []
 for name, (pre, accepted, badcase) in fixtures.items():
     override = (
         [f"fixture_{name}_case0", f"fixture_{name}_case0+1", f"fixture_{name}_case2"]
         if name == "overlap"
+        else [
+            f"fixture_{name}_case0",
+            f"fixture_{name}_schedule",
+            f"fixture_{name}_case2",
+        ]
+        if name == "scheduled_table_bypass"
         else None
     )
     code, data = function(name, pre, badcase=badcase, tableoverride=override)
@@ -400,6 +636,12 @@ assert all(
     == t["owner_cfg"]["external_direct_branches"]
     for t in partial
 )
+scheduled_rejections = json.loads((out / "catalog/pass-0/rejected.json").read_text())
+assert any(
+    row["dispatch"] == symbols["fixture_scheduled_table_bypass_dispatch"]
+    and row["reason"] == "accepted table creates alternate protected-path entry"
+    for row in scheduled_rejections
+), "scheduled table-edge bypass must be rejected"
 manifest = json.loads((out / "catalog/provenance.json").read_text())
 assert len(manifest["passes"]) >= 2
 

@@ -677,6 +677,8 @@ bool dcp_offline_service(const char *name, const uint64_t a[6],
                          uint64_t *result) {
   if (!name || !a || !result)
     return false;
+  if (named(name, "__stack_chk_fail"))
+    throw std::runtime_error("guest stack protector check failed");
   static const char *save_calls[] = {
       "sceSaveDataInitialize3",  "sceSaveDataTerminate",
       "sceSaveDataMount2",       "sceSaveDataUmount",

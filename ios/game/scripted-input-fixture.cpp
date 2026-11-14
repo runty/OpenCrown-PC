@@ -81,5 +81,14 @@ int main(int argc, char **argv) {
   dcp_offline_init(hooks);
   require(service("scePadOpen", 1000) == 1);
   read(600, 0x8000); // A real producer takes precedence over scripted input.
+  uint64_t fatal_arguments[6]{}, fatal_result = 0xa5a5;
+  bool fatal_threw = false;
+  try {
+    dcp_offline_service("__stack_chk_fail", fatal_arguments, &fatal_result);
+  } catch (const std::runtime_error &error) {
+    fatal_threw = std::string(error.what()) == "guest stack protector check failed";
+  }
+  require(fatal_threw);
+  require(fatal_result == 0xa5a5); // No success result is returned to the guest.
   std::cout << "{\"checks\":" << checks << ",\"failed\":0}\n";
 }

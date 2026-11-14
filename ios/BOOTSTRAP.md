@@ -55,6 +55,16 @@ The output remains a speculative static catalog: real executed-target discovery
 still reports every unresolved runtime destination. See
 [scanner details](game/control-flow/README.md).
 
+The separate conditional scan can also precompile a narrow-guard table under an
+explicitly unproved upper-index-zero assumption. Its roots/edges never feed back
+into the strict scan, and every exported row remains conditional/incomplete.
+Both scanner tiers retain exact-PC runtime dispatch and scene acceptance. The
+65-function scanner matrix passes 74 checks; conditional isolation has a separate
+11-function matrix. Original stack-failure import thunks are derived from checked
+ELF/GOT/PLT metadata, with 23 owned structural checks. A content-addressed policy
+map binds those declarations to each scan; no game-address list is built into
+the generic source.
+
 Cached trace records preserve their original generation hashes. A helper/lowerer
 change refreshes only traces that used FP80 lowering; semantics or lifter changes
 refresh all affected traces. The aggregate reports both used-dependency currency

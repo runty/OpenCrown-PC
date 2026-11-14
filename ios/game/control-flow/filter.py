@@ -168,10 +168,27 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
         if gi is None or gi < 1:
             fail("no nearby unsigned JA guard")
         guard = w[gi]
-        cmp = w[gi - 1]
+        # Scheduling may separate CMP and JA. Only a bounded straight-line
+        # sequence of flag-preserving operations is supported. Its writes must
+        # leave the indexed value unchanged; the future table base is not live
+        # until its later LEA and may be overwritten here.
+        ci = None
+        scheduled_kinds = {"MOV", "MOVZX", "MOVSX", "MOVSXD", "LEA", "NOP"}
+        for k in range(gi - 1, max(-1, gi - 10), -1):
+            z = w[k]
+            if z["kind"] == "CMP":
+                ci = k
+                break
+            if z["kind"] not in scheduled_kinds:
+                fail("unsupported instruction between CMP and unsigned JA")
+            if writes(z, {idx, "rflags"}):
+                fail("scheduled instruction clobbers flags or indexed value")
+        if ci is None:
+            fail("no bounded flag-preserving CMP/JA chain")
+        cmp = w[ci]
         cm = re.fullmatch(r"cmp (\w+), (0x[0-9a-f]+)", cmp["asm"])
-        if not cm or cmp["kind"] != "CMP":
-            fail("guard compare is not adjacent register/immediate")
+        if not cm:
+            fail("guard compare is not register/immediate")
         creg, N = cm.group(1), int(cm.group(2), 16)
         wide_guard = creg == idx and bool(
             re.fullmatch(r"r(?:ax|bx|cx|dx|si|di|sp|bp|[89]|1[0-5])", creg)
@@ -182,16 +199,16 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
         narrow_guard = narrow_width in (8, 16)
         if not (reg32(creg) or wide_guard or narrow_guard) or N > 4095:
             fail("guard is not a supported bounded width")
-        protected_pcs = {z["pc"] for z in w[gi:]}
+        protected_pcs = {z["pc"] for z in w[ci + 1 :]}
         definitions = []
-        for k in range(gi, len(w)):
+        for k in range(ci + 1, len(w)):
             if pred[w[k]["pc"]] != {w[k - 1]["pc"]}:
                 fail("alternate/absent predecessor within protected dispatch path")
         if guard["target"] in {z["pc"] for z in w[gi + 1 :]}:
             fail("guard default enters dispatch")
         copy = None
         if family(creg) != idx:
-            for k in range(gi - 2, -1, -1):
+            for k in range(ci - 1, -1, -1):
                 z = w[k]
                 pattern = (r"movzx (\w+), " if narrow_guard else r"mov (\w+), ") + creg
                 mv = re.fullmatch(pattern, z["asm"])
@@ -202,7 +219,7 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                     and family(mv.group(1)) == idx
                 ):
                     # The value-equivalence copy must execute on every path to CMP.
-                    for q in range(k + 1, gi):
+                    for q in range(k + 1, ci + 1):
                         if pred[w[q]["pc"]] != {w[q - 1]["pc"]}:
                             fail(
                                 "copy does not dominate CMP on a unique predecessor chain"
@@ -314,9 +331,31 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
             narrow_memo[key] = True
             return True
 
+        assumptions = []
         if narrow_guard:
+            structural_protected_pcs = set(protected_pcs) | {cmp["pc"]}
             if not narrow_zero_before(idx, cmp["pc"]):
-                fail("narrow guard lacks a dominating full-index MOVZX/copy proof")
+                if config.get("conditional_narrow", False) and family(creg) == idx:
+                    # This is never enabled by the strict catalog driver. The
+                    # separate conditional pass may precompile these byte-exact
+                    # destinations, without claiming the unproved index bound.
+                    assumptions = [
+                        {
+                            "kind": "zero-upper-index",
+                            "full_index_register": idx,
+                            "guard_register": creg,
+                            "guard_width": narrow_width,
+                            "at_pc": cmp["pc"],
+                            "at_pc_canonical": cmp["pc"] + base,
+                            "expression": f"{idx} >> {narrow_width} == 0",
+                            "proof_status": "unproven",
+                            "required_at": "guard comparison and unchanged indexed load",
+                        }
+                    ]
+                    protected_pcs = structural_protected_pcs
+                    definitions = []
+                else:
+                    fail("narrow guard lacks a dominating full-index MOVZX/copy proof")
         elif not wide_guard and not zero_before(cmp["pc"]):
             fail("index upper-zero/sign extension not dominated within bounded CFG")
         a = w[ai]
@@ -337,7 +376,7 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
             owner <= t < end for t in targets + [guard["target"]]
         ):
             fail("case/default outside owning unwind range")
-        if any(overlap(x["pc"], x["n"]) for x in w[gi - 1 :]):
+        if any(overlap(x["pc"], x["n"]) for x in w[ci:]):
             fail("overlapping dispatch instructions")
         if any(t in nodes and overlap(t, nodes[t][0]) for t in targets):
             fail("target conflicts with established boundary")
@@ -362,6 +401,12 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
                 table_sha256=hashlib.sha256(raw).hexdigest(),
             )
         )
+        if assumptions:
+            accepted[-1]["conditional"] = True
+            accepted[-1]["assumptions"] = assumptions
+            accepted[-1]["strict_rejection"] = (
+                "narrow guard lacks a dominating full-index MOVZX/copy proof"
+            )
     except ValueError as e:
         rejected.append(dict(dispatch=dispatch, reason=str(e), window=w))
 # Every table edge must respect each accepted guard-to-dispatch protected interval.

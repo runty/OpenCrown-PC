@@ -197,6 +197,10 @@ required = [
     "libc.image",
     "eboot.fixups",
     "libc.fixups",
+    "eboot.elf",
+    "libc.elf",
+    "eboot.json",
+    "libc.json",
 ]
 if cached.get("key") == cache_hash.hexdigest() and all(
     (root / name).exists()

@@ -655,6 +655,61 @@ def main():
         run(
             "game-unwind-lift", [*builder, "--lift-file", atlas / "missing-targets.txt"]
         )
+    noreturn_source = SOURCE / "ios/game/noreturn"
+    noreturn_tools = root / "noreturn-tools"
+    run(
+        "noreturn-fixtures",
+        ["bash", noreturn_source / "build-and-test.sh", SOURCE, noreturn_tools],
+    )
+    module_metadata = json.loads((game / "prepared-modules.json").read_text())[
+        "modules"
+    ]
+    module_specs = game / "noreturn-modules.json"
+    module_specs.write_text(
+        json.dumps(
+            [
+                {
+                    "name": m["name"],
+                    "canonical_base": m["canonical"],
+                    "elf": str(game / (m["name"] + ".elf")),
+                    "image": str(game / (m["name"] + ".image")),
+                    "metadata": str(game / (m["name"] + ".json")),
+                }
+                for m in module_metadata
+            ],
+            indent=2,
+        )
+        + "\n"
+    )
+    noreturn_map = game / "noreturn-derived.json"
+    run(
+        "noreturn-imports",
+        [
+            sys.executable,
+            noreturn_source / "derive_noreturn.py",
+            "--modules",
+            module_specs,
+            "--nid-oracle",
+            noreturn_tools / "nid-oracle",
+            "--output",
+            noreturn_map,
+        ],
+    )
+    map_bytes = noreturn_map.read_bytes()
+    map_hash = hashlib.sha256(map_bytes).hexdigest()
+    map_root = game / "noreturn-maps"
+    map_root.mkdir(exist_ok=True)
+    noreturn_map = map_root / (map_hash + ".json")
+    if noreturn_map.exists() and noreturn_map.read_bytes() != map_bytes:
+        raise SystemExit("Existing noreturn-map hash snapshot differs from its content")
+    if not noreturn_map.exists():
+        temporary_map = noreturn_map.with_suffix(".json.partial")
+        temporary_map.write_bytes(map_bytes)
+        temporary_map.replace(noreturn_map)
+    noreturn_records = json.loads(map_bytes)["targets"]
+    plan["noreturn_imports_sha256"] = hashlib.sha256(
+        noreturn_map.read_bytes()
+    ).hexdigest()
     switch_source = SOURCE / "ios/game/control-flow"
     run(
         "switch-atlas-fixtures",
@@ -669,7 +724,20 @@ def main():
             llvm / "bin",
         ],
     )
-    for module in json.loads((game / "prepared-modules.json").read_text())["modules"]:
+    run(
+        "conditional-switch-fixtures",
+        [
+            sys.executable,
+            switch_source / "conditional-test.py",
+            "--output",
+            root / "conditional-switch-fixtures",
+            "--xed-root",
+            backend / "remill-install",
+            "--llvm-bin",
+            llvm / "bin",
+        ],
+    )
+    for module in module_metadata:
         name = module["name"]
         switch_atlas = game / "switch-atlas" / name
         run(
@@ -693,15 +761,38 @@ def main():
                 backend / "remill-install",
                 "--trace-directory",
                 game / "traces",
+                "--noreturn-provenance",
+                noreturn_map,
+                *[
+                    arg
+                    for record in noreturn_records
+                    if record["module"] == name
+                    for arg in ["--noreturn", record["canonical"]]
+                ],
             ],
         )
-        if (switch_atlas / "missing-prefetch-targets.txt").read_text().strip():
+        conditional_atlas = game / "conditional-switch-atlas" / name
+        run(
+            "conditional-switch-atlas-" + name,
+            [
+                sys.executable,
+                switch_source / "conditional.py",
+                "--strict-output",
+                switch_atlas,
+                "--xed-root",
+                backend / "remill-install",
+                "--output",
+                conditional_atlas,
+            ],
+        )
+        targets = conditional_atlas / "missing-prefetch-with-conditional-targets.txt"
+        if targets.read_text().strip():
             run(
                 "game-switch-lift-" + name,
                 [
                     *builder,
                     "--lift-file",
-                    switch_atlas / "missing-prefetch-targets.txt",
+                    targets,
                 ],
             )
     if not args.prepare_only and args.rounds:

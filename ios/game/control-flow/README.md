@@ -63,10 +63,38 @@ python3 test.py \
 
 The test assembles authored x86-64 routines, requires the object to contain no unresolved relocations, builds its own small ELF carrier and atlas, then runs the actual CLI. It never executes the generated x86 code.
 
-The 36-function matrix accepts 13 owners / 14 tables, covering ordinary,
+The 65-function matrix accepts 27 owners / 28 tables, covering ordinary,
 copied-index, interposed-MOV, full 64-bit and zero-extended narrow guards, and
-nested tables. Twenty-three owners reject, including stale/partial extensions,
+nested tables. Thirty-eight owners reject, including stale/partial extensions,
 source/index/base clobbers, direct and table-edge proof bypasses, ambiguous upper
 bits, unresolved CFG, overlapping case entry, excessive bounds and external tails.
 Four incomplete owners separately exercise speculative candidate labeling and
-exact unresolved/external site records without entering the accepted set. Additional owned failures cover prepared-image mismatch, overlapping atlas owners, and malformed ELF bounds. Nested discovery requires more than one pass. `results.json` records 45 checks with zero failures and artifact hashes.
+exact unresolved/external site records without entering the accepted set. Additional owned failures cover prepared-image mismatch, overlapping atlas owners, and malformed ELF bounds. Nested discovery requires more than one pass. `results.json` records 74 checks with zero failures and artifact hashes.
+
+
+## Separate conditional compile-only tier
+
+`conditional.py --strict-output EXISTING_STRICT_SCAN --xed-root EXISTING_HOST_XED_PREFIX --output NEW_SEPARATE_EXTERNAL_DIRECTORY` performs an explicitly isolated optional pass. Its output folder cannot overlap the strict scan. The strict scan is hashed before and after and is never changed. No conditional roots or edges feed back into strict discovery, accepted tables, incomplete-owner outputs, or completion counts.
+
+Only a low8/16-bit guard of the indexed register's own family can receive the explicit unproven assumption `full_index >> guard_width == 0`; differing-register equivalence is never waived. Postguard preservation, guard control-flow scheduling, immutable table bytes, bounded executable owner ranges, instruction boundaries, and decoded case/default reachability remain mandatory. A missing strict MOVZX/upper-zero proof stays a strict rejection. This pass changes no game input, instruction, clamp, callback, or runtime dispatch rule.
+
+Outputs are `conditional-tables.json`, `conditional-entries.json`, `conditional-targets.txt`, and `missing-conditional-targets.txt`. Tables record the assumption's register, width, relative/canonical comparison PC, and `proof_status=unproven`. Every `owner_cfg.complete` is false, with unresolved/external PCs retained. Even if conditional closure discovers an otherwise-strict table, that later table is not published as strict or as an assumption-free conditional row. `prefetch-with-conditional-targets.txt` explicitly unions these candidates with the unchanged strict scan's existing prefetch file; it is a compile-only artifact. `missing-prefetch-with-conditional-targets.txt` is the corresponding cache snapshot.
+
+Run `conditional-test.py --output NEW_EXTERNAL_DIRECTORY --xed-root EXISTING_HOST_XED_PREFIX --llvm-bin EXISTING_LLVM_BIN`. Its eleven owned functions include strict and conditional tables, invalid copies/clobbers/high-byte guards, unresolved/external exits, and a conditionally reachable otherwise-strict secondary table. The strict folder must remain byte-for-byte unchanged, assumptions must be present on every exported row, and the secondary table must not enter strict or conditional table outputs. Optional `--baseline-source PRE_EXTENSION_SOURCE_DIRECTORY` additionally compares strict table/target outputs with the prior implementation.
+
+The required assumption is not established by observing a case target. For example, a full index0x100 has low byte0 and passes a low-byte comparison against2 while indexing beyond a three-slot table. These entries are static speculative prefetch only and must never be counted as proved bounds or complete owning CFGs. Compilation failures remain explicit, and successful peers retain their per-target provenance.
+
+## Scheduled comparisons and derived termination imports
+
+The guard recognizer allows up to eight flag-preserving MOV/MOVZX/MOVSX/MOVSXD,
+LEA or NOP instructions between CMP and unsigned JA. Every intervening path must
+be sequential and leave the indexed value unchanged. Flag/index clobbers, an
+alternate entry, or an accepted table edge into that dependency chain reject.
+The 65-function regression matrix now passes 74 checks.
+
+`--noreturn-provenance MAP.json` binds independently derived declarations to
+matching module/ELF/image records and captures the map hash in provenance. The
+bootstrap's [import derivation](../noreturn/README.md) validates both stack-failure
+thunks from original relocation/GOT/PLT bytes, without game-address literals.
+Only the declared call fallthrough terminates; this is not `nounwind` and does
+not change runtime code or dispatch.
