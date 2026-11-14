@@ -1,5 +1,32 @@
 # Device port progress
 
+## 2026-11-14 — Simulator Town and interactive navigation
+
+Clean `1d0adf7` with the frozen 50,327-entry ordered core also passes visible
+Town in iPhone Simulator: 5,411 rendered frames /151,366,149 trace entries,
+checked advancement, no guest/frontend error, and an inspected Town/Felix image.
+This is the simulator, not the physical iPhone. The final minimum-3-GiB adapter
+also passes all27 lifecycle sessions with maximum stop44.94ms.
+
+An isolated interactive simulator session uses the real touch overlay to load
+DATA1/Felix, reach the Inn, pause through the native sheet, resume and confirm
+Leave tavern. It records7,500 frames /290,264,330 entries before an explicit
+missing trace at204db441. The independent native exploratory adventure script
+stops at the same target, with Town visible in its final image. Movement,
+combat and a completed adventure are not qualified by these runs. The next
+bounded seven-case table batch compiles for allthreeSDKs, bringing the core to
+50,334 entries; its adventure attempt is in progress.
+
+A checked GOBLIN component observer is available for later coverage tests. It
+requires independent original primary/control vtables, class tag, normal mode0,
+and both delivered/stored post-initialization state0xa4 at the shared callback.
+It preserves the separate Town predicate and rejects tutorial variants. This
+marker means only that a plain Goblin component receives an active update;
+it does not prove stage identity, enemy visibility, an attack, damage or victory.
+No mobile Goblin checkpoint has passed yet. Generated original-code evidence
+and game-specific traces remain private.
+
+
 ## 2026-11-14 — Physical save-dialog fix, cold reloads and native Town
 
 Clean `4fd1796` with the qualified 50,292-entry core passes a 180.16-second

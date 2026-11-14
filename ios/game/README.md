@@ -119,3 +119,15 @@ runtime lifecycle and bounded headless checks are separate. Failure-only
 `fault_context` now records checked resource operands for the previously
 observed string-pointer fault. That old intermittent failure has not recurred
 in the latest same-core comparison, so its exact causal operands remain open.
+
+
+### Adventure coverage diagnostics
+
+`DCP_CHECKPOINT_SCENE=GOBLIN` selects the checked plain-Goblin component update
+marker. The shared callback checks exact independent class/control/tag pointers,
+normal mode0 and matching delivered/stored state0xa4; the Town check remains
+separate. After observing the marker the checkpoint driver releases scripted
+input and requires120 advancing flips and vblanks. This proves component/frame
+advancement only. Inspect rendered enemies and test attack/damage/adventure
+results independently before calling combat playable. Constructors, asset opens,
+music requests and tutorial-mode Goblins do not satisfy this marker.

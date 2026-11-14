@@ -95,7 +95,7 @@ struct Engine {
   std::atomic<uint64_t> sceneObserverCalls{0}, sceneReadErrors{0},
       sceneInvalidNames{0};
   std::atomic<uint64_t> titleComponentCalls{0}, innReadyCalls{0},
-      townComponentCalls{0}, componentReadErrors{0};
+      townComponentCalls{0}, goblinReadyUpdates{0}, componentReadErrors{0};
   std::atomic<bool> booted{false};
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false};
@@ -1176,6 +1176,7 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"title_component_calls\":" << engine().titleComponentCalls
       << ",\"inn_ready_helper_calls\":" << engine().innReadyCalls
       << ",\"town_component_calls\":" << engine().townComponentCalls
+      << ",\"goblin_ready_updates\":" << engine().goblinReadyUpdates
       << ",\"component_observer_read_errors\":" << engine().componentReadErrors
       << ",\"requested_audio_cue\":" << jsonString(requestedCue)
       << ",\"cue_observer_name_argument\":\"rsi\""
@@ -1322,21 +1323,42 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
       return;
     const uint64_t object = state.gpr.rdi.qword - 0xa8;
     uint8_t phase = 0;
+    uint32_t mode = UINT32_MAX;
+    bool town = false, goblin = false;
     try {
-      if (object > UINT64_MAX - 0x103 ||
-          canonical(read64(*currentMemory, object)) != 0x20b2bd28 ||
-          canonical(read64(*currentMemory, object + 0xa8)) != 0x20b2cdf8 ||
-          canonical(read64(*currentMemory, object + 0xb8)) != 0x2074ec18)
+      if (object > UINT64_MAX - 0x103)
+        return;
+      const auto primary = canonical(read64(*currentMemory, object));
+      if (primary != 0x20b2bd28 && primary != 0x209c3530)
+        return;
+      const auto control = canonical(read64(*currentMemory, object + 0xa8));
+      const auto tag = canonical(read64(*currentMemory, object + 0xb8));
+      town = primary == 0x20b2bd28 && control == 0x20b2cdf8 && tag == 0x2074ec18;
+      goblin = primary == 0x209c3530 && control == 0x209c45d8 && tag == 0x20708038;
+      if (!town && !goblin)
         return;
       guestRead(*currentMemory, object + 0x103, &phase, 1);
+      if (goblin) {
+        if (object > UINT64_MAX - 0x7bb)
+          return;
+        guestRead(*currentMemory, object + 0x7b8, &mode, 4);
+      }
     } catch (const std::runtime_error &) {
       ++engine().componentReadErrors;
       return;
     }
-    // State0xa4 is entered after Town initialization; constructor0 and the Inn
-    // portal cannot match these class/vtable/tag and delivered-phase checks.
-    if (uint8_t(state.gpr.rsi.qword) == 0xa4 && phase == 0xa4)
-      recordComponent("TOWN", "active_update");
+    // Both classes share this adjusted secondary callback. Exact independent
+    // tuples prevent the Town rejection from hiding Goblin updates. Statea4
+    // follows initialization; mode0 excludes the tutorial Goblin variants.
+    // GOBLIN denotes component activity, not stage identity, pixels or a hit.
+    if (uint8_t(state.gpr.rsi.qword) == 0xa4 && phase == 0xa4) {
+      if (town)
+        recordComponent("TOWN", "active_update");
+      else if (mode == 0) {
+        ++engine().goblinReadyUpdates;
+        recordComponent("GOBLIN", "plain_enemy_active_update");
+      }
+    }
   }
 }
 
