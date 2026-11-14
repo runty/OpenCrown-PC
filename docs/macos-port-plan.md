@@ -567,6 +567,8 @@ remaining failures. Elapsed time alone never completes a milestone.
 
 ## Phase 2 feasibility on iOS and iPadOS
 
+See the [device implementation plan](ios-ipados-port-plan.md) for milestones, CPU backend selection, per-device acceptance and save handoff.
+
 The Mac runner executes x86-64 guest instructions and machine-code hooks through
 Rosetta. Apple documents Rosetta for Mac apps. A physical iPhone or iPad needs an
 arm64 application with its own way to execute the PS4 guest. The existing Switch
