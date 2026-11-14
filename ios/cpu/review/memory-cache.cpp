@@ -23,6 +23,10 @@ extern "C" Memory *__remill_write_memory_16(Memory *, uint64_t, uint16_t);
 extern "C" Memory *__remill_write_memory_32(Memory *, uint64_t, uint32_t);
 extern "C" Memory *__remill_write_memory_f32(Memory *, uint64_t, float);
 extern "C" Memory *__remill_write_memory_f64(Memory *, uint64_t, double);
+extern "C" Memory *__remill_compare_exchange_memory_8(Memory *, uint64_t,
+                                                      uint8_t &, uint8_t);
+extern "C" Memory *__remill_compare_exchange_memory_16(Memory *, uint64_t,
+                                                       uint16_t &, uint16_t);
 extern "C" Memory *__remill_compare_exchange_memory_32(Memory *, uint64_t,
                                                        uint32_t &, uint32_t);
 extern "C" Memory *__remill_compare_exchange_memory_64(Memory *, uint64_t,
@@ -291,6 +295,100 @@ void bridges() {
           "fault throws with stopOnFault");
 }
 
+void narrowAtomics() {
+  std::array<uint8_t, 32> bytes;
+  bytes.fill(0xa5);
+  Memory root;
+  addRegion(root, bytes.data(), bytes.size());
+  const uint64_t byteAddress = address(bytes.data() + 3),
+                 wordAddress = address(bytes.data() + 7);
+  __remill_write_memory_8(&root, byteAddress, 123);
+  __remill_write_memory_16(&root, wordAddress, 456);
+  uint8_t expected8 = 0;
+  uint16_t expected16 = 0;
+  __remill_compare_exchange_memory_8(&root, byteAddress, expected8, 9);
+  __remill_compare_exchange_memory_16(&root, wordAddress, expected16, 9);
+  check(expected8 == 123 && bytes[3] == 123, "CAS8 failure updates expected");
+  check(expected16 == 456 && __remill_read_memory_16(&root, wordAddress) == 456,
+        "CAS16 failure updates expected");
+  __remill_compare_exchange_memory_8(&root, byteAddress, expected8, 9);
+  __remill_compare_exchange_memory_16(&root, wordAddress, expected16, 9);
+  check(bytes[3] == 9 && expected8 == 123, "CAS8 success");
+  check(__remill_read_memory_16(&root, wordAddress) == 9 && expected16 == 456,
+        "CAS16 success");
+  check(bytes[2] == 0xa5 && bytes[4] == 0xa5 && bytes[6] == 0xa5 &&
+            bytes[9] == 0xa5,
+        "narrow CAS preserves adjacent bytes");
+  rejects(
+      [&] {
+        __remill_compare_exchange_memory_16(&root, address(bytes.data() + 31),
+                                            expected16, 0);
+      },
+      "CAS16 crossing end rejects");
+  rejects(
+      [&] {
+        __remill_compare_exchange_memory_8(&root, address(bytes.data() + 32),
+                                           expected8, 0);
+      },
+      "CAS8 past end rejects");
+  std::atomic<bool> stop{true};
+  root.stopping = &stop;
+  rejects(
+      [&] {
+        __remill_compare_exchange_memory_8(&root, byteAddress, expected8, 0);
+      },
+      "CAS8 cancellation");
+  rejects(
+      [&] {
+        __remill_compare_exchange_memory_16(&root, wordAddress, expected16, 0);
+      },
+      "CAS16 cancellation");
+  stop = false;
+  __remill_write_memory_8(&root, byteAddress, 0);
+  __remill_write_memory_16(&root, wordAddress, 0);
+  std::vector<std::thread> threads;
+  std::atomic<bool> go{false};
+  for (unsigned worker = 0; worker < 8; ++worker)
+    threads.emplace_back([&] {
+      Memory local;
+      local.regions = root.regions;
+      while (!go.load())
+        std::this_thread::yield();
+      for (unsigned i = 0; i < 4000; ++i) {
+        if (i < 20) {
+          uint8_t current = __remill_read_memory_8(&local, byteAddress);
+          for (;;) {
+            uint8_t expected = current;
+            __remill_compare_exchange_memory_8(&local, byteAddress, expected,
+                                               uint8_t(current + 1));
+            if (expected == current)
+              break;
+            current = expected;
+          }
+        }
+        uint16_t current = __remill_read_memory_16(&local, wordAddress);
+        for (;;) {
+          uint16_t expected = current;
+          __remill_compare_exchange_memory_16(&local, wordAddress, expected,
+                                              uint16_t(current + 1));
+          if (expected == current)
+            break;
+          current = expected;
+        }
+      }
+    });
+  go = true;
+  for (auto &thread : threads)
+    thread.join();
+  check(__remill_read_memory_8(&root, byteAddress) == 160,
+        "CAS8 exact no-wrap concurrent count");
+  check(__remill_read_memory_16(&root, wordAddress) == 32000,
+        "CAS16 exact no-wrap concurrent count");
+  check(bytes[2] == 0xa5 && bytes[4] == 0xa5 && bytes[6] == 0xa5 &&
+            bytes[9] == 0xa5,
+        "concurrent narrow CAS canaries");
+}
+
 void concurrent() {
   constexpr unsigned workers = 8, initial = 400, additional = 400,
                      iterations = 12000, stride = 512;
@@ -382,6 +480,7 @@ int main() {
     boundaries();
     replacement();
     bridges();
+    narrowAtomics();
     concurrent();
     callbackDoesNotHoldRegistryLock();
 #endif

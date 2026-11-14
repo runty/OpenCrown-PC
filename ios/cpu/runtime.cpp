@@ -279,6 +279,18 @@ static Memory *compareExchange(Memory *memory, uint64_t address, T &expected,
   expected = current;
   return memory;
 }
+extern "C" Memory *__remill_compare_exchange_memory_8(Memory *memory,
+                                                      uint64_t address,
+                                                      uint8_t &expected,
+                                                      uint8_t desired) {
+  return compareExchange(memory, address, expected, desired);
+}
+extern "C" Memory *__remill_compare_exchange_memory_16(Memory *memory,
+                                                       uint64_t address,
+                                                       uint16_t &expected,
+                                                       uint16_t desired) {
+  return compareExchange(memory, address, expected, desired);
+}
 extern "C" Memory *__remill_compare_exchange_memory_32(Memory *memory,
                                                        uint64_t address,
                                                        uint32_t &expected,

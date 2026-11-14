@@ -703,6 +703,17 @@ UIButton *button(NSString *title, id target, SEL action) {
   self.pauseLayout = nil;
   [self.pauseButton removeFromSuperview];
   dcp_platform_audio_stop();
+#if TARGET_OS_SIMULATOR
+  if (_replay && _replayedFrames && std::getenv("DCP_SIM_UI_SNAPSHOT")) {
+    std::string imageError;
+    bool varied = false;
+    NSString *path = [documents() stringByAppendingPathComponent:@"last-game-frame.png"];
+    if (_replay->write_png(path.fileSystemRepresentation, &imageError, &varied))
+      _snapshotHasContent = _snapshotHasContent || varied;
+    else
+      NSLog(@"OpenCrown final readback: %s", imageError.c_str());
+  }
+#endif
   if (_replay && !_replay->suspend(true))
     _hostError = @"Metal could not drain during shutdown.";
   _replay.reset();

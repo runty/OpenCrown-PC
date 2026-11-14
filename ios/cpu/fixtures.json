@@ -601,5 +601,17 @@
     "flags": false,
     "memory": true,
     "assembly": "mov rax,[rdi]\nretry: lea rcx,[rax+1]\nlock cmpxchg qword ptr [rdi],rcx\njne retry\nmov rax,rcx\nmov [rdi+8],rax\nret"
+  },
+  {
+    "name": "atomic8",
+    "flags": false,
+    "memory": true,
+    "assembly": "mov al,[rdi]\nretry: mov cl,al\nadd cl,1\nlock cmpxchg byte ptr [rdi],cl\njne retry\nmovzx eax,cl\nmov [rdi+8],rax\nret"
+  },
+  {
+    "name": "atomic16",
+    "flags": false,
+    "memory": true,
+    "assembly": "mov ax,[rdi]\nretry: mov cx,ax\nadd cx,1\nlock cmpxchg word ptr [rdi],cx\njne retry\nmovzx eax,cx\nmov [rdi+8],rax\nret"
   }
 ]

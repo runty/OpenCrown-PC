@@ -97,3 +97,14 @@ the added cache/validation cost when the working set does not fit. This is a
 measured tradeoff, not a universal speedup or a game-frame performance claim.
 Changed startup worker scheduling or a different first missing trace makes two
 real-game startup timings incomparable; those timings are not evidence here.
+
+The 2026-11-14 narrow-atomic extension adds the observed libc CAS8 bridge and
+its CAS16 counterpart through the same checked, serialized template. The latest
+fixture passes 251,067 checks natively, under ASan/UBSan and under TSAN, including
+misaligned byte/word success/failure, expected-value updates, adjacent canaries,
+end-of-range rejection and cancellation. Eight native workers also produce exact
+no-wrap totals of 160 byte increments and 32,000 word increments. Real Remill
+LOCK CMPXCHG byte/word retry routines bring the CPU corpus to 84 routines and
+1,884 checks; 83 use a native Rosetta oracle. These new bridges also compile for
+both mobile SDKs. A speculative libc routine first exposed the missing link
+symbol; that discovery does not establish that the game executed that libc path.

@@ -2,6 +2,26 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+Clean frontend `7c43b4e` with the 27,507-entry artifact now renders the real
+loading image on both simulators. Phone/tablet replay 455/376 frames and
+7,290/5,939 draws, report nonuniform snapshots, pass libc start/64 strlen checks,
+and stop at the already covered `20428a47`, with no frontend error. Readback
+shows the fairy and loading text during its initial fade. Simulator-only audio
+muting keeps these unattended runs quiet while preserving PCM consumption and
+counters; it is not audible-quality acceptance. Both complete app builds pass,
+and the iPhoneOS signature verifies. Evidence is `ios-app-frames-simulator/evidence`.
+No actual device was contacted. TITLE/INN remain open.
+
+Further libc prefetch exposed a missing CAS8 bridge at link time. Checked CAS8
+and CAS16 now share the serialized template used by CAS32/64. The expanded
+memory suite passes 251,067 checks under native/ASan/UBSan/TSAN; translated
+byte/word LOCK CMPXCHG routines bring the CPU corpus to 1,884 checks / 84 routines
+with 83 native-oracle routines. Mobile SDK compilation passes. Main discovery
+has passed 31,000 entries and exhausted ordinary direct-call/relocation
+prefetch; additional function-pointer origins are under review. No wider lift
+window is justified by the sampled gaps: all seven nonaligned demands reviewed
+are switch cases already inside the original slices.
+
 The first recognizable AOT game image now passes native Mac readback: the
 27,507-entry frozen artifact renders the real animated fairy and NOW LOADING
 text. The host replays 580 frames / 8,276 draw calls, sees nonuniform RGB content,
