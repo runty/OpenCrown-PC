@@ -13,11 +13,18 @@ import shlex
 import struct
 import subprocess
 from native_libc_ir import native_libc_ir
+from trace_provenance import record_current, needs_fp80
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--root", type=Path, required=True)
 parser.add_argument("--dump", type=Path, required=True)
 parser.add_argument("--lift", action="append", default=[])
+parser.add_argument("--lift-file", type=Path, action="append", default=[])
+parser.add_argument(
+    "--relift-stale",
+    action="store_true",
+    help="Regenerate only traces whose used tools, image or IR hash differ",
+)
 parser.add_argument(
     "--relift-all",
     action="store_true",
@@ -63,6 +70,14 @@ parser.add_argument(
     default=os.environ.get("DCP_LLVM_PREFIX", "/opt/homebrew/opt/llvm"),
 )
 args = parser.parse_args()
+for file in args.lift_file:
+    for line, value in enumerate(file.read_text().splitlines(), 1):
+        value = value.strip()
+        if not value:
+            continue
+        if not re.fullmatch(r"(?:0x)?[0-9A-Fa-f]{1,16}", value):
+            parser.error(f"Invalid lift address in {file} line {line}")
+        args.lift.append(value)
 if not 1 <= args.jobs <= 32:
     parser.error("--jobs must be between 1 and 32")
 root = args.root.resolve()
@@ -104,6 +119,12 @@ def write_json(path, value):
     temporary.write_text(json.dumps(value, indent=2) + "\n")
     temporary.replace(path)
 
+
+builder_sha256 = sha256(Path(__file__))
+generation_sources = {
+    name: sha256(Path(__file__).with_name(name))
+    for name in ["native_libc_ir.py", "trace_provenance.py"]
+}
 
 backend_snapshot = {
     "lifter_path": str(lifter),
@@ -478,6 +499,15 @@ module_hashes = {
 }
 
 
+if args.relift_stale:
+    for path in sorted(trace_dir.glob("*.ll")):
+        sidecar = path.with_suffix(".provenance.json")
+        record = json.loads(sidecar.read_text()) if sidecar.exists() else None
+        if not record_current(record, backend_snapshot, sha256(path), module_hashes):
+            requested.add(path.stem)
+    requested.difference_update(native_bulk)
+
+
 def instrument(ir, name):
     if "@dcp_trace_enter" not in ir:
         ir, count = re.subn(
@@ -551,7 +581,12 @@ def lift_trace(text):
             )
         lowered.replace(temporary)
     temporary.write_text(instrument(temporary.read_text(), out.name))
-    temporary.replace(out)
+    # Re-execute the current backend for provenance, but keep object caches
+    # when its fully instrumented output is byte-identical to the old IR.
+    if out.exists() and out.read_bytes() == temporary.read_bytes():
+        temporary.unlink()
+    else:
+        temporary.replace(out)
     record = {
         "schema": 1,
         "pc": out.stem,
@@ -563,7 +598,7 @@ def lift_trace(text):
         "input_offset_end": end,
         "input_slice_sha256": hashlib.sha256(module["image"][begin:end]).hexdigest(),
         "backend": backend_snapshot,
-        "builder_sha256": sha256(Path(__file__)),
+        "builder_sha256": builder_sha256,
         "settings": {
             "os": "linux",
             "arch": "amd64_avx",
@@ -607,8 +642,8 @@ for text, entry in native_bulk.items():
         "export": entry,
         "module_image_sha256": module_hashes["libc"],
         "backend": backend_snapshot,
-        "builder_sha256": sha256(Path(__file__)),
-        "wrapper_source_sha256": sha256(Path(__file__).with_name("native_libc_ir.py")),
+        "builder_sha256": builder_sha256,
+        "wrapper_source_sha256": generation_sources["native_libc_ir.py"],
         "helper_sources_sha256": {
             name: sha256(source / name)
             for name in [
@@ -640,14 +675,13 @@ for path in sorted(trace_dir.glob("*.ll")):
         write_json(record_path, record)
     else:
         record = json.loads(record_path.read_text()) if record_path.exists() else None
-    current = bool(
-        record
-        and record.get("backend") == backend_snapshot
-        and record.get("ir_sha256") == sha256(path)
-        and record.get("module_image_sha256") == module_hashes.get(record.get("module"))
-    )
+    current = record_current(record, backend_snapshot, sha256(path), module_hashes)
     provenance[path.stem] = {
         "status": "current" if current else "stale" if record else "unknown",
+        "fp80_lowering_dependency": needs_fp80(record) if record else None,
+        "generation_backend_matches_active": bool(
+            record and record.get("backend") == backend_snapshot
+        ),
         "implementation": record.get("implementation", "remill-aot")
         if record
         else "unknown",
@@ -657,7 +691,11 @@ for path in sorted(trace_dir.glob("*.ll")):
 write_json(
     root / "trace-provenance.json",
     {
-        "schema": 1,
+        "schema": 2,
+        "dependency_policy_sha256": generation_sources["trace_provenance.py"],
+        "complete_generation_backend_match": all(
+            value["generation_backend_matches_active"] for value in provenance.values()
+        ),
         "active_backend": backend_snapshot,
         "complete_current_backend": all(
             value["status"] == "current" for value in provenance.values()
@@ -670,9 +708,16 @@ write_json(
 if (
     sha256(lifter) != backend_snapshot["lifter_sha256"]
     or sha256(runtime_bc) != backend_snapshot["runtime_bc_sha256"]
+    or sha256(fp80_lower) != backend_snapshot["fp80_lower_sha256"]
+    or sha256(fp80_output / "manifest.json") != backend_snapshot["fp80_manifest_sha256"]
+    or sha256(Path(__file__)) != builder_sha256
+    or any(
+        sha256(Path(__file__).with_name(name)) != expected
+        for name, expected in generation_sources.items()
+    )
 ):
     raise SystemExit(
-        "Lifter or runtime bitcode changed during trace generation; relift this batch"
+        "Build source or backend changed during trace generation; relift this batch"
     )
 
 definitions = set()
@@ -859,6 +904,10 @@ for platform, target, sdk in platforms:
             "complete_current_backend": all(
                 v["status"] == "current" for v in provenance.values()
             ),
+            "complete_generation_backend_match": all(
+                v["generation_backend_matches_active"] for v in provenance.values()
+            ),
+            "dependency_policy_sha256": generation_sources["trace_provenance.py"],
             "backend_sha256": hashlib.sha256(
                 json.dumps(backend_snapshot, sort_keys=True).encode()
             ).hexdigest(),

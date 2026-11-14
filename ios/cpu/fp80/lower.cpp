@@ -162,10 +162,12 @@ struct Lower {
         case Instruction::FAdd:
         case Instruction::FSub:
         case Instruction::FMul:
-        case Instruction::FDiv: {
+        case Instruction::FDiv:
+        case Instruction::FRem: {
           unsigned op = instruction->getOpcode() == Instruction::FAdd   ? 0
                         : instruction->getOpcode() == Instruction::FSub ? 1
                         : instruction->getOpcode() == Instruction::FMul ? 2
+                        : instruction->getOpcode() == Instruction::FRem ? 6
                                                                         : 3;
           value = result(builder, "dcp_fp80_binary",
                          {slot(builder, instruction->getOperand(0)),
@@ -238,6 +240,43 @@ struct Lower {
         case Instruction::Call: {
           auto name = callName(instruction);
           int operation = -1;
+          if (name == "llvm.is.fpclass.f80") {
+            auto *classification = cast<CallInst>(instruction);
+            auto *mask =
+                classification->arg_size() == 2
+                    ? dyn_cast<ConstantInt>(classification->getArgOperand(1))
+                    : nullptr;
+            // The observed mask selects signed subnormals. Preserve raw x87
+            // bits: pseudo-denormals with the explicit integer bit set are
+            // not subnormal. No helper, canonicalization or fenv side effect.
+            if (!mask || mask->getLimitedValue() != 144)
+              fail(*instruction);
+            auto *bits = builder.CreateBitCast(classification->getArgOperand(0),
+                                               builder.getIntNTy(80));
+            auto *exponent = builder.CreateAnd(
+                builder.CreateLShr(bits,
+                                   ConstantInt::get(builder.getIntNTy(80), 64)),
+                ConstantInt::get(builder.getIntNTy(80), 0x7fff));
+            auto *significand = builder.CreateTrunc(bits, builder.getInt64Ty());
+            value = builder.CreateAnd(
+                builder.CreateICmpEQ(
+                    exponent, ConstantInt::get(builder.getIntNTy(80), 0)),
+                builder.CreateAnd(
+                    builder.CreateICmpNE(significand, builder.getInt64(0)),
+                    builder.CreateICmpULT(
+                        significand, builder.getInt64(uint64_t(1) << 63))));
+            break;
+          }
+          if (name == "remainderl" || name == "fmodl") {
+            auto *binary = cast<CallInst>(instruction);
+            if (binary->arg_size() != 2)
+              fail(*instruction);
+            value = result(builder, "dcp_fp80_binary",
+                           {slot(builder, binary->getArgOperand(0)),
+                            slot(builder, binary->getArgOperand(1)),
+                            i32(name == "remainderl" ? 5 : 6)});
+            break;
+          }
           if (name == "llvm.fabs.f80")
             operation = 1;
           else if (name == "llvm.sqrt.f80" || name == "sqrtl")
@@ -381,10 +420,13 @@ struct Lower {
         instruction->eraseFromParent();
     }
     std::vector<Function *> dead;
-    for (auto &function : module)
-      if (function.isDeclaration() && function.use_empty() &&
-          f80(function.getReturnType()))
+    for (auto &function : module) {
+      bool has80 = contains80(function.getReturnType());
+      for (auto *parameter : function.getFunctionType()->params())
+        has80 |= contains80(parameter);
+      if (function.isDeclaration() && function.use_empty() && has80)
         dead.push_back(&function);
+    }
     for (auto *function : dead)
       function->eraseFromParent();
     for (auto &global : module.globals())

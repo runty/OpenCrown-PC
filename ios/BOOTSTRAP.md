@@ -35,6 +35,18 @@ and print the resolved configuration without creating a workspace. Use
 without trace discovery, app generation or signing. A team is unnecessary in
 these modes. `--prepare-only` still compiles code; `--check` is the quick check.
 
+Before dynamic discovery, the builder validates the original modules’ unwind
+indexes and compiles their indexed executable function entries. The reader
+checks CIE/FDE bounds, ordering, ranges and index consistency against the exact
+prepared image. These are static candidates, not evidence that every entry is
+reachable or executed. Owned malformed-ELF fixtures exercise rejection paths.
+
+Cached trace records preserve their original generation hashes. A helper/lowerer
+change refreshes only traces that used FP80 lowering; semantics or lifter changes
+refresh all affected traces. The aggregate reports both used-dependency currency
+and exact generation-backend equality separately. Repeated byte-identical output
+retains object caches after actual regeneration, rather than relabeling old IR.
+
 The configurable discovery budget counts host execution/build rounds. Each
 missing trace is lifted together with up to `--prefetch 12` nearby uncompiled
 direct callees or possible vtable/callback targets from executable module

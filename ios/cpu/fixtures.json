@@ -613,5 +613,10 @@
     "flags": false,
     "memory": true,
     "assembly": "mov ax,[rdi]\nretry: mov cx,ax\nadd cx,1\nlock cmpxchg word ptr [rdi],cx\njne retry\nmovzx eax,cx\nmov [rdi+8],rax\nret"
+  },
+  {
+    "name": "atomic128",
+    "flags": false,
+    "assembly": "push rbx\npush rbp\nmov rbp,rsp\nand rsp,-16\nsub rsp,32\nmov [rsp],rdi\nmov [rsp+8],rsi\nmov rax,rdi\nnot rax\nmov rdx,rsi\nmov rbx,rsi\nmov rcx,rdi\nlock cmpxchg16b [rsp]\nsetz r8b\ncmp rax,rdi\njne bad\ncmp rdx,rsi\njne bad\ncmp r8b,0\njne bad\nlock cmpxchg16b [rsp]\njne bad\nmov rax,[rsp]\nrol rax,13\nxor rax,[rsp+8]\njmp done\nbad: mov rax,0xdeadbeef12345678\ndone: mov rsp,rbp\npop rbp\npop rbx\nret"
   }
 ]

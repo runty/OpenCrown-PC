@@ -77,7 +77,16 @@ square root, signed/unsigned integers up to 64 bits, f32/f64 conversions, all
 Original bit storage remains exact. Unknown transcendental functions,
 constrained intrinsics, FP80 function argument/return ABIs, vector operations
 and aggregate/global FP80 storage fail explicitly before arm64 code generation.
-Remainder/FMA and other operations are not silently approximated.
+IEEE remainder (`remainderl`), truncating remainder (`fmodl` and LLVM `frem`)
+use exact extended-format SoftFloat arithmetic; quotient rounding is independent
+of the guest precision/rounding control. FMA and other unsupported operations
+are rejected rather than approximated.
+
+The integer-only lowering of `llvm.is.fpclass.f80` currently accepts only mask
+144 (positive/negative subnormal). It checks the raw exponent, explicit integer
+bit and significand without canonicalization or floating environment changes.
+Other masks remain explicit errors: LLVM’s x86 handling of pseudo-denormals and
+unsupported encodings does not permit generalizing from this one predicate.
 
 Remill represents FSCALE as
 `value * exp2l(llvm.trunc.f80(exponent))`. The lowerer recognizes that specific
@@ -117,6 +126,10 @@ complete x87 environment emulation.
 ```sh
 python3 ios/cpu/fp80/test.py --build /Volumes/office/Build/OpenCrown/fp80-probe
 python3 ios/cpu/fp80/lowered-test.py --build /Volumes/office/Build/OpenCrown/fp80-probe
+python3 ios/cpu/fp80/classify-test.py --build /Volumes/office/Build/OpenCrown/fp80-probe \
+  --output /Volumes/office/Build/OpenCrown/fp80-classify-probe
+python3 ios/cpu/fp80/remainder-test.py --build /Volumes/office/Build/OpenCrown/fp80-probe \
+  --output /Volumes/office/Build/OpenCrown/fp80-remainder-probe
 python3 ios/cpu/fp80/control-test.py \
   --build /Volumes/office/Build/OpenCrown/fp80-probe \
   --backend-root /Volumes/office/Build/OpenCrown/cpu-backends
@@ -151,3 +164,18 @@ The private trace and generated oracle data remain under external
 `/Volumes/office/Build/OpenCrown/fp80-probe`; they are not redistributed here.
 These are native arm64 host execution and cross-compilation results. No physical
 iPhone/iPad or Simulator execution was performed for this component.
+
+Additional classification proof covers 1,321,120 raw inputs with 5,325,954
+native LLVM checks and 42,275,840 lowered arm64 checks, including environment
+preservation across eight rounding configurations. Unsupported masks are tested
+to fail. All three SDK targets compile the lowered IR.
+
+Remainder tests exercise 554,624 rows each through the production helper and
+actual lowered IR, plus concurrent flag/control preservation. An independent
+integer/rational oracle verifies 494,592 finite rows with zero differences.
+Native Rosetta FPREM agrees for every truncating remainder; its FPREM1 differs
+on 2,896 rows, while the exact oracle agrees with SoftFloat. Several Rosetta
+answers violate the half-modulus bound, so the implementation retains the exact
+result. This is a documented Rosetta discrepancy, not physical x86 validation.
+Masked flags match across all rows. Partial-step FPREM status, unmasked traps,
+and Remill’s simplified quotient-condition bits remain separate limitations.

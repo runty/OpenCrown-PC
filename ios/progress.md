@@ -2,6 +2,31 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+The validated sectionless-ELF unwind reader now identifies 32,282 function
+entries in the pinned modules, exactly matching independent LLVM unwind output.
+Twenty-nine owned synthetic ELF/CFI cases cover malformed metadata and valid
+zero-address/null-pointer distinctions. Static indexing is not an execution
+claim. The expanded corpus has 35,976 entries; all used dependency records are
+current, while unchanged non-FP80 traces retain their original generation
+backend records explicitly. Full linked runtime verification is continuing.
+
+The cold libc corpus exposed mask-144 FP80 classification and extended-format
+remainder operations. Integer-only classification passes 5,325,954 native LLVM
+and 42,275,840 lowered arm64 checks. Production/lowered remainder each pass
+554,624 rows, flags and concurrent state checks; an independent exact finite
+oracle has zero differences. Rosetta FPREM1 differs on 2,896 rows and is recorded
+separately, not copied into the implementation. Other classification masks and
+unknown transcendental operations remain explicit failures.
+
+Six indexed libc functions also require the Remill CAS128 reference-operand
+ABI. The checked serialized bridge now passes full-width success/failure,
+expected/desired preservation, bounds, cancellation, canaries and an eight-worker
+counter carrying across 64 bits. Memory fixtures pass 251,076 checks in each
+native/ASan+UBSan/TSAN run. A translated LOCK CMPXCHG16B fixture matches the native
+oracle, bringing the CPU corpus to 1,906 checks / 85 routines (84 native-oracle
+routines), with all three SDKs compiled. The six private functions are compiled;
+this does not claim they have executed in the game.
+
 Clean frontend `7c43b4e` with the 27,507-entry artifact now renders the real
 loading image on both simulators. Phone/tablet replay 455/376 frames and
 7,290/5,939 draws, report nonuniform snapshots, pass libc start/64 strlen checks,

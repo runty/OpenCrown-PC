@@ -304,6 +304,14 @@ extern "C" Memory *__remill_compare_exchange_memory_64(Memory *memory,
   return compareExchange(memory, address, expected, desired);
 }
 
+extern "C" Memory *__remill_compare_exchange_memory_128(Memory *memory,
+                                                        uint64_t address,
+                                                        uint128_t &expected,
+                                                        uint128_t &desired) {
+  // Remill passes both 128-bit operands by reference, unlike its narrow ABI.
+  return compareExchange(memory, address, expected, desired);
+}
+
 void guestRead(Memory &memory, uint64_t address, void *output, size_t size) {
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
   auto pointer = checkedPointerLocked(memory, address, size);

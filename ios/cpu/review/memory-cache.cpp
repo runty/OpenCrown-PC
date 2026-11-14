@@ -31,6 +31,8 @@ extern "C" Memory *__remill_compare_exchange_memory_32(Memory *, uint64_t,
                                                        uint32_t &, uint32_t);
 extern "C" Memory *__remill_compare_exchange_memory_64(Memory *, uint64_t,
                                                        uint64_t &, uint64_t);
+extern "C" Memory *__remill_compare_exchange_memory_128(Memory *, uint64_t,
+                                                        uint128_t &, uint128_t &);
 extern "C" Memory *__remill_atomic_begin(Memory *);
 extern "C" Memory *__remill_atomic_end(Memory *);
 namespace {
@@ -389,6 +391,65 @@ void narrowAtomics() {
         "concurrent narrow CAS canaries");
 }
 
+void wideAtomics() {
+  alignas(16) std::array<uint8_t, 64> bytes;
+  bytes.fill(0xa5);
+  Memory root;
+  addRegion(root, bytes.data(), bytes.size());
+  const uint64_t target = address(bytes.data() + 16);
+  const uint128_t original = (uint128_t(0xfedcba9876543210ULL) << 64) |
+                             0x0123456789abcdefULL;
+  uint128_t expected = 0, desired = ~original, actual = 0;
+  guestWrite(root, target, &original, 16);
+  check(__remill_compare_exchange_memory_128(&root, target, expected, desired) == &root,
+        "CAS128 returns memory token");
+  guestRead(root, target, &actual, 16);
+  check(expected == original && actual == original && desired == ~original,
+        "CAS128 failure updates full expected and preserves desired");
+  __remill_atomic_begin(&root);
+  __remill_compare_exchange_memory_128(&root, target, expected, desired);
+  __remill_atomic_end(&root);
+  guestRead(root, target, &actual, 16);
+  check(expected == original && actual == desired && desired == ~original,
+        "CAS128 success inside serialized atomic region");
+  check(std::all_of(bytes.begin(), bytes.begin()+16, [](uint8_t b){return b==0xa5;}) &&
+        std::all_of(bytes.begin()+32, bytes.end(), [](uint8_t b){return b==0xa5;}),
+        "CAS128 preserves surrounding bytes");
+  const auto before = bytes;
+  rejects([&]{__remill_compare_exchange_memory_128(&root, address(bytes.data()+49), expected, desired);},
+          "CAS128 partial boundary rejects");
+  rejects([&]{__remill_compare_exchange_memory_128(&root, UINT64_MAX-7, expected, desired);},
+          "CAS128 overflow rejects");
+  std::atomic<bool> stop{true};
+  root.stopping = &stop;
+  rejects([&]{__remill_compare_exchange_memory_128(&root, target, expected, desired);},
+          "CAS128 cancellation");
+  check(bytes == before, "CAS128 rejected writes preserve all bytes");
+  stop = false;
+  // Carry across the low 64 bits while retaining a correlated high half.
+  const uint128_t start = (uint128_t(17) << 64) | (UINT64_MAX - 100);
+  guestWrite(root, target, &start, 16);
+  std::vector<std::thread> threads;
+  for (unsigned worker=0; worker<8; ++worker)
+    threads.emplace_back([&]{
+      Memory local;
+      local.regions = root.regions;
+      for(unsigned i=0;i<4000;++i){
+        uint128_t current;
+        guestRead(local, target, &current, 16);
+        for(;;){
+          uint128_t wanted=current+1, seen=current;
+          __remill_compare_exchange_memory_128(&local, target, seen, wanted);
+          if(seen==current) break;
+          current=seen;
+        }
+      }
+    });
+  for(auto &thread:threads) thread.join();
+  guestRead(root,target,&actual,16);
+  check(actual == start+32000, "CAS128 exact concurrent count with 64-bit carry");
+}
+
 void concurrent() {
   constexpr unsigned workers = 8, initial = 400, additional = 400,
                      iterations = 12000, stride = 512;
@@ -481,6 +542,7 @@ int main() {
     replacement();
     bridges();
     narrowAtomics();
+    wideAtomics();
     concurrent();
     callbackDoesNotHoldRegistryLock();
 #endif

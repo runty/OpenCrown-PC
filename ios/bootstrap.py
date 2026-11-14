@@ -458,6 +458,18 @@ def main():
             fp80_output,
         ],
     )
+    for fixture in ["classify", "remainder"]:
+        run(
+            "fp80-" + fixture,
+            [
+                sys.executable,
+                SOURCE / f"ios/cpu/fp80/{fixture}-test.py",
+                "--build",
+                fp80_output,
+                "--output",
+                root / f"fp80-{fixture}-probe",
+            ],
+        )
     run(
         "fp80-control",
         [
@@ -613,7 +625,36 @@ def main():
         run("game-cache-check", builder)
     provenance = json.loads((game / "trace-provenance.json").read_text())
     if not provenance["complete_current_backend"]:
-        run("game-relift", [*builder, "--relift-all"])
+        run("game-relift", [*builder, "--relift-stale"])
+    for fixture in ["provenance-test.py", "unwind-test.py"]:
+        run(
+            fixture.removesuffix(".py"),
+            [
+                sys.executable,
+                SOURCE / "ios/game" / fixture,
+                *(
+                    ["--output", root / "unwind-test"]
+                    if fixture == "unwind-test.py"
+                    else []
+                ),
+            ],
+        )
+    atlas = game / "unwind-atlas"
+    run(
+        "game-unwind-atlas",
+        [
+            sys.executable,
+            SOURCE / "ios/game/unwind_atlas.py",
+            "--root",
+            game,
+            "--output",
+            atlas,
+        ],
+    )
+    if (atlas / "missing-targets.txt").read_text().strip():
+        run(
+            "game-unwind-lift", [*builder, "--lift-file", atlas / "missing-targets.txt"]
+        )
     if not args.prepare_only and args.rounds:
         run(
             "game-discovery",

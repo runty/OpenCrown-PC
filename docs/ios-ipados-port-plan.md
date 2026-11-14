@@ -46,9 +46,9 @@ Before choosing a translator, run a small bake-off. Inspect available lifters fo
 | Milestone | Evidence and remaining gate |
 | --- | --- |
 | P0 | Both physical devices cold-launch the signed shell and export diagnostics. Passed. |
-| P1 | Both pass the original 146-check synthetic corpus. The expanded host corpus passes 1,840 checks plus independent SIMD/x87 oracle suites; actual libc startup returns zero on arm64 Mac. Real-module proof on both physical devices remains open. |
+| P1 | Both pass the original 146-check synthetic corpus. The expanded host corpus passes 1,906 checks across 85 routines plus independent SIMD/x87 oracle suites; actual libc startup returns zero on arm64 Mac. Real-module proof on both physical devices remains open. |
 | P2 | Real modules load, relocate, execute and start workers on arm64. Continue executed-target discovery and fix explicitly reported services/instructions until TITLE and INN; then compare event order and save reopening. No successful game boot is claimed. |
-| P3 | All three SDK shader targets and synthetic Metal replay/readback pass. Simulator Metal initializes. Connect and verify actual captured game frames after startup coverage; present counts alone are insufficient. |
+| P3 | All three SDK shader targets and synthetic Metal replay/readback pass. Real animated loading frames now render on native arm64 Mac and both simulators. The static loading-text region matches the Mac reference exactly on native host/tablet, with at most one channel-value difference on phone. TITLE, INN and town images remain open. |
 | P4 | Touch/controller/audio adapters, live diagnostics and cooperative pause/stop are integrated. Host concurrency/lifecycle checks pass. Actual gameplay, sound, ergonomics, reconnect, interruptions and mobile frame pacing remain acceptance work. |
 | P5 | Files import and local transactional save/checkpoint recovery pass host fixtures, including simulated process loss. Build/sign scripts exist. Verify provider behavior, two real save/reloads per device and repeat installation. Disposable iCloud handoff/conflict work precedes any live-save writes. |
 | P6 | Requires the physical devices, actual adventure completion and recorded sustained gameplay. Open. |

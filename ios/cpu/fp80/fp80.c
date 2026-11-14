@@ -73,6 +73,10 @@ static void put(void *pointer, extFloat80_t value) {
   memcpy(pointer, &value.signif, 8);
   memcpy((uint8_t *)pointer + 8, &value.signExp, 2);
 }
+static bool unsupported80(extFloat80_t value) {
+  return (value.signExp & 0x7fff) && !(value.signif >> 63);
+}
+extern void __remill_fpu_exception_raise(int32_t mask);
 static bool nan80(extFloat80_t value) {
   return (value.signExp & 0x7fff) == 0x7fff &&
          (value.signif & UINT64_C(0x7fffffffffffffff));
@@ -140,7 +144,21 @@ static extFloat80_t scale(extFloat80_t a, extFloat80_t b) {
 }
 void dcp_fp80_binary(void *out, const void *ap, const void *bp, uint32_t op) {
   mode();
-  extFloat80_t a = canonical(raw(ap)), b = canonical(raw(bp)), result;
+  extFloat80_t original_a = raw(ap), original_b = raw(bp), result;
+  if (op == 5 || op == 6) {
+    // Unsupported raw encodings take precedence over either operand's NaN
+    // payload. Canonicalizing each operand first loses that x87 priority.
+    if (unsupported80(original_a) || unsupported80(original_b)) {
+      put(out, invalid());
+      return;
+    }
+    if (!nan80(original_a) && !nan80(original_b) &&
+        (original_a.signExp & 0x7fff) != 0x7fff && original_b.signif &&
+        (((original_a.signExp & 0x7fff) == 0 && original_a.signif) ||
+         ((original_b.signExp & 0x7fff) == 0 && original_b.signif)))
+      __remill_fpu_exception_raise(2); // Native DE has no SoftFloat flag bit.
+  }
+  extFloat80_t a = canonical(original_a), b = canonical(original_b);
   switch (op) {
   case 0:
     result = extF80_add(a, b);
@@ -156,6 +174,18 @@ void dcp_fp80_binary(void *out, const void *ap, const void *bp, uint32_t op) {
     break;
   case 4:
     result = scale(a, b);
+    break;
+  case 5: // IEEE remainder: nearest integer quotient, ties to even.
+  case 6: // fmod: quotient truncated toward zero.
+    result = extF80_rem(a, b);
+    if (op == 6 && result.signif && !nan80(result) &&
+        ((result.signExp ^ a.signExp) & 0x8000)) {
+      const uint_fast8_t precision = extF80_roundingPrecision;
+      extF80_roundingPrecision = 80;
+      b.signExp = (b.signExp & 0x7fff) | (a.signExp & 0x8000);
+      result = extF80_add(result, b);
+      extF80_roundingPrecision = precision;
+    }
     break;
   default:
     abort();

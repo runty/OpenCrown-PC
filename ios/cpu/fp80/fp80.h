@@ -5,6 +5,8 @@ extern "C" {
 #endif
 // Inputs contain 10 little-endian bytes. Output buffers require 16 bytes;
 // bytes 10..15 are zeroed. No host long-double or FP80 calling convention.
+// Binary operations: 0 add, 1 subtract, 2 multiply, 3 divide, 4 FSCALE,
+// 5 IEEE remainder, 6 truncating fmod. Remainders retain full precision.
 void dcp_fp80_binary(void *out, const void *a, const void *b,
                      uint32_t operation);
 void dcp_fp80_unary(void *out, const void *a, uint32_t operation);
