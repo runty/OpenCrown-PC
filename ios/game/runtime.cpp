@@ -102,6 +102,7 @@ struct Engine {
   std::atomic<bool> booted{false};
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false};
+  bool sceneInputEnabled = false;
   std::atomic<uint64_t> checkpointVblank{0}, checkpointFlip{0};
   std::atomic<uint64_t> checkpointStartNs{0}, checkpointElapsedNs{0};
   std::string inputScriptHash;
@@ -975,6 +976,16 @@ extern "C" const char *dcp_cpu_report() {
       return !static_cast<Engine *>(context)->checkpointSeen.load();
     };
     if (offline.scripted_input) {
+      if (const char *sceneScript = std::getenv("DCP_CHECKPOINT_INPUT")) {
+        offline.scene_input_script = sceneScript;
+        if (!offline.scene_input_script.empty()) {
+          engine().sceneInputEnabled = true;
+          offline.scene_elapsed_frames = [](void *context) {
+            auto &target = *static_cast<Engine *>(context);
+            return target.vblanks.load() - target.checkpointVblank.load();
+          };
+        }
+      }
       if (const char *path = std::getenv("DCP_INPUT_SCRIPT")) {
         constexpr size_t limit = 1024 * 1024;
         std::ifstream input(path, std::ios::binary);
@@ -1193,7 +1204,8 @@ extern "C" const char *dcp_cpu_report() {
       << (checkpointComplete ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
       << ",\"input_policy\":"
-      << jsonString(engine().interactive ? "platform" : "neutral_after_checkpoint")
+      << jsonString(engine().interactive ? "platform" : engine().sceneInputEnabled
+                     ? "script_after_checkpoint" : "neutral_after_checkpoint")
       << ",\"checkpoint_observer\":"
       << jsonString(engine().headless.scene == "INN"
                         ? "component_ready_transition"

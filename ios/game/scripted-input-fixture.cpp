@@ -80,6 +80,15 @@ int main(int argc, char **argv) {
   require(rejected);
   read(600, 0x4000); // A rejected script does not partially replace the source.
   hooks.input_script = "0 CROSS\n";
+  hooks.scene_input_script = "0 LS_RIGHT\n5 0\n";
+  hooks.scene_elapsed_frames = [](void *) { return frame - 100; };
+  dcp_offline_init(hooks);
+  require(service("scePadOpen", 1000) == 1);
+  read(99, 0x4000);
+  script_active = false;
+  read(100, 0, 255);
+  read(104, 0, 255);
+  read(105, 0);
   script_active = false; // The checkpoint driver must not suppress real input.
   hooks.input_read = [](void *, unsigned, DcpPlatformPad *pad) {
     pad->connected = 1;

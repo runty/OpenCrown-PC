@@ -16,7 +16,7 @@
 namespace {
 using Clock = std::chrono::steady_clock;
 DcpOfflineHooks hooks;
-std::vector<dcp::hle::InputEvent> input_events;
+std::vector<dcp::hle::InputEvent> input_events, scene_events;
 std::mutex state_lock, pace_lock, save_lock;
 std::string mounted;
 bool mount_writable = false, mount_transition = false,
@@ -406,22 +406,24 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
         pad = {};
         pad.lx = pad.ly = pad.rx = pad.ry = 128;
       }
-    } else if (hooks.scripted_input && slot == 0 &&
-               (!hooks.scripted_input_active ||
-                hooks.scripted_input_active(hooks.context))) {
-      uint64_t frame =
-          hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
-      if (!hooks.input_script.empty()) {
-        pad.buttons = dcp::hle::script_buttons_at(input_events, frame);
-        if (pad.buttons & dcp::hle::kScriptStickLeft) pad.lx = 0;
-        if (pad.buttons & dcp::hle::kScriptStickRight) pad.lx = 255;
-        if (pad.buttons & dcp::hle::kScriptStickUp) pad.ly = 0;
-        if (pad.buttons & dcp::hle::kScriptStickDown) pad.ly = 255;
-        pad.buttons &= ~dcp::hle::kScriptStickMask;
-      } else if (frame >= 300 && frame < 310)
-        pad.buttons = 8;
-      else if (frame >= 600 && frame <= 3488 && (frame - 600) % 180 < 8)
-        pad.buttons = 0x4000;
+    } else if (hooks.scripted_input && slot == 0) {
+      if (hooks.scripted_input_active && !hooks.scripted_input_active(hooks.context)) {
+        if (hooks.scene_elapsed_frames && !scene_events.empty())
+          pad.buttons = dcp::hle::script_buttons_at(scene_events, hooks.scene_elapsed_frames(hooks.context));
+      } else {
+        uint64_t frame = hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
+        if (!hooks.input_script.empty())
+          pad.buttons = dcp::hle::script_buttons_at(input_events, frame);
+        else if (frame >= 300 && frame < 310)
+          pad.buttons = 8;
+        else if (frame >= 600 && frame <= 3488 && (frame - 600) % 180 < 8)
+          pad.buttons = 0x4000;
+      }
+      if (pad.buttons & dcp::hle::kScriptStickLeft) pad.lx = 0;
+      if (pad.buttons & dcp::hle::kScriptStickRight) pad.lx = 255;
+      if (pad.buttons & dcp::hle::kScriptStickUp) pad.ly = 0;
+      if (pad.buttons & dcp::hle::kScriptStickDown) pad.ly = 255;
+      pad.buttons &= ~dcp::hle::kScriptStickMask;
     }
     if (named(name, "scePadGetControllerInformation")) {
       auto *out = static_cast<uint8_t *>(pointer(a[1], 0x1c, true));
@@ -641,11 +643,14 @@ uint32_t audio_service(const char *name, const uint64_t *a) {
 } // namespace
 
 void dcp_offline_init(DcpOfflineHooks callbacks) {
-  std::vector<dcp::hle::InputEvent> parsed;
+  std::vector<dcp::hle::InputEvent> parsed, scene;
   int bad_line = 0;
   if (!callbacks.input_script.empty() &&
       !dcp::hle::parse_input_script(callbacks.input_script, &parsed, &bad_line))
     throw std::runtime_error("Invalid input script line " + std::to_string(bad_line));
+  if (!callbacks.scene_input_script.empty() &&
+      !dcp::hle::parse_input_script(callbacks.scene_input_script, &scene, &bad_line))
+    throw std::runtime_error("Invalid scene input script line " + std::to_string(bad_line));
   std::lock_guard<std::mutex> pace(pace_lock);
   if (hooks.audio_stop && std::any_of(ports.begin(), ports.end(),
                                       [](const Port &p) { return p.used; }))
@@ -654,6 +659,7 @@ void dcp_offline_init(DcpOfflineHooks callbacks) {
   std::lock_guard<std::mutex> lock(state_lock);
   hooks = std::move(callbacks);
   input_events = std::move(parsed);
+  scene_events = std::move(scene);
   if (hooks.save_root.empty())
     throw std::runtime_error("offline adapter requires a disposable save root");
   std::filesystem::create_directories(hooks.save_root);

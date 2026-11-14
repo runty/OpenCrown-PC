@@ -38,6 +38,10 @@ struct DcpOfflineHooks {
   // Optional checkpoint driver gate. False releases scripted buttons/sticks
   // while keeping the pad connected. A real input producer takes precedence.
   bool (*scripted_input_active)(void *context) = nullptr;
+  // Diagnostic input relative to the observed scene. Without a script the
+  // settled window keeps its connected, neutral pad.
+  std::string scene_input_script;
+  uint64_t (*scene_elapsed_frames)(void *context) = nullptr;
 };
 // Call with no active guest workers. Keeps all saves under the supplied
 // disposable root.
