@@ -112,6 +112,70 @@ void callbackDoesNotHoldRegistryLock() {
         "callback and concurrent native read complete");
 }
 
+void outerAtomicExcludesContender() {
+  std::array<uint64_t, 2> data{0, 0};
+  Memory outer, nested, contender;
+  addRegion(outer, reinterpret_cast<uint8_t *>(data.data()), sizeof(data));
+  nested.regions = contender.regions = outer.regions;
+  std::atomic<bool> entered{false}, done{false};
+  uint64_t observed = 0;
+  __remill_atomic_begin(&outer);
+  // Two contexts on the same thread exercise real recursive lock ownership.
+  __remill_atomic_begin(&nested);
+  write64(outer, address(data.data()), 123);
+  uint64_t expected = 123;
+  __remill_compare_exchange_memory_64(&nested, address(data.data()), expected, 456);
+  std::thread worker([&] {
+    entered = true;
+    observed = read64(contender, address(data.data()));
+    done = true;
+  });
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (!entered.load() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  const bool started = entered.load();
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  const bool blockedByBoth = !done.load();
+  __remill_atomic_end(&nested);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  const bool blockedByOuter = !done.load();
+  // Acquired in runtime.cpp, released here: verifies one TLS identity across
+  // translation units, including unique_lock's inlined cleanup path.
+  outer.atomicLock.unlock();
+  worker.join();
+  check(started, "atomic contender scheduled");
+  check(expected == 123, "recursive CAS under outer atomic region");
+  check(blockedByBoth && blockedByOuter, "contender waits for final outer unlock");
+  check(done && observed == 456, "contender sees committed atomic data");
+  check(!outer.atomicLock.owns_lock() && !nested.atomicLock.owns_lock(),
+        "cross-unit outer lock fully released");
+}
+
+void overlappingPages() {
+  Memory memory;
+  // Register the backing a second way. Alternate between a low guest address
+  // and its host alias in the middle of an unaligned, two-page write.
+  addRegion(memory, memory.bytes.data(), memory.bytes.size());
+  const auto base = address(memory.bytes.data());
+  const size_t offset = 4096 - (base % 4096) - 1;
+  const uint64_t low = Memory::base + offset, high = base + offset;
+  constexpr uint64_t first = 0x1122334455667788ULL, second = ~first;
+  write64(memory, low, first);
+  std::thread writer([&] {
+    for (unsigned i = 0; i < 16000; ++i) {
+      const uint64_t value = i % 2 ? first : second;
+      guestWrite(memory, high, &value, sizeof(value));
+    }
+  });
+  for (unsigned i = 0; i < 16000; ++i) {
+    const uint64_t value = read64(memory, low);
+    check(value == first || value == second, "cross-page alias snapshot");
+  }
+  writer.join();
+  check(guestMatches(memory, low, &first, sizeof(first)), "matched complete snapshot");
+  check(!guestMatches(memory, high, &second, sizeof(second)), "mismatched complete snapshot");
+}
+
 void boundaries() {
   Memory memory;
   std::vector<uint8_t> backing(4096 * 768, 0);
@@ -541,6 +605,8 @@ int main() {
     boundaries();
     replacement();
     bridges();
+    outerAtomicExcludesContender();
+    overlappingPages();
     narrowAtomics();
     wideAtomics();
     concurrent();

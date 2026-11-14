@@ -19,6 +19,7 @@ struct Memory {
   std::mutex lock;
   std::atomic<uint8_t> expected{0};
   std::atomic<unsigned> snapshots{0};
+  bool mutateAfterCopy = true;
 };
 bool valid(void *context, uint64_t address, size_t bytes, bool) {
   auto &m = *static_cast<Memory *>(context);
@@ -44,9 +45,15 @@ bool copy(void *context, uint64_t address, void *destination, size_t bytes) {
     ++m.snapshots;
     // Deliberately change the source before returning. A later raw detile
     // would deterministically disagree with the hash's captured payload.
-    std::memset(m.texture_bytes.data(), expected ^ 0x7f, bytes);
+    if (m.mutateAfterCopy) std::memset(m.texture_bytes.data(), expected ^ 0x7f, bytes);
   }
   return true;
+}
+bool matches(void *context, uint64_t address, const void *snapshot, size_t bytes) {
+  auto &m = *static_cast<Memory *>(context);
+  std::lock_guard<std::mutex> guard(m.lock);
+  return address == m.texture && bytes == m.texture_size &&
+         std::memcmp(snapshot, m.texture_bytes.data(), bytes) == 0;
 }
 class CountDevice final : public dcp::render::Device {
 public:
@@ -148,6 +155,22 @@ int main() {
     checked = count->checked;
     assert(count->draws == 200 * 128 && snapshots == 200 && uploads > 0 &&
            writes > 0 && checked >= 16384);
+    shutdown_aot_capture();
+    memory.mutateAfterCopy = false;
+    assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid, copy, matches}));
+    std::fill(memory.texture_bytes.begin(), memory.texture_bytes.end(), 0x41);
+    backend.draw(frame);
+    const auto previousCopies = memory.snapshots.load();
+    const auto previousUploads = count->uploads;
+    backend.draw(frame);
+    assert(memory.snapshots == previousCopies && count->uploads == previousUploads);
+    // Check the final byte of the atlas as well as its head.
+    memory.texture_bytes.back() ^= 1;
+    std::vector<uint8_t> original(memory.texture_size, 0x41);
+    assert(!aot_capture_matches(base, original.data(), original.size()));
+    std::fill(memory.texture_bytes.begin(), memory.texture_bytes.end(), 0x52);
+    backend.draw(frame);
+    assert(memory.snapshots == previousCopies + 1 && count->uploads == previousUploads + 1);
   }
   shutdown_aot_capture();
   std::printf("{\"frames\":200,\"draws_per_frame\":128,\"snapshots\":%u,\"uploads\":%u,\"checked_"

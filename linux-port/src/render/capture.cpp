@@ -519,6 +519,16 @@ bool aot_capture_memory(uint64_t address, size_t bytes, bool writing) {
     }
     return hooks.memory && hooks.memory(hooks.context, address, bytes, writing);
 }
+bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes) {
+    if (!address || !snapshot || !bytes || bytes > (64ULL << 20) || address > UINT64_MAX - bytes) return false;
+    AotCaptureHooks hooks;
+    {
+        std::shared_lock lock(g_state_lock);
+        if (!g_enabled.load(std::memory_order_acquire)) return false;
+        hooks = g_aot_hooks;
+    }
+    return hooks.matches_memory && hooks.matches_memory(hooks.context, address, snapshot, bytes);
+}
 bool aot_capture_copy(uint64_t address, void *destination, size_t bytes) {
     AotCaptureHooks hooks;
     {

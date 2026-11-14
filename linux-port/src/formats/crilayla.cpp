@@ -13,12 +13,14 @@ uint32_t le32(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | 
 // The compressed stream is read from its last byte towards its first, MSB-first within each byte.
 class BackwardBits {
 public:
-    BackwardBits(const uint8_t* base, size_t last) : base_(base), pos_(ptrdiff_t(last)) {}
+    BackwardBits(const uint8_t* base, size_t last, void (*checkpoint)(void*), void* context)
+        : base_(base), pos_(ptrdiff_t(last)), checkpoint_(checkpoint), context_(context) {}
     uint32_t take(int n) {
         uint32_t out = 0;
         while (n > 0) {
             if (left_ == 0) {
                 if (pos_ < 0) throw std::runtime_error("crilayla: stream underrun");
+                if (checkpoint_ && (++bytes_read_ & 4095) == 0) checkpoint_(context_);
                 pool_ = base_[pos_--];
                 left_ = 8;
             }
@@ -34,6 +36,9 @@ private:
     ptrdiff_t pos_;
     uint8_t pool_ = 0;
     int left_ = 0;
+    size_t bytes_read_ = 0;
+    void (*checkpoint_)(void*) = nullptr;
+    void* context_ = nullptr;
 };
 
 }  // namespace
@@ -43,20 +48,31 @@ bool is_crilayla(std::span<const uint8_t> in) {
 }
 
 std::vector<uint8_t> crilayla_decompress(std::span<const uint8_t> in) {
+    return crilayla_decompress(in, nullptr, nullptr);
+}
+std::vector<uint8_t> crilayla_decompress(std::span<const uint8_t> in,
+                                      void (*checkpoint)(void*), void* context) {
+    return crilayla_decompress(in, checkpoint, context, nullptr);
+}
+std::vector<uint8_t> crilayla_decompress(std::span<const uint8_t> in,
+                                      void (*checkpoint)(void*), void* context,
+                                      void (*token)(void*, bool, size_t)) {
     if (!is_crilayla(in)) throw std::runtime_error("crilayla: bad magic");
     uint32_t body_size = le32(in.data() + 8);
     uint32_t prefix_off = le32(in.data() + 12);
     if (uint64_t(prefix_off) + 0x10 + kPrefix > in.size()) throw std::runtime_error("crilayla: bad prefix offset");
+    if (body_size && !prefix_off) throw std::runtime_error("crilayla: empty compressed stream");
 
     std::vector<uint8_t> out(kPrefix + body_size);
     std::memcpy(out.data(), in.data() + prefix_off + 0x10, kPrefix);
 
     // Compressed stream occupies in[0x10, 0x10 + prefix_off); output is produced from the end backwards.
-    BackwardBits bits(in.data() + 0x10, prefix_off - 1);
+    BackwardBits bits(in.data() + 0x10, prefix_off - 1, checkpoint, context);
     static constexpr int kVle[] = {2, 3, 5, 8};
     size_t end = kPrefix + body_size - 1;
     size_t done = 0;
     while (done < body_size) {
+        if (checkpoint && (done & 4095) == 0) checkpoint(context);
         if (bits.take(1)) {
             size_t src = end - done + bits.take(13) + 3;
             size_t len = 3;
@@ -71,8 +87,13 @@ std::vector<uint8_t> crilayla_decompress(std::span<const uint8_t> in) {
                 do { v = bits.take(8); len += v; } while (v == 0xFF);
             }
             if (len > body_size - done || src > end) throw std::runtime_error("crilayla: bad backreference");
-            for (size_t i = 0; i < len; ++i) out[end - done++] = out[src--];
+            if (token) token(context, true, len);
+            for (size_t i = 0; i < len; ++i) {
+                out[end - done++] = out[src--];
+                if (checkpoint && (done & 4095) == 0) checkpoint(context);
+            }
         } else {
+            if (token) token(context, false, 1);
             out[end - done++] = uint8_t(bits.take(8));
         }
     }

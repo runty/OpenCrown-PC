@@ -30,6 +30,8 @@ parser.add_argument(
     action="store_true",
     help="Refresh every cached trace with the current lifter and semantics",
 )
+parser.add_argument("--translated-crilayla", action="store_true",
+                    help="Use the original AOT decompressor even with reviewed traces")
 parser.add_argument("--ios", action="store_true")
 parser.add_argument("--simulator", action="store_true")
 parser.add_argument(
@@ -765,6 +767,34 @@ stubs = (
     + "\n"
 )
 (root / "stubs.cpp").write_text(stubs)
+# The native leaf adapts volatile registers to one reviewed caller. Also pin
+# the continuation traces used by the original fallback. Partial discovery
+# builds continue to use translated code.
+reviewed_codec = {
+    "2062cc70": "d9f64d14591977154c70dee797a9ff1d9632ba50aa656953c333fe82709d364b",
+    "2062ce30": "de92365fd5ab55824e8eb85940ea28e623010920879f91fc235650b8959b2ca2",
+    "2062cfa7": "f66898f0cbe0f2c48b3489328b02f8c845a79739736fd52cea13a3a4cb2986e2",
+    "2062d02f": "a60d906df364fedf26667594e1989b1f46248b6c06bb00b7532112a5a6ba674a",
+    "2062d058": "1bb7022082953579013a758fbb3ff15e082586613b25c997b6835e2ec43b8b58",
+    "2062d089": "c302446b0edca3c2ae3153ecb968fc644e1100e027c019ebaa73af72aa618c67",
+    "2062d0bf": "9affda06f7c7f8585c910a096fdd5b5fb618fee011076c29c5402ff1753abe3a",
+}
+native_codec = not args.translated_crilayla and all(
+    (trace_dir / f"{pc}.ll").is_file() and sha256(trace_dir / f"{pc}.ll") == digest
+    for pc, digest in reviewed_codec.items()
+)
+codec_input = root / "native-crilayla" / "2062ce30.ll"
+if native_codec:
+    text = (trace_dir / "2062ce30.ll").read_text()
+    renamed, matches = re.subn(r"(?m)^(define ptr )@sub_2062ce30\(",
+                               r"\1@dcp_crilayla_original_2062ce30(", text)
+    if matches != 1:
+        raise SystemExit("Expected one reviewed CRILAYLA leaf")
+    codec_input.parent.mkdir(exist_ok=True)
+    if not codec_input.exists() or codec_input.read_text() != renamed:
+        temporary = codec_input.with_suffix(".ll.partial")
+        temporary.write_text(renamed)
+        temporary.replace(codec_input)
 compile_hash = hashlib.sha256()
 for directory in [
     source / "ios",
@@ -796,6 +826,10 @@ for platform, target, sdk in platforms:
 
     def compile_trace(path):
         obj = directory / (path.stem + ".o")
+        if native_codec and path.stem == "2062ce30":
+            path = codec_input
+            obj = directory / "native-crilayla" / (path.stem + ".o")
+            obj.parent.mkdir(exist_ok=True)
         if not obj.exists() or obj.stat().st_mtime < path.stat().st_mtime:
             temporary = obj.with_suffix(".o.partial")
             temporary.unlink(missing_ok=True)
@@ -822,7 +856,7 @@ for platform, target, sdk in platforms:
     # Failed compiles cannot publish a partially written cached object.
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         objects.extend(pool.map(compile_trace, sorted(trace_dir.glob("*.ll"))))
-    for path, name in [
+    native_sources = [
         (source / "ios/cpu/runtime.cpp", "memory"),
         (source / "ios/game/runtime.cpp", "runtime"),
         (source / "ios/game/gnm-services.cpp", "gnm"),
@@ -836,7 +870,13 @@ for platform, target, sdk in platforms:
         (source / "ios/game/libc-bulk.cpp", "libc-bulk"),
         (root / "stubs.cpp", "stubs"),
         (root / "modules.s", "modules"),
-    ]:
+    ]
+    if native_codec:
+        native_sources.extend([
+            (source / "ios/game/crilayla-native.cpp", "crilayla-native"),
+            (source / "linux-port/src/formats/crilayla.cpp", "crilayla-format"),
+        ])
+    for path, name in native_sources:
         obj = directory / (name + ".o")
         command = [
             "xcrun",
@@ -847,9 +887,10 @@ for platform, target, sdk in platforms:
             target,
             "-isysroot",
             sdk_path,
-            "-std=c++17",
+            "-std=c++20" if name.startswith("crilayla-") else "-std=c++17",
             "-O2",
             "-DDCP_AOT",
+            f"-DDCP_NATIVE_CRILAYLA={int(native_codec)}",
             f"-DDCP_NATIVE_LIBC_BULK={int(bool(native_bulk))}",
             *(["-DDCP_MOBILE_PLATFORM"] if platform != "mac" else []),
             "-I" + str(backend / "remill/include"),
@@ -905,6 +946,8 @@ for platform, target, sdk in platforms:
             "trace_hash": trace_hash.hexdigest(),
             "entrypoints": len(definitions),
             "native_libc_bulk": bool(native_bulk),
+            "native_crilayla": {"compiled": native_codec,
+                                "reviewed_traces": reviewed_codec if native_codec else {}},
             "complete_current_backend": all(
                 v["status"] == "current" for v in provenance.values()
             ),

@@ -1,5 +1,6 @@
 #define SDL_MAIN_HANDLED
 #include "game/game.h"
+#include "scene-frame-timing.h"
 #include "game/ime-services.h"
 #include "platform/platform.h"
 #include "render/replay.h"
@@ -170,6 +171,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   NSTimeInterval _sessionStarted;
   CFTimeInterval _lastHeartbeat;
   FrameIntervals _gameIntervals, _drawableIntervals;
+  std::deque<dcp::mobile::CompletedFrame> _completedFrames;
   FrameIntervals _pumpDurations, _presentDurations, _heartbeatDurations;
 }
 @property(nonatomic, strong) UILabel *status;
@@ -400,6 +402,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   _sessionStarted = [NSDate.date timeIntervalSince1970];
   _diagnosticPhase = @"validation";
   _lastGuest = nil;
+  _completedFrames.clear();
   _lastHeartbeat = 0;
   _presentedFrames = _replayedFrames = _replayedDraws = 0;
   _peakFootprint = _peakResident = 0;
@@ -726,6 +729,8 @@ UIButton *button(NSString *title, id target, SEL action) {
     return;
   }
   if (result == dcp::mobile::PumpResult::Frame) {
+    if (_diagnosticStartup)
+      dcp::mobile::recordCompleted(_completedFrames, frame.flip, CACurrentMediaTime());
     ++_replayedFrames;
     _gameIntervals.observe(sender.timestamp);
     _replayedDraws += frame.draws;
@@ -993,7 +998,13 @@ UIButton *button(NSString *title, id target, SEL action) {
   memory[@"sampled_peak_resident_bytes"] = @(_peakResident);
   memory[@"peak_measurement"] =
       @"Maximum session heartbeat samples; not OS high-water marks";
+  NSDictionary *settled = nil;
+  if (_diagnosticStartup && [_lastGuest[@"checkpoint_complete"] boolValue])
+    settled = dcp::mobile::settledTiming(_completedFrames,
+        [_lastGuest[@"checkpoint_observed_flip"] unsignedLongLongValue],
+        [_lastGuest[@"checkpoint_settle_frames"] unsignedLongLongValue]);
   return @{
+    @"settled_replay_timing" : settled ?: NSNull.null,
     @"build_id" : NSBundle.mainBundle.infoDictionary[@"DCPBuildID"]
         ?: @"unknown",
     @"app_version" : NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"unknown",

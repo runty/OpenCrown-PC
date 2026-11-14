@@ -1,4 +1,5 @@
 #include "game/game.h"
+#include "scene-frame-timing.h"
 #include "render/capture.h"
 #include "render/replay.h"
 #import <Foundation/Foundation.h>
@@ -172,6 +173,7 @@ int main(int argc, char **argv) {
       uint64_t rendered = 0, consumed = 0, decoded = 0;
       uint64_t drawnFrames = 0, drawCalls = 0;
       bool nonuniformSeen = false;
+      std::deque<dcp::mobile::CompletedFrame> completedFrames;
       dcp::mobile::ReplayFrame last{};
       bool stopSent = false, timedOut = false, graceExpired = false,
            unloaded = false;
@@ -199,6 +201,8 @@ int main(int argc, char **argv) {
           return false;
         ++consumed;
         if (frame.width > 0 && frame.height > 0) {
+          dcp::mobile::recordCompleted(completedFrames, frame.flip,
+              std::chrono::duration<double>(Clock::now() - started).count());
           last = frame;
           ++rendered;
           if (frame.draws) {
@@ -329,7 +333,13 @@ int main(int argc, char **argv) {
       bool success = booted && rendered > 0 && drawnFrames > 0 &&
                      (!contentRequired || nonuniformSeen) && hostError.empty() &&
                      !guestError && !timedOut && !graceExpired;
+      NSDictionary *timing = nil;
+      if (guest && [guest[@"checkpoint_complete"] boolValue])
+        timing = dcp::mobile::settledTiming(completedFrames,
+                               [guest[@"checkpoint_observed_flip"] unsignedLongLongValue],
+                               [guest[@"checkpoint_settle_frames"] unsignedLongLongValue]);
       NSDictionary *report = @{
+        @"settled_replay_timing" : timing ?: NSNull.null,
         @"success" : @(success),
         @"guest" : guest ?: NSNull.null,
         @"host_error" : string(hostError),

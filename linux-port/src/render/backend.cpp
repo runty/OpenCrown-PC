@@ -133,9 +133,32 @@ struct Backend::Impl {
         bool watched = false;
 #ifdef DCP_AOT
         std::array<uint8_t, CC_SHA256_DIGEST_LENGTH> digest{};
+        std::vector<uint8_t> snapshot;
 #endif
     };
     std::unordered_map<uint64_t, Tex> texs;        // by T# + content hash
+#ifdef DCP_AOT
+    static constexpr size_t snapshotBudget = 64u << 20;
+    size_t snapshotBytes = 0;
+    void releaseSnapshot(Tex& texture) {
+        snapshotBytes -= texture.snapshot.capacity();
+        std::vector<uint8_t>().swap(texture.snapshot);
+    }
+    void retainSnapshot(Tex& texture, std::vector<uint8_t>& bytes) {
+        if (bytes.capacity() > snapshotBudget) return;
+        if (bytes.capacity() > snapshotBudget - snapshotBytes) {
+            for (auto& pair : texs) {
+                Tex& old = pair.second;
+                if (frame_no - old.last > 1 && !old.snapshot.empty()) releaseSnapshot(old);
+                if (bytes.capacity() <= snapshotBudget - snapshotBytes) break;
+            }
+        }
+        if (bytes.capacity() <= snapshotBudget - snapshotBytes) {
+            snapshotBytes += bytes.capacity();
+            texture.snapshot.swap(bytes);
+        }
+    }
+#endif
     uint64_t reuploads = 0;
     Prompts prompts;                               // button-prompt glyph swap (prompts.h)
     std::set<uint64_t> bad_tex;                    // T# keys we cannot upload (logged once)
@@ -214,6 +237,13 @@ struct Backend::Impl {
         bool early = it == texs.end() || it->second.watched;
         bool watched = early && texwatch::protect(base, tiled, &seq);
 #endif
+#ifdef DCP_AOT
+        if (it != texs.end() && it->second.snapshot.size() == tiled &&
+            aot_capture_matches(base, it->second.snapshot.data(), size_t(tiled))) {
+            it->second.last = frame_no;
+            return it->second.id;
+        }
+#endif
         if (!watched && !readable(base, tiled)) return 0;
 #ifdef DCP_AOT
         // Own a synchronized snapshot: hashing and detiling must observe the same
@@ -239,7 +269,12 @@ struct Backend::Impl {
             bool stale = x.watched ? texwatch::written_since(base, tiled, x.seq) : head != x.head;
 #endif
             x.last = frame_no;
-            if (!stale) return x.id;
+            if (!stale) {
+#ifdef DCP_AOT
+                if (x.snapshot.empty()) retainSnapshot(x, snapshot);
+#endif
+                return x.id;
+            }
             if (++reuploads <= 8 || (reuploads & (reuploads - 1)) == 0)
                 std::fprintf(stderr, "render: texture %llx %ux%u rewritten by the game, re-uploading (%llu so far, %s)\n",
                              (unsigned long long)base, s.width, s.height, (unsigned long long)reuploads,
@@ -271,14 +306,26 @@ struct Backend::Impl {
             if (bad_tex.insert(key).second)
                 std::fprintf(stderr, "render: texture %llx fmt %u %ux%u: %s upload failed\n", (unsigned long long)base,
                              g.data_format(), s.width, s.height, dev->name());
-            if (it != texs.end()) dev->destroy(it->second.id), texs.erase(it);
+            if (it != texs.end()) {
+#ifdef DCP_AOT
+                releaseSnapshot(it->second);
+#endif
+                dev->destroy(it->second.id);
+                texs.erase(it);
+            }
             return 0;
         }
+#ifdef DCP_AOT
+        if (it != texs.end()) releaseSnapshot(it->second);
+#endif
         texs[key] = {id, frame_no, seq, head, watched
 #ifdef DCP_AOT
-                     , digest
+                     , digest, {}
 #endif
         };
+#ifdef DCP_AOT
+        retainSnapshot(texs.at(key), snapshot);
+#endif
         if (prompts.is_atlas(base, s.width, s.height, lin.data(), lin.size())) prompts.atlas_ids.insert(id);
         else prompts.atlas_ids.erase(id);
         // DCP_RENDER_TEXDUMP=hexaddr[,path.png]: write this texture's decoded alpha-over-grey image once (debug aid).
@@ -839,7 +886,13 @@ void Backend::draw(const Frame& f) {
         if (w) write_png(on, w, h, rgb);
     }
     for (auto it = m.texs.begin(); it != m.texs.end();) {  // drop textures unused for ~10 s
-        if (m.frame_no - it->second.last > 600) m.dev->destroy(it->second.id), it = m.texs.erase(it);
+        if (m.frame_no - it->second.last > 600) {
+#ifdef DCP_AOT
+            m.releaseSnapshot(it->second);
+#endif
+            m.dev->destroy(it->second.id);
+            it = m.texs.erase(it);
+        }
         else ++it;
     }
 }

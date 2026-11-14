@@ -65,10 +65,13 @@ struct AotCaptureHooks {
     // Snapshot the complete span under the guest memory synchronization lock.
     // Optional only for immutable/single-threaded fixtures; runtime must provide it.
     bool (*copy_memory)(void *context, uint64_t address, void *destination, size_t bytes) = nullptr;
+    // Optional synchronized comparison against an owned immutable snapshot.
+    bool (*matches_memory)(void *, uint64_t, const void *, size_t) = nullptr;
 };
 bool initialize_aot_capture(uint8_t *eboot_base, size_t image_size, AotCaptureHooks hooks);
 void shutdown_aot_capture();
 bool aot_capture_memory(uint64_t address, size_t bytes, bool writing);
+bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes);
 bool aot_capture_copy(uint64_t address, void *destination, size_t bytes);
 // Called before executing the original wrapper entry instructions. Arguments are SysV integer args.
 bool observe_aot_entry(uint64_t eboot_offset, const uint64_t arguments[6]);

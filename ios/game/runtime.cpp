@@ -1,4 +1,7 @@
 #include "../cpu/runtime.h"
+#if DCP_NATIVE_CRILAYLA
+#include "crilayla-native.h"
+#endif
 #include "direct-memory.h"
 #include "file-services.h"
 #include "font-services.h"
@@ -100,6 +103,7 @@ struct Engine {
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false};
   std::atomic<uint64_t> checkpointVblank{0}, checkpointFlip{0};
+  std::atomic<uint64_t> checkpointStartNs{0}, checkpointElapsedNs{0};
   std::string inputScriptHash;
   uint64_t heapTrace = 0;
   std::chrono::steady_clock::time_point epoch =
@@ -125,25 +129,31 @@ thread_local uint64_t mainThread = 0;
 thread_local std::vector<std::recursive_mutex *> heldMutexes;
 Engine &engine() { return *currentEngine; }
 bool pollRuntime() {
-  auto cancelled = [] {
-    return currentEngine && !currentEngine->stop.load() &&
-           !dcp_thread_shutdown_requested() && dcp_thread_current_cancelled() &&
-           (!currentMemory || !currentMemory->atomicLock.owns_lock());
+  // Most scalar accesses arrive while the guest is running normally. Check
+  // cancellation twice only across an actual pause, where another thread can
+  // change the worker's state while it is asleep.
+  auto stopped = [] {
+    return (currentEngine && currentEngine->stop.load()) ||
+           dcp_thread_shutdown_requested();
   };
-  if (cancelled())
+  if (stopped())
+    return true;
+  if (!currentEngine || (currentMemory && currentMemory->atomicLock.owns_lock()))
+    return false;
+  if (dcp_thread_current_cancelled())
     throw GuestThreadExit(kDcpThreadCanceledResult);
-  if (currentEngine && currentEngine->paused.load() &&
-      (!currentMemory || !currentMemory->atomicLock.owns_lock())) {
-    std::unique_lock<std::mutex> lock(currentEngine->pauseMutex);
-    currentEngine->pauseChanged.wait(lock, [] {
-      return !currentEngine->paused.load() || currentEngine->stop.load() ||
-             dcp_thread_stopping();
-    });
-  }
-  if (cancelled())
+  if (!currentEngine->paused.load())
+    return false;
+  std::unique_lock<std::mutex> lock(currentEngine->pauseMutex);
+  currentEngine->pauseChanged.wait(lock, [] {
+    return !currentEngine->paused.load() || currentEngine->stop.load() ||
+           dcp_thread_stopping();
+  });
+  if (stopped())
+    return true;
+  if (dcp_thread_current_cancelled())
     throw GuestThreadExit(kDcpThreadCanceledResult);
-  return (currentEngine && currentEngine->stop.load()) ||
-         dcp_thread_shutdown_requested();
+  return false;
 }
 void stopEngine(Engine &target) {
   {
@@ -204,6 +214,7 @@ void recordComponent(const char *name, const char *stage) {
     if (engine().headless.scene == name && !engine().checkpointSeen.load()) {
       engine().checkpointVblank = engine().vblanks.load();
       engine().checkpointFlip = dcp_gnm_stats().flips;
+      engine().checkpointStartNs = elapsedNanoseconds();
       // Publish only after both anchors are initialized for vblank readers.
       engine().checkpointSeen.store(true);
     }
@@ -445,6 +456,7 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     if (!engine().interactive && engine().checkpointSeen.load() &&
         frame >= engine().checkpointVblank.load() + engine().headless.settle_frames &&
         dcp_gnm_stats().flips >= engine().checkpointFlip.load() + engine().headless.settle_frames) {
+      engine().checkpointElapsedNs = elapsedNanoseconds() - engine().checkpointStartNs.load();
       engine().booted = true;
       throw std::runtime_error("boot checkpoint complete");
     }
@@ -875,6 +887,9 @@ extern "C" const char *dcp_cpu_report() {
 #ifdef DCP_NATIVE_LIBC_BULK
   dcp_libc_bulk_reset();
 #endif
+#if DCP_NATIVE_CRILAYLA
+  dcp_crilayla_reset();
+#endif
   engine().enteredEboot = false;
   tlsBlocks[0] = tlsBlocks[1] = errorSlot = engine().heapTrace = mainThread = 0;
   Memory &memory = engine().primary;
@@ -1056,6 +1071,14 @@ extern "C" const char *dcp_cpu_report() {
                } catch (const std::exception &) {
                  return false;
                }
+             },
+             [](void *context, uint64_t address, const void *snapshot, size_t bytes) {
+               try {
+                 return guestMatches(static_cast<Engine *>(context)->primary,
+                                     address, snapshot, bytes);
+               } catch (const std::runtime_error &) {
+                 return false;
+               }
              }}))
       throw std::runtime_error("AOT capture initialization failed");
     auto guard = allocate(memory, 8);
@@ -1164,6 +1187,7 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_settle_frames\":" << engine().headless.settle_frames
       << ",\"checkpoint_observed_vblank\":" << engine().checkpointVblank.load()
       << ",\"checkpoint_observed_flip\":" << engine().checkpointFlip.load()
+      << ",\"checkpoint_elapsed_ns\":" << engine().checkpointElapsedNs.load()
       << ",\"input_script_sha256\":" << jsonString(engine().inputScriptHash)
       << ",\"checkpoint_complete\":"
       << (checkpointComplete ? "true" : "false")
@@ -1189,6 +1213,12 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"current_scene\":" << jsonString(currentScene)
       << ",\"fault_context\":" << jsonString(faultContext)
       << ",\"trace_hash\":\"" << traceHash << "\"";
+#if DCP_NATIVE_CRILAYLA
+  const auto codec=dcp_crilayla_stats();
+  out << ",\"native_crilayla\":{\"compiled\":true,\"fast_calls\":" << codec.fast
+      << ",\"fallback_calls\":" << codec.fallback << ",\"bytes\":" << codec.bytes
+      << ",\"inplace_calls\":" << codec.inplace << '}';
+#endif
 #ifdef DCP_NATIVE_LIBC_BULK
   const auto bulk = dcp_libc_bulk_stats();
   out << ",\"native_libc_bulk\":{\"enabled\":"
