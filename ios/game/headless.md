@@ -56,3 +56,19 @@ The real-runtime lifecycle fixture still passes 27 sessions (maximum stop 10.2 m
 in this run). Storage fixtures still pass 137 core and 108 service checks across
 four simulated relaunches. These tests do not establish real INN boot or save
 reopening; those require continued executed-target coverage and actual images.
+
+For repeated discovery into INN, `advance.py --save-seed PATH` copies a
+quiescent disposable save into each fresh attempt. The seed must be on mounted
+external storage, outside the attempt-save tree. Copies are bounded to 4,096
+entries / 256 MiB and reject symlinks, special files, overlapping paths and
+nonempty destinations. Each file is copied byte-faithfully and verified with
+SHA-256; an adjacent `.seed.json` manifest records that attempt's inputs. Source
+files are never written. Keep the source quiescent throughout copying; detected
+changes reject the unused attempt. Failed copies are retained for inspection and
+never launched. This is a test-seeding facility, not cloud synchronization.
+
+`save-seed-test.py` passes 28 filesystem checks, including binary/empty files,
+empty directories, exact independent hashes, source preservation, size/count
+limits, overlap and symlink/FIFO rejection. A separate disposable copy of the
+previously verified Felix snapshot also matches all three input files. No live
+Mac or iCloud save was accessed by those copy tests.

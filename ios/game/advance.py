@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from save_seed import copy_seed, inventory
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--root", type=Path, required=True)
@@ -18,6 +19,11 @@ parser.add_argument("--dump", type=Path, required=True)
 parser.add_argument("--rounds", type=int, default=128)
 parser.add_argument("--timeout", type=float, default=120)
 parser.add_argument("--jobs", type=int, default=8)
+parser.add_argument(
+    "--save-seed",
+    type=Path,
+    help="Read-only quiescent disposable save tree copied into each attempt",
+)
 parser.add_argument("--translated-libc-bulk", action="store_true")
 parser.add_argument(
     "--prefetch",
@@ -42,6 +48,23 @@ if args.prefetch < 0:
 root = args.root.resolve()
 stop_file = args.stop_file.resolve() if args.stop_file else root / "advance.stop"
 stop_requested = False
+save_seed = args.save_seed
+if save_seed is not None:
+    # Restrict this private build workflow to mounted external storage.
+    if (
+        len(save_seed.resolve().parts) < 3
+        or save_seed.resolve().parts[1] != "Volumes"
+        or not Path("/Volumes", save_seed.resolve().parts[2]).is_mount()
+    ):
+        parser.error("Save seed must be on a mounted external disk")
+    inventory(save_seed)
+    attempts = root / "attempt-saves"
+    if (
+        save_seed.resolve() == attempts
+        or attempts in save_seed.resolve().parents
+        or save_seed.resolve() in attempts.parents
+    ):
+        parser.error("Save seed must be outside the attempt-save tree")
 
 
 def request_stop(signum, frame):
@@ -144,6 +167,11 @@ for iteration in range(args.rounds):
     runs = root / "attempt-saves"
     runs.mkdir(exist_ok=True)
     save_root = tempfile.mkdtemp(prefix="boot-", dir=runs)
+    if save_seed is not None:
+        seed_manifest = copy_seed(save_seed, save_root)
+        Path(save_root + ".seed.json").write_text(
+            json.dumps(seed_manifest, indent=2) + "\n"
+        )
     try:
         result = subprocess.run(
             [str(root / "game-boot")],
@@ -166,6 +194,8 @@ for iteration in range(args.rounds):
             f"Runtime process failed ({result.returncode}): {result.stderr}"
         )
     report = json.loads(result.stdout)
+    if save_seed is not None:
+        report["save_seed_manifest"] = save_root + ".seed.json"
     temporary = root / "boot-result.json.partial"
     temporary.write_text(json.dumps(report, indent=2) + "\n")
     temporary.replace(root / "boot-result.json")

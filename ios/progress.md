@@ -2,6 +2,13 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+Discovery can now seed each attempt from a quiescent disposable save copy,
+with bounded regular-file inventory, independent copy hashes and per-attempt
+manifests. Twenty-eight filesystem checks pass, and the earlier disposable
+Felix snapshot copies with all three files verified. This prepares repeatable
+INN/save work; it does not establish that the AOT game has reopened that save.
+Live Mac/iCloud progress remains untouched.
+
 Headless scene selection and scripted input are now connected and verified.
 The default stays TITLE plus 120 advancing flips/vblanks; INN is an explicit
 alternative. Configured names and positive finite budgets are validated, and

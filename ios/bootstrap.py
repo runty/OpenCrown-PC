@@ -113,6 +113,11 @@ def main():
         help="Trace discovery rounds; 0 skips discovery",
     )
     parser.add_argument("--prefetch", type=int, default=12)
+    parser.add_argument(
+        "--save-seed",
+        type=Path,
+        help="Quiescent disposable save tree copied into each discovery attempt",
+    )
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument(
         "--translated-libc-bulk",
@@ -625,6 +630,7 @@ def main():
                 args.prefetch,
                 "--jobs",
                 args.jobs,
+                *(["--save-seed", external(args.save_seed)] if args.save_seed else []),
                 *(["--translated-libc-bulk"] if args.translated_libc_bulk else []),
             ],
             round_limit=True,
@@ -634,6 +640,15 @@ def main():
                 "Discovery stopped gracefully; remove ios-game/advance.stop to resume. No apps were built."
             )
     run("game-libraries", [*builder, "--ios", "--simulator"])
+    run(
+        "save-seed",
+        [
+            sys.executable,
+            SOURCE / "ios/game/save-seed-test.py",
+            "--output",
+            root / "save-seed-probe",
+        ],
+    )
     run(
         "headless-config",
         [SOURCE / "ios/game/test-headless.sh", root / "headless-probe", game],
