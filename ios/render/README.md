@@ -92,21 +92,18 @@ pending work and wait for GPU idle, then stop the pump. Resume with
 are disabled while suspended. These methods require one render-thread owner.
 Stop/join workers and stop the consumer before `shutdown_aot_capture()` or guest
 image reset. Texture descriptors retain live guest addresses, so keep allocations
-alive while queued frames are consumed. AOT texture lookup takes a synchronized,
-owned snapshot before hashing and detiling, so a guest write after that copy does
-not tear the upload. This is a per-lookup snapshot, not a retained history of every
-texture revision at the original capture time.
+alive while queued frames are consumed.
 
 ## Texture correctness
 
-The AOT Backend validates texture spans through the guest registry, snapshots
-all tiled texture bytes under the guest memory lock, and hashes that owned copy
-on every lookup. Detiling uses the same owned bytes. Capture similarly copies
-resource descriptors, shader pool values, indices, vertices and constants through
-the synchronized callback before inspecting their contents. A mutation after byte 512, including
-between two draws in the same frame, causes a new upload. The unchanged desktop
-path retains native texwatch behavior. Full hashing is an initial correctness
-policy whose cost should be measured during live gameplay.
+All draws using a texture in one frame share its first synchronized snapshot.
+On a later frame, the renderer checks the complete guest span against the
+bytes used for the upload. It retains up to 64 MiB of these snapshots and
+prefers active textures. A changed or uncached span goes through synchronized
+copy, SHA-256 and detiling. A write to the last byte participates in the check.
+The renderer submits a new upload only when the content changes. Guest code may
+write again immediately after the comparison or copy. Those writes become
+visible at the next frame's lookup.
 
 When the SDL Metal device cannot sample BC1, BC2, BC3 or BC7, the mobile wrapper
 decodes blocks to RGBA8 before uploading. Partial edge blocks and unaligned input
@@ -167,8 +164,8 @@ sustained performance remain integration work.
 AOT replay now checks each texture once per replayed frame. All repeated glyph
 and sprite draws share the first owned synchronized snapshot; guest writes after
 that copy become visible on the next frame. There is no unsynchronized detile or
-partial-content shortcut. Across frames, CommonCrypto SHA-256 covers every byte
-of the snapshot, replacing byte-serial FNV for the large content hash. Descriptor
+partial-content shortcut. On a cache miss, CommonCrypto SHA-256 covers every byte
+of the newly acquired snapshot. Descriptor
 keys and the desktop write-protection path retain their existing behavior.
 
 This removes the per-glyph full-atlas copy/hash that stalled the Create save data

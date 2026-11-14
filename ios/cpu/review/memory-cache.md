@@ -1,17 +1,17 @@
 # Independent mapped-memory cache review
 
-The eight-entry per-`Memory` cache is safe under the runtime's current ownership
-contract: registries only append; their vector entries/backing ranges are not
-removed or changed while guest workers run; a `Memory` receives a replacement
-registry only while quiescent. Its cached entries are **Region values**, so
-vector reallocation does not invalidate them. A strong cached registry owner
-prevents allocator-address reuse from defeating identity invalidation.
+Each host thread keeps eight native region values and a strong owner for the
+registry it last used. Registrations append under a mutex. A worker resolves
+cache hits locally. Registry replacement requires quiescence, and a change of
+registry identity clears the thread's cached entries before reuse. Synthetic
+addresses are translated separately.
 
-All cache lookup, update and registry traversal is serialized by `guestAtomics`.
-The internal `checkedPointerLocked` does not acquire it again; public
-`guestPointer` still acquires it. Bounds use subtraction after checking sizes
-and lower bounds, avoiding end-address overflow. Synthetic bytes remain a
-separate fast path and are never cached as native ranges.
+Checked data access locks the stripes covering the actual host bytes. A
+cross-page operation takes every participating stripe in ascending order.
+Copies protect both spans. An original guest LOCK takes all stripes until
+its matching release. Same-thread nested guest contexts retain the enclosing
+lock. Mapping lookup and guest code that waits for lifecycle changes run
+outside ordinary data locks.
 
 The review identified registration/null/zero-length boundaries that the runtime
 owner corrected before final testing:

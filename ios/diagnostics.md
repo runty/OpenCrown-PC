@@ -111,3 +111,19 @@ invalid diagnostic variable. Three real disposable source files restore
 byte-for-byte; seed/source and ordinary save/checkpoint sentinels remain
 unchanged. The normal app still waits for Play. Both SDKs compile, and the
 iPhoneOS package passes strict signature/profile checks.
+
+### Measuring Town frame timing
+
+Set `DCP_CHECKPOINT_SCENE=TOWN` and choose 120–3,600 settle frames with
+`DCP_CHECKPOINT_SETTLE_FRAMES`. The default pad releases all buttons at the
+scene marker. For a walk, `DCP_CHECKPOINT_INPUT` takes the same multiline
+frame/button syntax as the boot script. Its frame numbers start at the
+observed scene vblank. Allow the entrance animation to finish before walking.
+These controls apply to checkpoint runs using disposable saves.
+
+`checkpoint_elapsed_ns` measures guest time from the scene marker to checkpoint
+completion. `settled_replay_timing` counts completed replay intervals and
+reports median and p95 milliseconds, skipped flips and elapsed time. It uses
+the first and last captured flips within the window. The report omits replay
+timing if another observed component replaces the requested scene. Drawable
+presents and repeated images do not count as extra game frames.
