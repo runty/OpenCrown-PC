@@ -1,0 +1,9 @@
+[
+  "sceCoredumpRegisterCoredumpHandler",
+  "sceGameLiveStreamingInitialize",
+  "sceNpTrophyCreateContext",
+  "sceNpTrophyCreateHandle",
+  "sceNpTrophyDestroyHandle",
+  "sceNpTrophyGetTrophyUnlockState",
+  "sceNpTrophyRegisterContext"
+]

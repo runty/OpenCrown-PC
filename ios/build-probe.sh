@@ -20,10 +20,18 @@ cpu_enabled=0
 library_dependency=""
 if [[ $# -eq 3 ]]; then
     cp "$3/ios/libcpu-fixtures.a" "$build_dir/Source/libcpu-fixtures.a"
+    if [[ -f "$3/ios/libfreetype.a" ]]; then
+        cp "$3/ios/libfreetype.a" "$build_dir/Source/libfreetype.a"
+    else
+        rm -f "$build_dir/Source/libfreetype.a"
+    fi
     cpu_enabled=1
     library_dependency=$'      - framework: Source/libcpu-fixtures.a\n        embed: false'
+    if [[ -f "$build_dir/Source/libfreetype.a" ]]; then
+        library_dependency+=$'\n      - framework: Source/libfreetype.a\n        embed: false'
+    fi
 else
-    rm -f "$build_dir/Source/libcpu-fixtures.a"
+    rm -f "$build_dir/Source/libcpu-fixtures.a" "$build_dir/Source/libfreetype.a"
 fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi
@@ -36,7 +44,9 @@ targets:
   OpenCrownProbe:
     type: application
     platform: iOS
-    sources: [Source]
+    sources:
+      - path: Source
+        excludes: ["*.a"]
     dependencies:
       - sdk: UIKit.framework
       - sdk: Metal.framework

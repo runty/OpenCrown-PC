@@ -1,10 +1,171 @@
 [
-  {"name":"add", "flags":true, "assembly":"mov rax,rdi\nadd rax,rsi\nret"},
-  {"name":"branch", "flags":false, "assembly":"mov rax,rdi\nadd rax,rsi\njc carry\njz zero\nret\ncarry: mov rax,-1\nret\nzero: mov rax,77\nret"},
-  {"name":"shift", "flags":false, "assembly":"mov rax,rdi\nmov rcx,rsi\nrol rax,cl\nxor rax,rsi\nret"},
-  {"name":"memory", "flags":true, "memory":true, "assembly":"mov rax,[rdi]\nxor rax,rsi\nmov [rdi+8],rax\nret"},
-  {"name":"call", "flags":false, "assembly":"call callee\nadd rax,3\nret\n.p2align 4\ncallee: lea rax,[rdi+rsi*2]\nret"},
-  {"name":"indirect", "flags":false, "indirect":true, "assembly":"call rsi\nadd rax,5\nret\n.p2align 4\ncallee: lea rax,[rdi+9]\nret"},
-  {"name":"avx", "flags":false, "assembly":"vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpxor xmm2,xmm0,xmm1\nvmovq rax,xmm2\nvzeroupper\nret"},
-  {"name":"tls", "flags":false, "tls":true, "assembly":"mov rax,qword ptr fs:[0]\nadd rax,rsi\nret"}
+  {
+    "name": "add",
+    "flags": true,
+    "assembly": "mov rax,rdi\nadd rax,rsi\nret"
+  },
+  {
+    "name": "branch",
+    "flags": false,
+    "assembly": "mov rax,rdi\nadd rax,rsi\njc carry\njz zero\nret\ncarry: mov rax,-1\nret\nzero: mov rax,77\nret"
+  },
+  {
+    "name": "shift",
+    "flags": false,
+    "assembly": "mov rax,rdi\nmov rcx,rsi\nrol rax,cl\nxor rax,rsi\nret"
+  },
+  {
+    "name": "memory",
+    "flags": true,
+    "memory": true,
+    "assembly": "mov rax,[rdi]\nxor rax,rsi\nmov [rdi+8],rax\nret"
+  },
+  {
+    "name": "call",
+    "flags": false,
+    "assembly": "call callee\nadd rax,3\nret\n.p2align 4\ncallee: lea rax,[rdi+rsi*2]\nret"
+  },
+  {
+    "name": "indirect",
+    "flags": false,
+    "indirect": true,
+    "assembly": "call rsi\nadd rax,5\nret\n.p2align 4\ncallee: lea rax,[rdi+9]\nret"
+  },
+  {
+    "name": "avx",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpxor xmm2,xmm0,xmm1\nvmovq rax,xmm2\nvzeroupper\nret"
+  },
+  {
+    "name": "tls",
+    "flags": false,
+    "tls": true,
+    "assembly": "mov rax,qword ptr fs:[0]\nadd rax,rsi\nret"
+  },
+  {
+    "name": "shuffle",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpshufb xmm2,xmm0,xmm1\nvmovq rax,xmm2\nret"
+  },
+  {
+    "name": "atomic",
+    "flags": false,
+    "memory": true,
+    "assembly": "mov eax,[rdi]\nretry: lea ecx,[eax+1]\nlock cmpxchg dword ptr [rdi],ecx\njne retry\nmov eax,ecx\nmov [rdi+8],rax\nret"
+  },
+  {
+    "name": "vpcmpistrm_00",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,0\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_01",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,1\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_02",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,2\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_03",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,3\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_04",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,4\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_08",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,8\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_0c",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,12\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_18",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,24\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_28",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,40\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_38",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,56\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_40",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,64\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_49",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,73\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_58",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,88\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_68",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,104\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_78",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,120\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "vpcmpistrm_7b",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\nvpcmpistrm xmm2,xmm3,123\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "pcmpistrm_18",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\npcmpistrm xmm2,xmm3,24\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "pcmpistrm_78",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm5,rsi\nvpunpcklqdq xmm2,xmm2,xmm5\nvmovq xmm3,rsi\nvmovq xmm5,rdi\nvpunpcklqdq xmm3,xmm3,xmm5\nvpcmpeqd xmm4,xmm4,xmm4\nvinsertf128 ymm0,ymm0,xmm4,1\npcmpistrm xmm2,xmm3,120\npushfq\npop r8\nand r8,0x8c5\nshl r8,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-48],ymm0\nmov rcx,[rsp-32]\nxor rax,rcx\nxor rax,r8\nvzeroupper\nret"
+  },
+  {
+    "name": "blend_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvpblendw xmm0,xmm0,xmm1,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "blend_85",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvpblendw xmm0,xmm0,xmm1,85\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "blend_170",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvpblendw xmm0,xmm0,xmm1,170\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "blend_255",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvpblendw xmm0,xmm0,xmm1,255\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "pack_unsigned",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvpackusdw xmm0,xmm0,xmm1\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  }
 ]
