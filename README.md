@@ -324,7 +324,8 @@ That gives you `OpenCrownPC Launcher.exe`, `dcp_run.exe` and `SDL3.dll` in `port
 
 **macOS (development build):** the x86-64 runner uses Rosetta and SDL3 Metal.
 Character creation, tutorial, town and combat frames work on the reference
-M5 Max. Two full process restarts recover the same earned EXP and gold; see the
+M5 Max. CoreAudio playback and Switch Pro Controller reconnect are verified.
+Two full process restarts recover the same earned EXP and gold; see the
 [gameplay verification](macos/gameplay-smoke.md) and
 [Mac build instructions](macos/README.md). Remaining gameplay checks and app packaging
 are tracked in the [port plan](docs/macos-port-plan.md), alongside

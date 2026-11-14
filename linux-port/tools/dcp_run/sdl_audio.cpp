@@ -4,10 +4,13 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "hle/audio.h"
@@ -20,9 +23,55 @@ constexpr int kQueueBatches = 4;  // ~21 ms at 256 frames: latency vs. underrun 
 // silence: ~10 dropouts of ~5 ms per second (crackle). So the target is at least kDeviceBuffers device buffers.
 constexpr int kDeviceBuffers = 3;
 
+// Optional, bounded pre-device capture. Buffer in memory to keep disk writes out
+// of the mixer timing while collecting evidence of a reported pop/crackle.
+class AudioCapture {
+public:
+    AudioCapture() {
+        if (const char* p = std::getenv("DCP_AUDIO_CAPTURE"); p && *p) {
+            path_ = p;
+            samples_.reserve(kSamples);
+        }
+    }
+    ~AudioCapture() { save(); }
+    void append(const std::vector<float>& mix) {
+        if (path_.empty()) return;
+        size_t n = std::min(mix.size(), kSamples - samples_.size());
+        samples_.insert(samples_.end(), mix.begin(), mix.begin() + n);
+        if (samples_.size() == kSamples) save();
+    }
+private:
+    void save() {
+        if (path_.empty() || samples_.empty()) return;
+        std::FILE* f = std::fopen(path_.c_str(), "wb");
+        bool ok = false;
+        if (f) {
+            uint8_t h[44]{};
+            auto put16 = [&](int o, uint16_t v) { std::memcpy(h + o, &v, 2); };
+            auto put32 = [&](int o, uint32_t v) { std::memcpy(h + o, &v, 4); };
+            uint32_t bytes = uint32_t(samples_.size() * sizeof(float));
+            std::memcpy(h, "RIFF", 4); put32(4, 36 + bytes); std::memcpy(h + 8, "WAVEfmt ", 8);
+            put32(16, 16); put16(20, 3); put16(22, 2); put32(24, 48000);
+            put32(28, 48000 * 8); put16(32, 8); put16(34, 32);
+            std::memcpy(h + 36, "data", 4); put32(40, bytes);
+            ok = std::fwrite(h, 1, sizeof h, f) == sizeof h &&
+                 std::fwrite(samples_.data(), 1, bytes, f) == bytes;
+            ok = std::fclose(f) == 0 && ok;
+        }
+        std::fprintf(stderr, "audio: pre-device capture %s: %s (%zu frames)\n", path_.c_str(),
+                     ok ? "saved" : "failed", samples_.size() / 2);
+        path_.clear();
+        std::vector<float>().swap(samples_);
+    }
+    static constexpr size_t kSamples = 30 * 48000 * 2;
+    std::string path_;
+    std::vector<float> samples_;
+};
+
 class SdlSink final : public dcp::hle::AudioSink {
 public:
     SdlSink(SDL_AudioStream* s, int target_frames) : s_(s), target_(target_frames * 8) {}
+    ~SdlSink() override { SDL_DestroyAudioStream(s_); }
     void open(int port, int channels, int) override { ch_[port] = channels; }
     void close(int port) override { ch_[port] = 0; }
     void submit(int count, const int* ports, const float* const* data, int frames) override {
@@ -41,10 +90,17 @@ public:
                 mix_[f * 2 + 1] += r;
             }
         }
-        for (float& v : mix_) v = v < -1.0f ? -1.0f : v > 1.0f ? 1.0f : v;
+        for (float& v : mix_) {
+            if (log_) {
+                peak_ = std::max(peak_, std::fabs(v));
+                clipped_ += std::fabs(v) > 1.0f;
+            }
+            v = v < -1.0f ? -1.0f : v > 1.0f ? 1.0f : v;
+        }
         if (tone_)  // DCP_AUDIO_TONE=1: a 440 Hz sine instead of the game mix, same pacing and SDL path (output check)
             for (int f = 0; f < frames; ++f, ++tone_pos_)
                 mix_[f * 2] = mix_[f * 2 + 1] = 0.25f * std::sin(6.2831853f * 440.0f * float(tone_pos_ % 48000) / 48000.0f);
+        capture_.append(mix_);
         int bytes = int(mix_.size() * sizeof(float));
         int queued = SDL_GetAudioStreamQueued(s_);
         uint64_t t0 = SDL_GetTicksNS();
@@ -72,8 +128,10 @@ private:
                              n_, n_ * bytes / 8, (now - t0_) / 1e9, qmin_, qmax_, empty_, wait_ / 1e6,
                              under ? " (underrun)" : "");
                 if (under) last_under_log_ = now;
+                if (log_) std::fprintf(stderr, "audio: mix peak %.4f, clipped %llu samples%s\n", peak_,
+                                       (unsigned long long)clipped_, tone_ ? " (tone replaces mix)" : "");
             }
-            n_ = empty_ = 0, wait_ = 0;
+            n_ = empty_ = 0, wait_ = 0, peak_ = 0, clipped_ = 0;
         }
     }
 
@@ -84,11 +142,18 @@ private:
     uint64_t tone_pos_ = 0;
     int n_ = 0, empty_ = 0, qmin_ = 0, qmax_ = 0, under_secs_ = 0;
     uint64_t t0_ = 0, wait_ = 0, start_ = 0, last_under_log_ = 0;
+    float peak_ = 0;
+    uint64_t clipped_ = 0;
     int ch_[8] = {};
     std::vector<float> mix_;
+    AudioCapture capture_;
 };
 
 }  // namespace
+
+std::unique_ptr<dcp::hle::AudioSink> make_sdl_audio_sink(SDL_AudioStream* stream, int target_frames) {
+    return std::make_unique<SdlSink>(stream, target_frames);
+}
 
 bool install_sdl_audio() {
     // Name shown by PulseAudio / PipeWire volume controls (pavucontrol, the Plasma / GNOME mixers): the client takes
@@ -99,7 +164,16 @@ bool install_sdl_audio() {
     // native PipeWire backend crackled on the Deck OLED and a Steam Machine (bug reports 11, 12, 2026-10-19): it fills
     // each quantum in PipeWire's real-time thread from the stream our normal-priority mixer thread feeds, and a late
     // fill is played as a gap. A normal-priority hint, so SDL_AUDIO_DRIVER in the environment still wins.
+#ifdef __linux__
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "pulseaudio,pipewire,alsa");
+#endif
+#ifdef __APPLE__
+    // CoreAudio's default 1024-frame pulls let the queue-paced CRI producer
+    // submit four 256-frame batches in a burst. On Rosetta that can outrun the
+    // guest mixer and put zero-filled tails in the source samples (audible pops).
+    // Match the guest period; an explicit SDL_AUDIO_DEVICE_SAMPLE_FRAMES wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "256");
+#endif
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         std::fprintf(stderr, "audio: SDL_InitSubSystem: %s (falling back to silent paced output)\n", SDL_GetError());
         return false;
@@ -110,7 +184,11 @@ bool install_sdl_audio() {
         std::fprintf(stderr, "audio: open: %s (falling back to silent paced output)\n", SDL_GetError());
         return false;
     }
-    SDL_ResumeAudioStreamDevice(s);
+    if (!SDL_ResumeAudioStreamDevice(s)) {
+        std::fprintf(stderr, "audio: resume: %s (falling back to silent paced output)\n", SDL_GetError());
+        SDL_DestroyAudioStream(s);
+        return false;
+    }
     SDL_AudioSpec dev{};
     int dev_frames = 0;
     if (SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(s), &dev, &dev_frames))
@@ -120,7 +198,7 @@ bool install_sdl_audio() {
     int target = kQueueBatches * 256;
     if (dev_frames * kDeviceBuffers > target) target = dev_frames * kDeviceBuffers;
     if (const char* e = std::getenv("DCP_AUDIO_QUEUE"); e && std::atoi(e) > 0) target = std::atoi(e);  // frames, for tests
-    dcp::hle::set_audio_sink(std::make_unique<SdlSink>(s, target));
+    dcp::hle::set_audio_sink(make_sdl_audio_sink(s, target));
     std::fprintf(stderr, "audio: SDL3 %s, f32 stereo 48 kHz, queue target %d frames\n", SDL_GetCurrentAudioDriver(), target);
     return true;
 }

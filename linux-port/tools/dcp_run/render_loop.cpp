@@ -107,11 +107,15 @@ struct ImeOverlay final : dcp::render::Device::Overlay {
 
 }  // namespace
 
-int run_render_loop(const RenderOptions& o, pthread_t game_thread, const std::atomic<bool>& game_finished, void (*finish)(int)) {
+bool init_render_sdl() {
     const bool steam_x11 = steam_prefer_x11();
-    if (!SDL_Init(SDL_INIT_VIDEO)) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
+    if (!SDL_Init(SDL_INIT_VIDEO)) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return false; }
     std::fprintf(stderr, "video: SDL driver %s%s\n", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?",
                  steam_x11 ? " (started by Steam: x11 first, so Steam Input sees the window)" : "");
+    return true;
+}
+
+int run_render_loop(const RenderOptions& o, pthread_t game_thread, const std::atomic<bool>& game_finished, void (*finish)(int)) {
     SDL_Window* win = nullptr;
     SDL_GPUDevice* gpu = nullptr;
     SDL_GLContext ctx = nullptr;

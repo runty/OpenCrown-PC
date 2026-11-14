@@ -456,6 +456,7 @@ int main(int argc, char** argv) {
         if (render) throw std::runtime_error("--render needs a build with -DDCP_RENDER=ON (the default)");
 #else
         if (render && !dcp::render::install_hooks(eb->img.base)) throw std::runtime_error("render hooks failed");
+        if (render && !init_render_sdl()) throw std::runtime_error("SDL video initialization failed");
         if (render && window && !std::getenv("DCP_NO_AUDIO")) install_sdl_audio();  // before the game thread (sink swap)
         SdlInputPump* input = nullptr;  // live input only in a visible window without --input (scripted runs stay deterministic)
         std::string input_dir;

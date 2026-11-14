@@ -71,7 +71,8 @@ limit so the render thread can finish their readback. Logs identify the Metal
 driver and swapchain size. `DCP_PROBE='68840*'` provides scene evidence and
 `MTL_DEBUG_LAYER=1` enables Metal API validation for a diagnostic run.
 
-Eleven tests pass on the reference Mac, including exact-pixel checks for Metal
+The rendered suite includes thirteen tests on the reference Mac, including
+SDL audio/mixing and virtual-controller regressions, plus exact-pixel checks for Metal
 uniforms, alpha blending, scissor orientation and two-texture mask sampling.
 The visible smoke run reaches TITLE and INN, writes all three PNGs, and exits 0
 at 2,100 frames. The spawn adapter also preserves redirected stdio and closes
@@ -82,7 +83,10 @@ Ancient Temple Ruins combat through a Harpy boss attempt ending in game-over,
 and two full process
 quit/relaunch cycles recovering the same earned EXP and gold. The
 [gameplay smoke record](gameplay-smoke.md) gives the route, controls, save hashes
-and exact limits. A successful adventure clear, ImGui name/chat overlays, audio,
-controller/hotplug, measured performance, the launcher workflow, Linux regression
+and exact limits. [CoreAudio playback and controller reconnect](audio-input-smoke.md)
+now work on the reference host, with a 256-frame Apple audio period to prevent
+the intermittent pops observed at 1024 frames. A successful adventure clear,
+ImGui name/chat overlays, long-session audio/drift and output-device changes,
+measured performance, the launcher workflow, Linux regression
 execution and packaged-app tests remain open in the
 [milestone plan](../docs/macos-port-plan.md).

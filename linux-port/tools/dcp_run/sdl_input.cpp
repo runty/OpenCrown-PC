@@ -25,6 +25,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #include "../common/input_defaults.h"
 #include "hle/input.h"
@@ -129,6 +130,9 @@ class SdlInput final : public dcp::hle::InputSource, public SdlInputPump {
 public:
     SdlInput(std::map<std::string, std::vector<Bind>> b, std::unique_ptr<dcp::hle::InputSource> base)
         : binds_(std::move(b)), base_(std::move(base)) { rescan(); }
+    ~SdlInput() override {
+        for (SDL_Gamepad* g : pads_) SDL_CloseGamepad(g);
+    }
 
     dcp::hle::PadState read(int pad, uint64_t frame) override {
         dcp::hle::PadState s = base_ ? base_->read(pad, frame) : dcp::hle::PadState{};  // scripted base (touch test)
@@ -170,7 +174,12 @@ public:
     }
 
     void handle_event(const SDL_Event& e) override {
-        if (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED) rescan();
+        if (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED ||
+            e.type == SDL_EVENT_GAMEPAD_REMAPPED) rescan(e.type == SDL_EVENT_GAMEPAD_REMAPPED);
+        if (input_log_ && (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_UP))
+            std::fprintf(stderr, "input: pad %u button %s %s\n", e.gbutton.which,
+                         SDL_GetGamepadStringForButton(SDL_GamepadButton(e.gbutton.button)),
+                         e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? "down" : "up");
         // The Steam trackpad mouse belongs to the gamepad, touches as mouse are touches, and with mouse attacks off
         // (Steam Deck) the mouse is not a play device: none of them switch the prompts to keyboard/mouse.
         dev_.set_ignore_mouse(steam_mouse() || mouse_touch() || !mouse_attacks_);
@@ -260,28 +269,45 @@ private:
     bool steam_mouse() const { return dcp::touch::steam_mouse_mode(g_deck_trackpads, steam_pad_, dev_.kbm()); }
     bool mouse_touch() const { return dcp::touch::mouse_is_touch(g_touch_as_mouse, gamescope_, native_touch_, rel_); }
 
-    void rescan() {
+    void rescan(bool remapped = false) {
         int n = 0;
         SDL_JoystickID* ids = SDL_GetGamepads(&n);
         std::vector<SDL_Gamepad*> pads;
+        // Retain the surviving devices in their current order. Open/close each handle exactly once:
+        // SDL_GetGamepadFromID borrows someone else's handle and must not be treated as ownership.
+        for (SDL_Gamepad* g : pads_)
+            if (SDL_GamepadConnected(g)) pads.push_back(g);
         for (int i = 0; i < n && pads.size() < 4; ++i) {
-            SDL_Gamepad* g = SDL_GetGamepadFromID(ids[i]);
-            if (!g) g = SDL_OpenGamepad(ids[i]);
+            bool known = false;
+            for (SDL_Gamepad* g : pads) known |= SDL_GetGamepadID(g) == ids[i];
+            if (known) continue;
+            SDL_Gamepad* g = SDL_OpenGamepad(ids[i]);
             if (g) pads.push_back(g);
         }
         SDL_free(ids);
-        steam_pad_ = !pads.empty() && dcp::touch::is_steam_virtual_pad(SDL_GetGamepadVendor(pads[0]), SDL_GetGamepadProduct(pads[0]));        std::lock_guard<std::mutex> lk(mu_);
-        if (pads.size() != pads_.size()) {
+        steam_pad_ = !pads.empty() && dcp::touch::is_steam_virtual_pad(SDL_GetGamepadVendor(pads[0]), SDL_GetGamepadProduct(pads[0]));
+        std::lock_guard<std::mutex> lk(mu_);
+        const bool changed = pads != pads_;
+        if (changed || remapped || !scanned_) {
             std::fprintf(stderr, "input: %zu gamepad(s)\n", pads.size());
-            for (SDL_Gamepad* g : pads) {
+            for (size_t i = 0; i < pads.size(); ++i) {
+                SDL_Gamepad* g = pads[i];
                 char* mapping = SDL_GetGamepadMapping(g);
                 const char* name = SDL_GetGamepadName(g);
-                std::fprintf(stderr, "input: %s (%04x:%04x): %s\n", name ? name : "?", SDL_GetGamepadVendor(g),
+                std::fprintf(stderr, "input: slot %zu id %u %s (%04x:%04x): %s\n", i, SDL_GetGamepadID(g),
+                             name ? name : "?", SDL_GetGamepadVendor(g),
                              SDL_GetGamepadProduct(g), mapping ? mapping : "no mapping");
                 SDL_free(mapping);
             }
         }
+        if (changed) {
+            // A removed device must not leave held buttons or queued feedback on its replacement.
+            for (int i = 0; i < 4; ++i) snap_[i] = {}, rumble_[i] = {}, led_[i] = {};
+        }
+        for (SDL_Gamepad* g : pads_)
+            if (std::find(pads.begin(), pads.end(), g) == pads.end()) SDL_CloseGamepad(g);
         pads_ = pads;
+        scanned_ = true;
     }
 
     static void read_gamepad(SDL_Gamepad* g, dcp::hle::PadState* s) {
@@ -442,6 +468,8 @@ private:
     std::unique_ptr<dcp::hle::InputSource> base_;  // scripted source under DCP_TOUCH_TEST, else null
     DeviceTracker dev_{!SDL_HasGamepad() && !on_steam_deck()};  // start on KB/M unless a gamepad is plugged in / Deck
     bool steam_pad_ = false;  // slot 0 is Steam's virtual gamepad (main thread)
+    bool scanned_ = false;
+    bool input_log_ = std::getenv("DCP_INPUT_LOG") != nullptr;
     // touch screen (guarded by mu_)
     dcp::touch::TouchLoop touch_;
     bool finger_down_ = false;

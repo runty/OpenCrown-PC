@@ -11,8 +11,11 @@ and reaches TITLE and INN using scripted input. See the [Mac build instructions]
 The rendered runner now covers character creation, the full tutorial, town and
 combat through the Harpy boss, plus two full quit/relaunch cycles recovering
 Felix with 351 EXP and 47 gold. See the [gameplay smoke record](../macos/gameplay-smoke.md).
-The Harpy defeated the character; a successful adventure clear, overlays, audio,
-controller/hotplug, measured performance and packaged-app validation remain open.
+CoreAudio playback and physical controller reconnect now work on the reference
+host; see the [audio/input record](../macos/audio-input-smoke.md). The Harpy
+defeated the character; a successful adventure clear, overlays, long-session
+audio/drift, output-device changes, measured performance and packaged-app
+validation remain open.
 The milestone tracker below is the execution checklist. A milestone is
 complete only when its acceptance checks have evidence attached to its issue.
 
@@ -338,7 +341,7 @@ evidence from the actual game.
 - [ ] Inject short and interrupted writes in disposable save tests, including
   truncated PARAM/ICON sidecars; verify recovery and reload known character
   progress in a fresh process. Record slot and sidecar results independently.
-- [ ] Keyboard/mouse and one controller work, including disconnect/reconnect.
+- [x] Keyboard/mouse and one controller work, including disconnect/reconnect.
 - [ ] No persistent audio drift, visual corruption, input loss or unexplained
   memory growth; record cold and warm behavior separately.
 - [ ] Count produced, queue-dropped, replayed and presented frames. Measure
@@ -353,7 +356,11 @@ passes the normal-quit reload check at source `784fe20`. It covers creation,
 tutorial, town and a boss attempt, followed by two fresh-process reloads with
 matching in-game earned progress and unchanged slot/sidecar hashes. The Harpy
 was not defeated, so the adventure-completion check remains open. Failed-write
-recovery, audio/controller and formal frame pacing were not established.
+recovery, audio/controller and formal frame pacing were not established in that
+initial gameplay pass. The subsequent [audio/input verification](../macos/audio-input-smoke.md)
+enables CoreAudio, confirms physical Nintendo Switch Pro Controller reconnect
+and removes repeated short source gaps with a 256-frame Apple audio period.
+Long-session drift, output-device changes and formal frame pacing remain open.
 
 Use the measured save/reload session and frame timings to update the remaining Mac estimate.
 

@@ -9,6 +9,9 @@
 
 class SdlInputPump;
 
+// Process main thread, before installing audio/input and starting guest threads.
+bool init_render_sdl();
+
 struct RenderOptions {
     bool window = false;                                    // show the window (else hidden: screenshots only)
     std::vector<std::pair<uint64_t, std::string>> shots;    // (vblank, png path), ascending
