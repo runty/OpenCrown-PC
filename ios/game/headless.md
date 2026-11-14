@@ -1,6 +1,7 @@
 # Unattended scene checkpoints and input
 
-Headless Mac runs default to the real TITLE scene followed by at least 120
+Headless Mac runs default to the verified TITLE component active-update phase
+followed by at least 120
 additional flips and vblanks. `DCP_CHECKPOINT_SCENE=INN` chooses INN instead;
 only observing that exact scene and both advancing counters can complete it.
 `title_seen` remains an independent report field. Merely configuring INN does
@@ -88,7 +89,7 @@ small-budget negative tests remain unchanged. Longer startup still needs a
 matching outer process timeout; a larger budget does not satisfy a checkpoint.
 
 Scene names use the pinned function’s second SysV argument (RSI); RDI carries
-the scene-manager object. Native Mac probe logs for the verified Felix reload
+the audio-selector object. Native Mac probe logs for the verified Felix reload
 show TITLE, INN and TOWN in RSI. The AOT observer previously read RDI; that
 diagnostic bug is corrected, and the report identifies
 `scene_observer_name_argument="rsi"`. Earlier negative observer flags do not prove
@@ -100,3 +101,22 @@ lifecycle fixture waits for observed translated progress during each resume,
 rather than relying on a one-millisecond initialization window. All 27 sessions
 pass, alongside six bounded headless cases and 82 service/input checks in both
 native and ASan/UBSan runs. Physical device lifecycle remains separate.
+
+## Component checkpoint versus requested audio
+
+Original-byte, relocation and phase-dispatch review establishes that the older
+`68840` hook selects a named audio cue. Its numeric wrapper can be inlined into
+an AOT trace, bypassing that function-entry hook. Audio-cue requests therefore
+no longer satisfy checkpoints. Empty old scene reports also do not prove scene
+absence. Cue reports are explicitly diagnostic and may miss inlined requests.
+
+The current TITLE observer checks entry to its phase dispatcher, both original
+relocated object vtables, the delivered update phase and the object's stored
+phase. Initialization loads the locale-specific STAGE/TITLE resource pair.
+`current_scene` and `title_seen` now identify that component's active update;
+they do not assert screen-visible pixels or successful audio playback.
+The completed report labels `checkpoint_observer=component_active_update` and
+`visual_checkpoint_verified=false`. Independent rendered-frame inspection is
+required for visible TITLE acceptance. INN configuration remains available, but
+its component observer must be established separately before an INN pass.
+Checkpoint anchors are initialized before publishing the observation flag.

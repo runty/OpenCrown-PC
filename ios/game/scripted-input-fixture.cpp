@@ -90,5 +90,9 @@ int main(int argc, char **argv) {
   }
   require(fatal_threw);
   require(fatal_result == 0xa5a5); // No success result is returned to the guest.
+  const auto before_clear = output;
+  require(service("0fPn7oELg8E", UINT64_MAX, UINT64_MAX) == 0);
+  require(service("0fPn7oELg8E", 0, 0) == 0);
+  require(output == before_clear); // Opaque request/future arguments are unused.
   std::cout << "{\"checks\":" << checks << ",\"failed\":0}\n";
 }

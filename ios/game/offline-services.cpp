@@ -679,6 +679,13 @@ bool dcp_offline_service(const char *name, const uint64_t a[6],
     return false;
   if (named(name, "__stack_chk_fail"))
     throw std::runtime_error("guest stack protector check failed");
+  if (named(name, "0fPn7oELg8E")) {
+    // The reference Toolkit2 clear-presence adapter ignores both request/future
+    // pointers. This offline runtime never publishes presence, so clearing the
+    // already absent value is idempotent and performs no network or guest I/O.
+    *result = 0;
+    return true;
+  }
   static const char *save_calls[] = {
       "sceSaveDataInitialize3",  "sceSaveDataTerminate",
       "sceSaveDataMount2",       "sceSaveDataUmount",

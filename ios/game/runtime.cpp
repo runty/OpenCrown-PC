@@ -90,6 +90,9 @@ struct Engine {
   std::atomic<bool> enteredEboot{false};
   std::atomic<bool> gnmReady{false};
   std::atomic<bool> titleSeen{false};
+  std::atomic<uint64_t> sceneObserverCalls{0}, sceneReadErrors{0},
+      sceneInvalidNames{0};
+  std::atomic<uint64_t> titleComponentCalls{0}, componentReadErrors{0};
   std::atomic<bool> booted{false};
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false};
@@ -100,6 +103,7 @@ struct Engine {
       std::chrono::steady_clock::now();
   std::string firstError;
   std::string currentScene;
+  std::string requestedCue;
   Memory primary;
 };
 std::atomic<Engine *> activeEngine{nullptr};
@@ -1007,11 +1011,12 @@ extern "C" const char *dcp_cpu_report() {
   const bool joined = dcp_thread_stop_and_join(5000);
   if (engine().host.will_unload)
     engine().host.will_unload(engine().host.context);
-  std::string firstError, currentScene;
+  std::string firstError, currentScene, requestedCue;
   {
     std::lock_guard<std::mutex> lock(engine().diagnosticLock);
     firstError = engine().firstError;
     currentScene = engine().currentScene;
+    requestedCue = engine().requestedCue;
   }
   const std::string threadError = dcp_thread_error();
   const bool expectedThreadExit = threadError.empty() ||
@@ -1054,7 +1059,15 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_complete\":"
       << (checkpointComplete ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
-      << ",\"scene_observer_name_argument\":\"rsi\""
+      << ",\"checkpoint_observer\":\"component_active_update\""
+      << ",\"visual_checkpoint_verified\":false"
+      << ",\"title_component_calls\":" << engine().titleComponentCalls
+      << ",\"component_observer_read_errors\":" << engine().componentReadErrors
+      << ",\"requested_audio_cue\":" << jsonString(requestedCue)
+      << ",\"cue_observer_name_argument\":\"rsi\""
+      << ",\"cue_observer_calls\":" << engine().sceneObserverCalls
+      << ",\"cue_observer_read_errors\":" << engine().sceneReadErrors
+      << ",\"cue_observer_invalid_names\":" << engine().sceneInvalidNames
       << ",\"current_scene\":" << jsonString(currentScene)
       << ",\"trace_hash\":\"" << traceHash << "\"";
 #ifdef DCP_NATIVE_LIBC_BULK
@@ -1115,15 +1128,17 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     dcp::render::observe_aot_entry(observedPC - 0x20000000, args);
   }
   if (observedPC == 0x20068840) {
+    ++engine().sceneObserverCalls;
     char name[16]{};
     try {
       for (size_t i = 0; i < 15; ++i) {
-        // Native Mac probes confirm RSI=name; RDI is the scene-manager this pointer.
+        // Native Mac probes confirm RSI=name; RDI is the audio-selector this pointer.
         guestRead(*currentMemory, state.gpr.rsi.qword + i, &name[i], 1);
         if (!name[i])
           break;
       }
     } catch (const std::runtime_error &) {
+      ++engine().sceneReadErrors;
       return;
     }
     bool ascii = name[0] != 0;
@@ -1135,18 +1150,47 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
       bool changed;
       {
         std::lock_guard<std::mutex> lock(engine().diagnosticLock);
-        changed = engine().currentScene != name;
-        engine().currentScene = name;
+        changed = engine().requestedCue != name;
+        engine().requestedCue = name;
       }
       if (changed)
-        recordEvent(std::string("scene ") + name);
+        recordEvent(std::string("requested audio cue ") + name);
+    } else
+      ++engine().sceneInvalidNames;
+  }
+  if (observedPC == 0x2053c980) {
+    ++engine().titleComponentCalls;
+    // Original relocation/vtable/phase-dispatch evidence identifies the TITLE
+    // component. This checks active update, not its audio cue or pixel content.
+    const uint64_t object = state.gpr.rdi.qword;
+    uint8_t phase = 0;
+    try {
+      if (object > UINT64_MAX - 0xab ||
+          canonical(read64(*currentMemory, object)) != 0x20bbbbb0 ||
+          canonical(read64(*currentMemory, object + 0x50)) != 0x20bbbd00)
+        return;
+      guestRead(*currentMemory, object + 0xab, &phase, 1);
+    } catch (const std::runtime_error &) {
+      ++engine().componentReadErrors;
+      return;
     }
-    if (!std::strcmp(name, "TITLE"))
+    if (uint8_t(state.gpr.rsi.qword) != 1 || phase != 1)
+      return;
+    bool changed;
+    {
+      std::lock_guard<std::mutex> lock(engine().diagnosticLock);
+      changed = engine().currentScene != "TITLE";
+      engine().currentScene = "TITLE";
       engine().titleSeen = true;
-    if (name == engine().headless.scene && !engine().checkpointSeen.exchange(true)) {
-      engine().checkpointVblank = engine().vblanks.load();
-      engine().checkpointFlip = dcp_gnm_stats().flips;
+      if (engine().headless.scene == "TITLE" && !engine().checkpointSeen.load()) {
+        engine().checkpointVblank = engine().vblanks.load();
+        engine().checkpointFlip = dcp_gnm_stats().flips;
+        // Publish only after both anchors are initialized for vblank readers.
+        engine().checkpointSeen.store(true);
+      }
     }
+    if (changed)
+      recordEvent("active component TITLE");
   }
 }
 

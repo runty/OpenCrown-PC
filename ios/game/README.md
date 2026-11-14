@@ -53,8 +53,8 @@ files, savedata, threads, synchronization, fonts, scripted pad input, paced null
 audio and headless GNM labels. Unknown executed imports, missing traces, bad
 memory ranges and unsupported instructions fail explicitly.
 
-The current headless boot checkpoint requires the observed real `TITLE` scene
-entry followed by 120 advancing vblanks and flips. A returned startup report or
+The current headless boot checkpoint requires the checked `TITLE` component active-update
+phase followed by 120 advancing vblanks and flips. A returned startup report or
 `game_code_executed=true` alone does not mean the game has booted. Full mobile
 acceptance additionally requires INN/town, visible frames, real controls/audio,
 lifecycle and save/reload on both physical devices, as defined in the port plan.

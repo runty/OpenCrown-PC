@@ -1,5 +1,39 @@
 # Device port progress
 
+## 2026-11-14 — Isolated automatic startup checks and component evidence
+
+The 49,492-entry Mac/iPhoneOS core now compiles. Its preceding frozen Metal
+run renders 3,612 frames / 40,261 draws, acknowledges unload and has no host
+error, then stops at an unsupported Toolkit2 clear-presence call. Loading
+content is visible, but the last inspected image is black; no visual TITLE
+pass is claimed. The offline clear-presence adapter now mirrors the reference
+call's unused request/future arguments and idempotent already-absent state.
+The service suite passes 87 checks native/ASan+UBSan, configuration passes 24,
+and six bounded negative runtime cases pass 24 checks. All 27 actual-runtime
+lifecycle sessions pass (max stop 58.6 ms in this concurrent run).
+
+Original-byte and relocation review found that the old named scene hook is
+an audio-cue selector, and Remill can inline its numeric wrapper. It no longer
+satisfies checkpoints. The new TITLE observer verifies the actual component's
+phase-dispatch entry, original primary/control vtables and active update phase;
+its initializer loads STAGE/TITLE locale resources. This is a component-state
+marker, explicitly separate from visual TITLE. Runtime exports that distinction
+and keeps visual verification false. The new real checkpoint run is pending.
+INN's component identity remains to establish.
+
+The explicit `--diagnostic-startup` app option starts a bounded test using its
+own UUID save/checkpoint folder and a staged, validated input script. It writes
+first nonuniform/final game images into the same session folder. A 27,507-entry
+Simulator core tests the new frontend: 376 real rendered frames, isolated PNGs,
+and two unchanged normal-save/checkpoint sentinel files. Missing input rejects
+with zero frames and no stale session image; normal launch still waits for Play.
+These frontend tests do not qualify the newer core.
+
+The physical iPad still has the clean `80228bb` / 48,367-entry game candidate
+at Ready to play; its automatic diagnostic replacement is being prepared.
+No physical game-frame result is claimed yet. Its separate expanded CPU probe
+passes 1,906 checks. Live Mac/iCloud saves remain untouched.
+
 ## 2026-11-14 — Expanded CPU suite verified on the returned iPad
 
 The player reconnected the iPad mini A20 Pro. Clean source `cc0d767` replaces

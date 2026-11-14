@@ -10,7 +10,8 @@ heartbeat is not a background execution service.
 Each report identifies the build, a new session UUID and start time, snapshot
 time and frontend phase. It separates guest trace steps, libc checks, worker
 starts, submissions/flips/vblanks, current ASCII scene, TITLE observation and the
-headless checkpoint. `title_seen=true` means the real scene observer saw TITLE.
+headless checkpoint. `title_seen=true` means the checked TITLE component entered its active-update
+phase. It does not establish visible pixels or playback of its requested cue.
 `checkpoint_complete` is the headless TITLE-plus-120-vblanks/flips acceptance
 checkpoint; an interactive session deliberately does not finish that checkpoint.
 A false checkpoint flag in play mode does not by itself indicate a failed boot.
@@ -59,3 +60,24 @@ Session memory peaks are the maximum of heartbeat samples, explicitly labelled
 as sampled peaks rather than OS high-water marks. Final live exports retain
 the completed guest report and final launcher status, including errors, until
 a new session starts.
+
+The completed guest report separately counts component-dispatch entries and
+read errors, plus optional direct audio-cue observer calls/string-read failures.
+The old audio selector may be inlined and is no longer used for checkpoints.
+The report explicitly leaves visual verification to rendered-frame inspection.
+
+## Explicit automated startup check
+
+Launching with `--diagnostic-startup` (Simulator or physical device) automatically
+starts one bounded checkpoint run and reads the caller-staged
+`Documents/diagnostic-input.txt`. The runtime still validates and hashes that
+input script. Each run creates an independent
+`Documents/DiagnosticSessions/<session UUID>/ProbeSaves` and checkpoint folder;
+ordinary player saves are never selected by this mode. It exports first
+nonuniform and last rendered game PNGs in that same session folder and requests stop after 120 wall-clock
+seconds. The timer belongs to that session and cannot stop a later session.
+Reports label the disposable save scope and diagnostic mode. Normal Home Screen
+launch requires Play and retains its ordinary local saves. Missing inputs,
+guest errors and incomplete checkpoints remain explicit failures. This option
+exists for repeated device tests without manual launch taps; it does not claim
+audio/controller quality or sustained play.

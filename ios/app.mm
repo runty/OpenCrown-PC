@@ -144,6 +144,9 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   uint64_t _peakFootprint, _peakResident;
   BOOL _running;
   BOOL _autoStarted;
+  BOOL _diagnosticStartup;
+  NSString *_sessionSaveRoot;
+  NSString *_sessionCheckpointRoot;
   NSString *_hostError;
   NSString *_saveError;
   BOOL _storageBusy;
@@ -181,6 +184,8 @@ NSString *thermalName(NSProcessInfoThermalState state) {
 - (void)emitLiveDiagnostics:(BOOL)force;
 - (void)queueDiagnostic:(NSDictionary *)report filename:(NSString *)filename;
 - (NSString *)currentSaveError;
+- (BOOL)captureGameSnapshots;
+- (NSString *)gameSnapshotPath:(NSString *)name;
 @end
 
 namespace {
@@ -243,6 +248,8 @@ UIButton *button(NSString *title, id target, SEL action) {
   _sessionID = NSUUID.UUID.UUIDString;
   _sessionStarted = [NSDate.date timeIntervalSince1970];
   _diagnosticPhase = @"launcher";
+  _diagnosticStartup = [NSProcessInfo.processInfo.arguments
+      containsObject:@"--diagnostic-startup"];
   id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
   _metalInfo = @{
     @"name" : gpu.name ?: @"unavailable",
@@ -318,14 +325,30 @@ UIButton *button(NSString *title, id target, SEL action) {
   [super viewDidAppear:animated];
 #if TARGET_OS_SIMULATOR
   saveUISnapshot(self.view.window, @"launcher-ui.png");
-  if (!_autoStarted && std::getenv("DCP_SIM_AUTOPLAY")) {
+  const bool autoplay = std::getenv("DCP_SIM_AUTOPLAY") != nullptr;
+#else
+  const bool autoplay = false;
+#endif
+  if (!_autoStarted && (_diagnosticStartup || autoplay)) {
     _autoStarted = YES;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2),
                    dispatch_get_main_queue(), ^{
                      [self startGame];
                    });
   }
+}
+- (BOOL)captureGameSnapshots {
+#if TARGET_OS_SIMULATOR
+  if (std::getenv("DCP_SIM_UI_SNAPSHOT"))
+    return YES;
 #endif
+  return _diagnosticStartup;
+}
+- (NSString *)gameSnapshotPath:(NSString *)name {
+  NSString *root = _diagnosticStartup
+      ? [_sessionSaveRoot stringByDeletingLastPathComponent]
+      : documents();
+  return [root stringByAppendingPathComponent:name];
 }
 - (void)updateButtons {
   const BOOL busy = _running || _storageBusy || self.storage.importing ||
@@ -349,6 +372,13 @@ UIButton *button(NSString *title, id target, SEL action) {
     return;
   _running = YES;
   _sessionID = NSUUID.UUID.UUIDString;
+  NSString *saveParent = _diagnosticStartup
+      ? [[documents() stringByAppendingPathComponent:@"DiagnosticSessions"]
+          stringByAppendingPathComponent:_sessionID]
+      : documents();
+  _sessionSaveRoot = [saveParent stringByAppendingPathComponent:@"ProbeSaves"];
+  _sessionCheckpointRoot =
+      [saveParent stringByAppendingPathComponent:@"SaveCheckpoints"];
   _sessionStarted = [NSDate.date timeIntervalSince1970];
   _diagnosticPhase = @"validation";
   _lastGuest = nil;
@@ -371,8 +401,12 @@ UIButton *button(NSString *title, id target, SEL action) {
     try {
       const std::filesystem::path root(documents().fileSystemRepresentation);
       dcp::storage::validate_game(root / "Game");
+      std::filesystem::create_directories(
+          std::filesystem::path(self->_sessionSaveRoot.fileSystemRepresentation)
+              .parent_path());
       self->_saves = std::make_unique<dcp::storage::SaveTransactions>(
-          root / "ProbeSaves", root / "SaveCheckpoints");
+          self->_sessionSaveRoot.fileSystemRepresentation,
+          self->_sessionCheckpointRoot.fileSystemRepresentation);
       if (!self->_saves->recover())
         throw std::runtime_error(self->_saves->error());
     } catch (const std::exception &exception) {
@@ -445,10 +479,14 @@ UIButton *button(NSString *title, id target, SEL action) {
              .fileSystemRepresentation,
          1);
   setenv("DCP_SAVE_ROOT",
-         [documents() stringByAppendingPathComponent:@"ProbeSaves"]
-             .fileSystemRepresentation,
+         _sessionSaveRoot.fileSystemRepresentation,
          1);
-  setenv("DCP_GAME_MODE", "play", 1);
+  setenv("DCP_GAME_MODE", _diagnosticStartup ? "checkpoint" : "play", 1);
+  if (_diagnosticStartup)
+    setenv("DCP_INPUT_SCRIPT",
+           [documents() stringByAppendingPathComponent:@"diagnostic-input.txt"]
+               .fileSystemRepresentation,
+           1);
   if (!dcp_game_configure(
           {(__bridge void *)self, willUnload, saveTransaction})) {
     [self unloadRenderer];
@@ -468,17 +506,21 @@ UIButton *button(NSString *title, id target, SEL action) {
                          forMode:NSRunLoopCommonModes];
   dcp_platform_set_paused(0);
   dcp_game_set_paused(!dcp_platform_active());
+  double stopSeconds = _diagnosticStartup ? 120.0 : 0.0;
 #if TARGET_OS_SIMULATOR
-  if (const char *duration = std::getenv("DCP_SIM_STOP_SECONDS")) {
-    double seconds = std::max(0.1, std::atof(duration));
+  if (!_diagnosticStartup)
+    if (const char *duration = std::getenv("DCP_SIM_STOP_SECONDS"))
+      stopSeconds = std::max(0.1, std::atof(duration));
+#endif
+  if (std::isfinite(stopSeconds) && stopSeconds > 0) {
+    NSString *session = _sessionID;
     dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, int64_t(seconds * NSEC_PER_SEC)),
+        dispatch_time(DISPATCH_TIME_NOW, int64_t(stopSeconds * NSEC_PER_SEC)),
         dispatch_get_main_queue(), ^{
-          if (self->_running)
+          if (self->_running && [self->_sessionID isEqualToString:session])
             dcp_game_request_stop();
         });
   }
-#endif
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
     const char *json = dcp_cpu_report();
     NSData *data = [NSData dataWithBytes:json length:strlen(json)];
@@ -615,17 +657,15 @@ UIButton *button(NSString *title, id target, SEL action) {
     ++_replayedFrames;
     _gameIntervals.observe(sender.timestamp);
     _replayedDraws += frame.draws;
-#if TARGET_OS_SIMULATOR
     if (frame.draws && !_snapshotHasContent &&
-        std::getenv("DCP_SIM_UI_SNAPSHOT")) {
+        [self captureGameSnapshots]) {
       bool varied = false;
       if (_replay->write_png(
-          [documents() stringByAppendingPathComponent:@"first-game-frame.png"]
+          [self gameSnapshotPath:@"first-game-frame.png"]
               .fileSystemRepresentation,
           &error, &varied))
         _snapshotHasContent = varied;
     }
-#endif
   }
   int width = 0, height = 0;
   SDL_GetWindowSizeInPixels(_gameWindow, &width, &height);
@@ -706,17 +746,15 @@ UIButton *button(NSString *title, id target, SEL action) {
   self.pauseLayout = nil;
   [self.pauseButton removeFromSuperview];
   dcp_platform_audio_stop();
-#if TARGET_OS_SIMULATOR
-  if (_replay && _replayedFrames && std::getenv("DCP_SIM_UI_SNAPSHOT")) {
+  if (_replay && _replayedFrames && [self captureGameSnapshots]) {
     std::string imageError;
     bool varied = false;
-    NSString *path = [documents() stringByAppendingPathComponent:@"last-game-frame.png"];
+    NSString *path = [self gameSnapshotPath:@"last-game-frame.png"];
     if (_replay->write_png(path.fileSystemRepresentation, &imageError, &varied))
       _snapshotHasContent = _snapshotHasContent || varied;
     else
       NSLog(@"OpenCrown final readback: %s", imageError.c_str());
   }
-#endif
   if (_replay && !_replay->suspend(true))
     _hostError = @"Metal could not drain during shutdown.";
   _replay.reset();
@@ -893,6 +931,11 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"session_started_unix" : @(_sessionStarted),
     @"timestamp" : @([NSDate.date timeIntervalSince1970]),
     @"phase" : _diagnosticPhase ?: @"launcher",
+    @"diagnostic_startup" : @(_diagnosticStartup),
+    @"save_scope" : _diagnosticStartup ? @"disposable diagnostic session" : @"local player",
+    @"snapshot_directory" : _diagnosticStartup
+        ? [@"DiagnosticSessions" stringByAppendingPathComponent:_sessionID]
+        : @".",
     @"os" : NSProcessInfo.processInfo.operatingSystemVersionString,
     @"guest" : _lastGuest ?: guestSnapshot(),
     @"captured_game_frames" : @(_replayedFrames),
