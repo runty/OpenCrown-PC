@@ -102,3 +102,8 @@ AudioSink/PadState conversion, saving and Metal presentation.
 
 The native core probe also passed AddressSanitizer and UndefinedBehaviorSanitizer
 on the development Mac. Hardware-dependent behavior remains unverified.
+
+For unattended Simulator verification, `DCP_SIM_MUTE_AUDIO=1` silences only the
+simulator output after consuming its real PCM ring. Callback/underrun counters
+continue, and app diagnostics identify `audio.simulator_muted=true`. This is
+not an audible-quality test. Physical-device code ignores the variable.

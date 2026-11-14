@@ -2,6 +2,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <UIKit/UIKit.h>
+#import <TargetConditionals.h>
+#include <cstdlib>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -95,6 +97,12 @@ bool startAudio() {
   engine = [[AVAudioEngine alloc] init];
   AVAudioFormat *format =
       [[AVAudioFormat alloc] initStandardFormatWithSampleRate:48000 channels:2];
+#if TARGET_OS_SIMULATOR
+  const char *muteSetting = std::getenv("DCP_SIM_MUTE_AUDIO");
+  const bool muted = muteSetting && !std::strcmp(muteSetting, "1");
+#else
+  constexpr bool muted = false;
+#endif
   source = [[AVAudioSourceNode alloc]
       initWithFormat:format
          renderBlock:^OSStatus(BOOL *silence, const AudioTimeStamp *,
@@ -120,7 +128,13 @@ bool startAudio() {
              }
              audio.rendered.fetch_add(got, std::memory_order_relaxed);
            }
-           *silence = got == 0;
+           // Quiet simulator verification still consumes the real stream and
+           // retains callback/underrun accounting. Device output is unchanged.
+           if (muted)
+             for (UInt32 i = 0; i < buffers->mNumberBuffers; ++i)
+               std::memset(buffers->mBuffers[i].mData, 0,
+                           buffers->mBuffers[i].mDataByteSize);
+           *silence = muted || got == 0;
            audio.callbacks.fetch_sub(1, std::memory_order_release);
            return noErr;
          }];

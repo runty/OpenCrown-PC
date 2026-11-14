@@ -107,7 +107,13 @@ NSDictionary *audioSnapshot() {
     @"running" : @(stats.running != 0),
     @"paused" : @(stats.paused != 0),
     @"device_rate" : @(stats.device_sample_rate),
-    @"buffer_seconds" : @(stats.device_buffer_seconds)
+    @"buffer_seconds" : @(stats.device_buffer_seconds),
+#if TARGET_OS_SIMULATOR
+    @"simulator_muted" : @(std::getenv("DCP_SIM_MUTE_AUDIO") &&
+        !std::strcmp(std::getenv("DCP_SIM_MUTE_AUDIO"), "1"))
+#else
+    @"simulator_muted" : @NO
+#endif
   };
 }
 NSString *thermalName(NSProcessInfoThermalState state) {
