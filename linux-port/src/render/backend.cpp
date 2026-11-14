@@ -138,7 +138,7 @@ struct Backend::Impl {
     };
     std::unordered_map<uint64_t, Tex> texs;        // by T# + content hash
 #ifdef DCP_AOT
-    static constexpr size_t snapshotBudget = 64u << 20;
+    static constexpr size_t snapshotBudget = 192u << 20;
     size_t snapshotBytes = 0;
     void releaseSnapshot(Tex& texture) {
         snapshotBytes -= texture.snapshot.capacity();
