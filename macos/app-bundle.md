@@ -83,6 +83,7 @@ python3 macos/test-package.py --app /path/to/OpenCrown.app --dump /path/to/CUSA1
 ```
 
 It retains logs, screenshots and `verification.json` beside the supplied app.
+Run it when the selected build directory is idle.
 It copies the app into a path with spaces/Unicode, runs from `/tmp` with only
 `/usr/bin:/bin` on PATH and makes the build directory inaccessible temporarily
 (restoring its permissions in `finally`). It validates supported/missing dumps,
@@ -103,6 +104,13 @@ that test session; no new gameplay save is claimed from it.
 The inspected UI captures show readable system fonts, correct artwork/textures,
 Play/Stop state and missing-dump errors. Captures containing game artwork and
 raw player state stay outside this repository.
+
+The installed reference-host app is built from `784fe46`. LaunchServices opened
+`/Applications/OpenCrown.app` while the build directory was inaccessible. A
+separate installed-runner check exited 0 at 2100 frames in 4K mode, reaching
+TITLE at vblank 677 and INN at 1322 with the existing iCloud save. Settings and
+all captured save-file hashes remain unchanged across replacement, installation
+and that reload. This proves local reads/preservation, not remote iCloud sync.
 
 ## Remaining checks
 

@@ -458,7 +458,7 @@ unplug/replug and the clean-account clause remain unverified.
 
 **Acceptance**
 
-- [ ] Finder launch works after copying the app to another directory and hiding
+- [x] Finder launch works after copying the app to another directory and hiding
   the build tree; own dump disk is the only external game dependency.
 - [ ] A fresh user can open the copied app from Finder, locate the external
   dump, start the sibling runner with working CPU detection, and reload a save
