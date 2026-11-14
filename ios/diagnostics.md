@@ -87,3 +87,10 @@ Automated checkpoint mode deliberately uses the paced null-audio adapter and
 scripted pad events. Zero platform PCM counters in that mode are expected and
 do not qualify audible playback. Normal interactive Play connects real platform
 audio and input.
+
+`current_scene` is the legacy field name for the last checked component marker,
+not continuous tracking of every world scene. TITLE means active update; INN
+means the normal component completed UI resource initialization and entered its
+transition-to-idle helper. Completed reports export the observation stage and
+checkpoint method. INN does not reuse the audio selector or constructor state0.
+Its visible interior and reopened character still require independent checks.

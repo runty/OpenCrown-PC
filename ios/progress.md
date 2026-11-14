@@ -1,5 +1,24 @@
 # Device port progress
 
+## 2026-11-14 — TITLE also passes both simulators; INN marker connected
+
+The matching 49,492-entry core now passes in the iPhone and tablet simulators:
+2,974 / 2,749 rendered frames, about 96 / 94 seconds, complete checkpoints
+and no guest/frontend/save errors. Both final PNGs were inspected and show
+the real title menu. These are simulator results, not physical-iPhone results.
+The actual iPad result below remains the qualified device baseline.
+
+A 239-destination batch covers the next long owner's direct continuations;
+49,731 entries now compile for all three SDKs. The new INN observer checks
+its original primary/control vtables, class tag, normal mode and stored0x81
+at the resource-ready transition helper. Constructor state0, an audio cue or
+just a resource open cannot satisfy it. It records initialization completion,
+not screen visibility, and uses no remembered object address. Readback and
+actual character reopening remain separate. A copied-Felix Metal run is
+underway; INN has not yet passed. Headless/configuration/service tests remain
+24 / 87 / 24 checks, native/sanitizer service runs pass, and 27 lifecycle
+sessions pass (max stop 127.7 ms under concurrent simulator startup).
+
 ## 2026-11-14 — Visible TITLE passes on the physical iPad
 
 Clean frontend `062a77d99e76a5e233cccf0d2ba08f31d753ee1b` with the frozen

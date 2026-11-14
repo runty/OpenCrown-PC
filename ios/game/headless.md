@@ -117,6 +117,12 @@ phase. Initialization loads the locale-specific STAGE/TITLE resource pair.
 they do not assert screen-visible pixels or successful audio playback.
 The completed report labels `checkpoint_observer=component_active_update` and
 `visual_checkpoint_verified=false`. Independent rendered-frame inspection is
-required for visible TITLE acceptance. INN configuration remains available, but
-its component observer must be established separately before an INN pass.
+required for visible TITLE acceptance. The INN observer is separately bound to the Inn interior component, whose
+BRB subtree selects the character-selection background and an exact SysObj
+class. It checks primary/control vtables, class-tag pointer, normal mode and
+stored state0x81 at its transition-to-idle helper. That state follows completed
+localized UI resource loading. Constructor state0 is rejected; no prior object
+address is remembered, and stale RSI is deliberately ignored. Its report kind
+is `component_ready_transition`, followed by the same advancing-frame gate.
+Visible INN and actual character-save reopening remain separate acceptance work.
 Checkpoint anchors are initialized before publishing the observation flag.

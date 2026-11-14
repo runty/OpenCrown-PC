@@ -92,7 +92,8 @@ struct Engine {
   std::atomic<bool> titleSeen{false};
   std::atomic<uint64_t> sceneObserverCalls{0}, sceneReadErrors{0},
       sceneInvalidNames{0};
-  std::atomic<uint64_t> titleComponentCalls{0}, componentReadErrors{0};
+  std::atomic<uint64_t> titleComponentCalls{0}, innReadyCalls{0},
+      componentReadErrors{0};
   std::atomic<bool> booted{false};
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false};
@@ -103,6 +104,7 @@ struct Engine {
       std::chrono::steady_clock::now();
   std::string firstError;
   std::string currentScene;
+  std::string componentStage;
   std::string requestedCue;
   Memory primary;
 };
@@ -186,6 +188,25 @@ void recordEvent(const std::string &value) {
   std::lock_guard<std::mutex> lock(engine().eventLock);
   if (++engine().eventCounts[value] == 1)
     engine().events.push_back(value);
+}
+void recordComponent(const char *name, const char *stage) {
+  bool changed;
+  {
+    std::lock_guard<std::mutex> lock(engine().diagnosticLock);
+    changed = engine().currentScene != name;
+    engine().currentScene = name;
+    engine().componentStage = stage;
+    if (!std::strcmp(name, "TITLE"))
+      engine().titleSeen = true;
+    if (engine().headless.scene == name && !engine().checkpointSeen.load()) {
+      engine().checkpointVblank = engine().vblanks.load();
+      engine().checkpointFlip = dcp_gnm_stats().flips;
+      // Publish only after both anchors are initialized for vblank readers.
+      engine().checkpointSeen.store(true);
+    }
+  }
+  if (changed)
+    recordEvent(std::string("component ") + name + " " + stage);
 }
 constexpr uint64_t hleBase = 0x70000000;
 constexpr uint64_t exitPC = 0x7fff0000;
@@ -1011,11 +1032,12 @@ extern "C" const char *dcp_cpu_report() {
   const bool joined = dcp_thread_stop_and_join(5000);
   if (engine().host.will_unload)
     engine().host.will_unload(engine().host.context);
-  std::string firstError, currentScene, requestedCue;
+  std::string firstError, currentScene, componentStage, requestedCue;
   {
     std::lock_guard<std::mutex> lock(engine().diagnosticLock);
     firstError = engine().firstError;
     currentScene = engine().currentScene;
+    componentStage = engine().componentStage;
     requestedCue = engine().requestedCue;
   }
   const std::string threadError = dcp_thread_error();
@@ -1059,9 +1081,14 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_complete\":"
       << (checkpointComplete ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
-      << ",\"checkpoint_observer\":\"component_active_update\""
+      << ",\"checkpoint_observer\":"
+      << jsonString(engine().headless.scene == "INN"
+                        ? "component_ready_transition"
+                        : "component_active_update")
+      << ",\"component_observation_stage\":" << jsonString(componentStage)
       << ",\"visual_checkpoint_verified\":false"
       << ",\"title_component_calls\":" << engine().titleComponentCalls
+      << ",\"inn_ready_helper_calls\":" << engine().innReadyCalls
       << ",\"component_observer_read_errors\":" << engine().componentReadErrors
       << ",\"requested_audio_cue\":" << jsonString(requestedCue)
       << ",\"cue_observer_name_argument\":\"rsi\""
@@ -1176,21 +1203,30 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     }
     if (uint8_t(state.gpr.rsi.qword) != 1 || phase != 1)
       return;
-    bool changed;
-    {
-      std::lock_guard<std::mutex> lock(engine().diagnosticLock);
-      changed = engine().currentScene != "TITLE";
-      engine().currentScene = "TITLE";
-      engine().titleSeen = true;
-      if (engine().headless.scene == "TITLE" && !engine().checkpointSeen.load()) {
-        engine().checkpointVblank = engine().vblanks.load();
-        engine().checkpointFlip = dcp_gnm_stats().flips;
-        // Publish only after both anchors are initialized for vblank readers.
-        engine().checkpointSeen.store(true);
-      }
+    recordComponent("TITLE", "active_update");
+  }
+  if (observedPC == 0x20368a60) {
+    ++engine().innReadyCalls;
+    const uint64_t object = state.gpr.rdi.qword;
+    uint8_t phase = 0;
+    uint32_t mode = 0;
+    try {
+      if (object > UINT64_MAX - 0x7bb ||
+          canonical(read64(*currentMemory, object)) != 0x20b177b0 ||
+          canonical(read64(*currentMemory, object + 0xa8)) != 0x20b188e8 ||
+          canonical(read64(*currentMemory, object + 0xb8)) != 0x2074ddc9)
+        return;
+      guestRead(*currentMemory, object + 0x103, &phase, 1);
+      guestRead(*currentMemory, object + 0x7b8, &mode, 4);
+    } catch (const std::runtime_error &) {
+      ++engine().componentReadErrors;
+      return;
     }
-    if (changed)
-      recordEvent("active component TITLE");
+    // Constructor state0 is insufficient. Normal state0x81 follows completed
+    // Inn UI resource loading; this helper now requests idle0. RSI is stale at
+    // entry and is cleared by the original helper. Visibility stays separate.
+    if (phase == 0x81 && mode != 1)
+      recordComponent("INN", "resources_ready_transition");
   }
 }
 
