@@ -312,7 +312,9 @@ bool dcp_thread_service(const char *name, const uint64_t a[6],
   if (!name || !a || !result)
     return false;
   *result = ok;
-  if (named(name, "scePthreadCreate")) {
+  if (named(name, "scePthreadYield") || named(name, "sched_yield")) {
+    std::this_thread::yield();
+  } else if (named(name, "scePthreadCreate")) {
     if (!a[0] || !a[2]) {
       *result = invalid;
       return true;
@@ -387,8 +389,6 @@ bool dcp_thread_service(const char *name, const uint64_t a[6],
       if (changed)
         notify_cancellation();
     }
-  } else if (named(name, "scePthreadYield") || named(name, "sched_yield")) {
-    std::this_thread::yield();
   } else if (named(name, "scePthreadSetprio") ||
              named(name, "scePthreadGetprio") ||
              named(name, "scePthreadSetaffinity") ||

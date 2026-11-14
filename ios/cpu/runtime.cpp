@@ -28,6 +28,9 @@ std::mutex registryMutex;
 struct RegionCache {
   const std::vector<Memory::Region> *registry = nullptr;
   std::array<Memory::Region, 8> regions{};
+  // Each nonzero tag proves that one registered native mapping covers the
+  // entire page. Partial pages and cross-page accesses use the range checks.
+  std::array<uint64_t, 256> pageTags{};
 };
 thread_local RegionCache regionCache{};
 // Only the miss path needs a nontrivial TLS initializer and destructor.
@@ -144,7 +147,7 @@ static void checkCancelled(const Memory &memory) {
                                                RegionCache &cache,
                                                uint64_t address, size_t size) {
   if (cache.registry != memory.regions.get()) {
-    cache.regions = {};
+    cache = {};
     registryOwner = memory.regions;
     cache.registry = registryOwner.get();
   }
@@ -174,6 +177,12 @@ static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
   auto &cache = regionCache;
   if (cache.registry != memory.regions.get())
     return lookupRegion(memory, cache, address, size);
+  const uint64_t page = address / pageSize;
+  auto &tag = cache.pageTags[(page ^ (page >> 8)) % cache.pageTags.size()];
+  const bool withinPage = size && size <= pageSize - address % pageSize;
+  if (withinPage && tag == page + 1)
+    return reinterpret_cast<uint8_t *>(address);
+  uint8_t *pointer = nullptr;
   for (size_t i = 0; i < cache.regions.size(); ++i) {
     const auto region = cache.regions[i];
     const uint64_t base = reinterpret_cast<uint64_t>(region.data);
@@ -181,10 +190,19 @@ static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
         address - base <= region.size - size) {
       if (i)
         std::swap(cache.regions[0], cache.regions[i]);
-      return region.data + (address - base);
+      pointer = region.data + (address - base);
+      break;
     }
   }
-  return lookupRegion(memory, cache, address, size);
+  if (!pointer)
+    pointer = lookupRegion(memory, cache, address, size);
+  const auto region = cache.regions[0];
+  const uint64_t base = reinterpret_cast<uint64_t>(region.data);
+  const uint64_t pageStart = page * pageSize;
+  if (withinPage && pageStart >= base && region.size >= pageSize &&
+      pageStart - base <= region.size - pageSize)
+    tag = page + 1;
+  return pointer;
 }
 uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
   auto pointer = checkedPointer(memory, address, size);

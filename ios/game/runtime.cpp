@@ -34,6 +34,7 @@
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <string_view>
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
@@ -73,6 +74,7 @@ struct Engine {
   std::vector<std::unique_ptr<std::recursive_mutex>> mutexes;
   std::vector<std::string> events;
   std::map<std::string, uint64_t> eventCounts;
+  std::array<std::atomic<bool>, std::size(imports)> observedImports{};
   std::atomic<unsigned> workersStarted{0};
   std::mutex metadata;
   std::mutex diagnosticLock;
@@ -298,16 +300,30 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   auto index = (pc - hleBase) / 16;
   if (index >= std::size(imports))
     throw std::runtime_error("invalid HLE import");
-  std::string name = imports[index];
-  recordEvent(name);
+  const auto *importName = imports[index];
+  auto &observed = engine().observedImports[index];
+  if (!observed.load(std::memory_order_relaxed)) {
+    recordEvent(importName);
+    observed.store(true, std::memory_order_relaxed);
+  }
+  const std::string_view name(importName);
   auto &r = state.gpr;
   uint64_t arguments[9] = {r.rdi.qword, r.rsi.qword, r.rdx.qword,
                            r.rcx.qword, r.r8.qword,  r.r9.qword};
   uint64_t gnmResult;
   if (name == "scePthreadExit")
     throw GuestThreadExit(r.rdi.qword);
+  // A guest worker yields while waiting for the other workers to finish a
+  // frame. Route this hot import straight to its normal thread-service handler.
+  if (name == "scePthreadYield" || name == "sched_yield") {
+    uint64_t result;
+    if (dcp_thread_service(importName, arguments, &result)) {
+      returnToGuest(state, *memory, result);
+      return memory;
+    }
+  }
   uint64_t offlineResult;
-  if (dcp_offline_service(name.c_str(), arguments, &offlineResult)) {
+  if (dcp_offline_service(importName, arguments, &offlineResult)) {
     returnToGuest(state, *memory, offlineResult);
     return memory;
   }
@@ -318,26 +334,26 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     for (size_t i = 6; i < 9; ++i)
       arguments[i] = read64(*memory, r.rsp.qword + 8 + (i - 6) * 8);
   uint64_t fontResult;
-  if (dcp_font_service(name.c_str(), arguments, floating, &fontResult)) {
+  if (dcp_font_service(importName, arguments, floating, &fontResult)) {
     returnToGuest(state, *memory, fontResult);
     return memory;
   }
   uint64_t imeResult;
-  if (dcp_ime_service(name.c_str(), arguments, &imeResult)) {
+  if (dcp_ime_service(importName, arguments, &imeResult)) {
     returnToGuest(state, *memory, imeResult);
     return memory;
   }
   uint64_t fileResult;
-  if (dcp_file_service(name.c_str(), arguments, &fileResult)) {
+  if (dcp_file_service(importName, arguments, &fileResult)) {
     returnToGuest(state, *memory, fileResult);
     return memory;
   }
   uint64_t threadResult;
-  if (dcp_thread_service(name.c_str(), arguments, &threadResult)) {
+  if (dcp_thread_service(importName, arguments, &threadResult)) {
     returnToGuest(state, *memory, threadResult);
     return memory;
   }
-  if (dcp_gnm_service(name.c_str(), arguments, &gnmResult)) {
+  if (dcp_gnm_service(importName, arguments, &gnmResult)) {
     if (dcp_gnm_stats().rejected_accesses)
       throw std::runtime_error("GNM rejected a guest memory access");
     returnToGuest(state, *memory, gnmResult);
@@ -672,8 +688,8 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
       if (name == stub)
         verifiedStub = true;
     if (!verifiedStub)
-      throw std::runtime_error("missing HLE: " + name);
-    recordEvent("reference stub: " + name);
+      throw std::runtime_error("missing HLE: " + std::string(name));
+    recordEvent("reference stub: " + std::string(name));
     returnToGuest(state, *memory, 0);
   }
   return memory;
