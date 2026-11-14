@@ -17,6 +17,7 @@ parser.add_argument("--root", type=Path, required=True)
 parser.add_argument("--dump", type=Path, required=True)
 parser.add_argument("--rounds", type=int, default=128)
 parser.add_argument("--timeout", type=float, default=120)
+parser.add_argument("--jobs", type=int, default=8)
 parser.add_argument("--translated-libc-bulk", action="store_true")
 parser.add_argument(
     "--prefetch",
@@ -30,6 +31,8 @@ parser.add_argument(
     help="Stop between child processes when this file exists (default ROOT/advance.stop)",
 )
 args = parser.parse_args()
+if not 1 <= args.jobs <= 32:
+    parser.error("--jobs must be between 1 and 32")
 if args.timeout <= 0:
     parser.error("--timeout must be positive")
 if args.rounds < 1:
@@ -67,7 +70,16 @@ def stopping():
 
 
 builder = Path(__file__).with_name("build.py")
-base = [sys.executable, str(builder), "--root", str(root), "--dump", str(args.dump)]
+base = [
+    sys.executable,
+    str(builder),
+    "--root",
+    str(root),
+    "--dump",
+    str(args.dump),
+    "--jobs",
+    str(args.jobs),
+]
 if args.translated_libc_bulk:
     base.append("--translated-libc-bulk")
 

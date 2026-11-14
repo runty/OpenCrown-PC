@@ -3,11 +3,13 @@
 
 import argparse
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shlex
 import struct
 import subprocess
 from native_libc_ir import native_libc_ir
@@ -23,6 +25,9 @@ parser.add_argument(
 )
 parser.add_argument("--ios", action="store_true")
 parser.add_argument("--simulator", action="store_true")
+parser.add_argument(
+    "--jobs", type=int, default=8, help="Maximum independent trace compilations"
+)
 parser.add_argument(
     "--translated-libc-bulk",
     action="store_true",
@@ -58,6 +63,8 @@ parser.add_argument(
     default=os.environ.get("DCP_LLVM_PREFIX", "/opt/homebrew/opt/llvm"),
 )
 args = parser.parse_args()
+if not 1 <= args.jobs <= 32:
+    parser.error("--jobs must be between 1 and 32")
 root = args.root.resolve()
 if (
     len(root.parts) < 3
@@ -120,12 +127,24 @@ backend_snapshot = {
 
 def run(command, log):
     with (root / log).open("w") as stream:
-        subprocess.run(
-            [str(x) for x in command],
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                [str(x) for x in command],
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, OSError) as error:
+            # Lifter arguments contain private game bytes. Report the named
+            # step/log instead of formatting the complete subprocess argv.
+            detail = (
+                f"exit {error.returncode}"
+                if isinstance(error, subprocess.CalledProcessError)
+                else str(error)
+            )
+            raise SystemExit(
+                f"Build step {log} failed ({detail}); see {root / log}"
+            ) from None
 
 
 cache_hash = hashlib.sha256(Path(__file__).read_bytes())
@@ -704,9 +723,12 @@ for platform, target, sdk in platforms:
         font_source / "include",
         freetype.parent / "include",
     ]
-    for path in sorted(trace_dir.glob("*.ll")):
+
+    def compile_trace(path):
         obj = directory / (path.stem + ".o")
         if not obj.exists() or obj.stat().st_mtime < path.stat().st_mtime:
+            temporary = obj.with_suffix(".o.partial")
+            temporary.unlink(missing_ok=True)
             run(
                 [
                     llvm / "clang",
@@ -719,11 +741,17 @@ for platform, target, sdk in platforms:
                     "-c",
                     path,
                     "-o",
-                    obj,
+                    temporary,
                 ],
                 platform + "-" + path.stem + "-compile.log",
             )
-        objects.append(obj)
+            temporary.replace(obj)
+        return obj
+
+    # Each compiler owns its object and log; archive input order stays stable.
+    # Failed compiles cannot publish a partially written cached object.
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        objects.extend(pool.map(compile_trace, sorted(trace_dir.glob("*.ll"))))
     for path, name in [
         (source / "ios/cpu/runtime.cpp", "memory"),
         (source / "ios/game/runtime.cpp", "runtime"),
@@ -733,6 +761,7 @@ for platform, target, sdk in platforms:
         (source / "ios/game/file-services.cpp", "files"),
         (source / "ios/game/offline-services.cpp", "offline"),
         (source / "ios/game/font-services.cpp", "font"),
+        (source / "ios/game/ime-services.cpp", "ime"),
         (source / "ios/game/libc-bulk.cpp", "libc-bulk"),
         (root / "stubs.cpp", "stubs"),
         (root / "modules.s", "modules"),
@@ -787,8 +816,12 @@ for platform, target, sdk in platforms:
     archive = directory / "libcpu-fixtures.a"
     archive_temporary = archive.with_suffix(".a.partial")
     archive_temporary.unlink(missing_ok=True)
+    archive_inputs = directory / "archive-inputs.rsp"
+    archive_inputs.write_text(
+        "\n".join(shlex.quote(str(obj)) for obj in objects) + "\n"
+    )
     run(
-        [llvm / "llvm-ar", "rcs", archive_temporary, *objects],
+        [llvm / "llvm-ar", "rcs", archive_temporary, "@" + str(archive_inputs)],
         platform + "-archive.log",
     )
     archive_temporary.replace(archive)

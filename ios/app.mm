@@ -1,5 +1,6 @@
 #define SDL_MAIN_HANDLED
 #include "game/game.h"
+#include "game/ime-services.h"
 #include "platform/platform.h"
 #include "render/replay.h"
 #include "storage/save-transactions.h"
@@ -158,6 +159,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
 @property(nonatomic, strong) CADisplayLink *displayLink;
 @property(nonatomic, strong) UIWindow *launcherWindow;
 @property(nonatomic, strong) UIButton *pauseButton;
+@property(nonatomic, strong) UIAlertController *imeAlert;
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *pauseLayout;
 - (void)activeChanged:(BOOL)active;
 - (void)unloadRenderer;
@@ -504,6 +506,59 @@ UIButton *button(NSString *title, id target, SEL action) {
   });
 }
 
+- (void)showPendingNameEntry {
+  if (!_gameWindow || self.imeAlert || !dcp_platform_active())
+    return;
+  DcpImeRequest request;
+  if (!dcp_ime_pending(&request))
+    return;
+  UIWindow *window = (__bridge UIWindow *)SDL_GetPointerProperty(
+      SDL_GetWindowProperties(_gameWindow),
+      SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
+  UIViewController *presenter = window.rootViewController;
+  if (!presenter || presenter.presentedViewController)
+    return;
+  auto string = [](const std::u16string &text) -> NSString * {
+    return [[NSString alloc] initWithCharacters:
+        reinterpret_cast<const unichar *>(text.data()) length:text.size()];
+  };
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:request.title.empty() ? @"Enter Name" : string(request.title)
+                       message:nil preferredStyle:UIAlertControllerStyleAlert];
+  [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+    field.text = string(request.text);
+    field.autocorrectionType = UITextAutocorrectionTypeNo;
+    field.spellCheckingType = UITextSpellCheckingTypeNo;
+    field.clearButtonMode = UITextFieldViewModeWhileEditing;
+  }];
+  const uint64_t requestID = request.id;
+  __weak GameController *weakSelf = self;
+  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+      style:UIAlertActionStyleCancel handler:^(UIAlertAction *) {
+    dcp_ime_finish(requestID, nullptr);
+    GameController *controller = weakSelf;
+    controller.imeAlert = nil;
+    if (controller && controller->_running)
+      dcp_platform_set_paused(0);
+  }]];
+  __weak UIAlertController *weakAlert = alert;
+  [alert addAction:[UIAlertAction actionWithTitle:@"Done"
+      style:UIAlertActionStyleDefault handler:^(UIAlertAction *) {
+    NSString *value = weakAlert.textFields.firstObject.text ?: @"";
+    std::u16string text(value.length, 0);
+    if (value.length)
+      [value getCharacters:reinterpret_cast<unichar *>(text.data())
+                     range:NSMakeRange(0, value.length)];
+    dcp_ime_finish(requestID, &text);
+    GameController *controller = weakSelf;
+    controller.imeAlert = nil;
+    if (controller && controller->_running)
+      dcp_platform_set_paused(0);
+  }]];
+  self.imeAlert = alert;
+  dcp_platform_set_paused(1);
+  [presenter presentViewController:alert animated:YES completion:nil];
+}
 - (void)renderFrame:(CADisplayLink *)sender {
   [self emitLiveDiagnostics:NO];
   SDL_Event event;
@@ -514,6 +569,9 @@ UIButton *button(NSString *title, id target, SEL action) {
       dcp_game_request_stop();
     }
   if (!_gameWindow || !dcp_platform_active())
+    return;
+  [self showPendingNameEntry];
+  if (!dcp_platform_active())
     return;
   if (!_replay) {
     if (!dcp::render::capture_enabled())
@@ -629,6 +687,8 @@ UIButton *button(NSString *title, id target, SEL action) {
                                         completion:nil];
 }
 - (void)unloadRenderer {
+  [self.imeAlert dismissViewControllerAnimated:NO completion:nil];
+  self.imeAlert = nil;
   [self.displayLink invalidate];
   self.displayLink = nil;
   dcp_platform_attach_touch_overlay(nullptr);

@@ -130,8 +130,8 @@ def main():
         help="Validate configuration and print resolved paths without changing files",
     )
     args = parser.parse_args()
-    if args.rounds < 0 or args.prefetch < 0 or args.jobs < 1:
-        parser.error("rounds/prefetch must be nonnegative and jobs positive")
+    if args.rounds < 0 or args.prefetch < 0 or not 1 <= args.jobs <= 32:
+        parser.error("rounds/prefetch must be nonnegative and jobs between 1 and 32")
     if not args.team and not (args.prepare_only or args.check):
         parser.error("--team is required for signed app builds (or use --prepare-only)")
     root, dump = external(args.root), external(args.dump)
@@ -564,6 +564,7 @@ def main():
         "thread-cancel",
         [SOURCE / "ios/game/test-thread-cancel.sh", root / "thread-cancel-probe"],
     )
+    run("ime", [SOURCE / "ios/game/test-ime.sh", root / "ime-probe"])
     for review in ["rounding", "confirmed-packed"]:
         run(
             review,
@@ -585,6 +586,8 @@ def main():
         game,
         "--dump",
         dump,
+        "--jobs",
+        args.jobs,
     ]
     if args.translated_libc_bulk:
         builder.append("--translated-libc-bulk")
@@ -620,6 +623,8 @@ def main():
                 args.rounds,
                 "--prefetch",
                 args.prefetch,
+                "--jobs",
+                args.jobs,
                 *(["--translated-libc-bulk"] if args.translated_libc_bulk else []),
             ],
             round_limit=True,

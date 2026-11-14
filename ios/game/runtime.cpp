@@ -1,6 +1,7 @@
 #include "../cpu/runtime.h"
 #include "file-services.h"
 #include "font-services.h"
+#include "ime-services.h"
 #include "game.h"
 #include "gnm-services.h"
 #ifdef DCP_NATIVE_LIBC_BULK
@@ -249,6 +250,11 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   uint64_t fontResult;
   if (dcp_font_service(name.c_str(), arguments, floating, &fontResult)) {
     returnToGuest(state, *memory, fontResult);
+    return memory;
+  }
+  uint64_t imeResult;
+  if (dcp_ime_service(name.c_str(), arguments, &imeResult)) {
+    returnToGuest(state, *memory, imeResult);
     return memory;
   }
   uint64_t fileResult;
@@ -864,6 +870,13 @@ extern "C" const char *dcp_cpu_report() {
                 static_cast<uint8_t *>(address), size);
     };
     dcp_font_init(font);
+    DcpImeHooks ime;
+    ime.context = owner.get();
+    ime.pointer = files.pointer;
+#ifdef DCP_MOBILE_PLATFORM
+    ime.host_present = engine().interactive;
+#endif
+    dcp_ime_init(ime);
     for (const auto &info : moduleData) {
       engine().modules.push_back({info.canonical, {info.begin, info.end}});
       auto &data = engine().modules.back().data;
@@ -965,6 +978,7 @@ extern "C" const char *dcp_cpu_report() {
   else {
     dcp_file_reset();
     dcp_font_reset();
+    dcp_ime_init({});
     dcp::render::shutdown_aot_capture();
   }
   std::ostringstream out;

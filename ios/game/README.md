@@ -69,3 +69,9 @@ x86 estimate's permitted error bound, with explicit signed-zero, infinity, NaN
 and denormal behavior. Tests compare native reciprocal estimates within that
 bound; integer and bit-permutation fixtures compare exactly. This does not imply
 complete x86 instruction, floating-point exception or MXCSR coverage.
+
+Native [UIKit name entry](ime.md) is connected to the checked IME adapter.
+`--jobs 8` bounds independent trace compilers; archive inputs use an LLVM
+response file so large trace sets do not exceed macOS's process argument limit.
+Objects are published only after successful compilation and archived in stable
+trace order. Run a single builder per output tree.

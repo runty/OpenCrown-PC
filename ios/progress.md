@@ -2,6 +2,22 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+UIKit name entry now uses a checked IME request/completion adapter. UI callbacks
+copy owned UTF-16 text; only the guest poll commits it to validated game memory.
+Cancel/abort preserve the original buffer, stale session IDs are rejected, and
+Unicode truncation preserves surrogate pairs. Native, ASan/UBSan and TSAN each
+pass 495 checks with 100 concurrent completions, plus all three SDK compilations.
+The latest frontend compiles for both iOS SDKs. Real character-creation keyboard
+acceptance remains open. See [name entry](game/ime.md).
+
+Four guarded switch families were independently resolved and their missing
+unaligned targets translated in one batch. Independent trace compilation is now
+bounded by `--jobs`; object publication is atomic. LLVM response-file archive
+inputs avoid the process argument limit hit by the larger frozen corpus. A
+13,307-entry frozen Mac run captures 251 drawn frames, still uniformly black,
+before the next missing target. Discovery and device/simulator cross compilation
+continue; no recognizable image or TITLE result is claimed.
+
 The goal remains active while the reference devices are away. The sixteen-patch
 backend adds observed ROUND, packed float and packed integer forms. Rounding
 passes 13,824,000 masked native-oracle comparisons, 2,560,000 suppression
