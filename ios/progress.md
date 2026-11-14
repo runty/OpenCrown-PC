@@ -2,6 +2,25 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+Clean frontend `79fc148` now builds for both iPhoneOS and Simulator; the signed
+iPhoneOS bundle verifies. The 13,307-entry artifact is linked into both. Phone
+and tablet simulator runs each pass real libc startup and 64 strlen checks,
+start 24 workers, and replay 106/98 captured frames before missing `2006d309`.
+That target is already covered in ongoing discovery. The exported artifact
+identity matches the packaged manifest. Both runs explicitly report no
+nonuniform snapshot, with no frontend error. Their viewed control overlay is
+intact. These are simulated iPhone 17 Pro Max/iPad mini A17 Pro results; no
+physical installation is claimed. Evidence: `ios-app-stage-simulator/evidence`
+in the external workspace. Recognizable game images are still outstanding.
+
+Trace lifting now also uses bounded independent processes. Duplicate address
+spellings are normalized before tasks start. Each successful trace is instrumented
+and its provenance committed individually, so a failed peer does not erase that
+evidence. A separate invalid-entry batch test confirms this behavior; invalid
+code is not published. A successful batch verifies current provenance across
+13,557 entries, and subsequent discovery has passed 16,000 entries. This larger
+static corpus does not establish that every prefetched function executed.
+
 UIKit name entry now uses a checked IME request/completion adapter. UI callbacks
 copy owned UTF-16 text; only the guest poll commits it to validated game memory.
 Cancel/abort preserve the original buffer, stale session IDs are rejected, and
