@@ -8,6 +8,9 @@ std::recursive_mutex guestAtomics;
 
 void addRegion(Memory &memory, uint8_t *address, size_t size) {
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  const uint64_t base = reinterpret_cast<uint64_t>(address);
+  if (!memory.regions || !address || size > UINT64_MAX - base)
+    throw std::runtime_error("invalid guest memory region registration");
   memory.regions->push_back({address, size});
 }
 static void checkCancelled(const Memory &memory) {
@@ -15,33 +18,58 @@ static void checkCancelled(const Memory &memory) {
       (memory.cancelled && memory.cancelled()))
     throw std::runtime_error("bootstrap stopped");
 }
-uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
-  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
-  if (size <= memory.bytes.size() && address >= Memory::base &&
+static uint8_t *checkedPointerLocked(Memory &memory, uint64_t address,
+                                    size_t size) {
+  if (!memory.bytes.empty() && size <= memory.bytes.size() && address >= Memory::base &&
       address - Memory::base <= memory.bytes.size() - size)
     return memory.bytes.data() + (address - Memory::base);
+  if (!memory.regions)
+    throw std::runtime_error("missing guest memory registry");
+  if (memory.cachedRegistry != memory.regions) {
+    memory.cachedRegions = {};
+    memory.cachedRegistry = memory.regions;
+  }
+  for (size_t i = 0; i < memory.cachedRegions.size(); ++i) {
+    const auto region = memory.cachedRegions[i];
+    const uint64_t base = reinterpret_cast<uint64_t>(region.data);
+    if (region.data && size <= region.size && address >= base &&
+        address - base <= region.size - size) {
+      if (i)
+        std::swap(memory.cachedRegions[0], memory.cachedRegions[i]);
+      return region.data + (address - base);
+    }
+  }
   for (const auto &region : *memory.regions) {
     const uint64_t base = reinterpret_cast<uint64_t>(region.data);
-    if (size <= region.size && address >= base &&
-        address - base <= region.size - size)
+    if (region.data && region.size <= UINT64_MAX - base &&
+        size <= region.size && address >= base &&
+        address - base <= region.size - size) {
+      for (size_t i = memory.cachedRegions.size() - 1; i; --i)
+        memory.cachedRegions[i] = memory.cachedRegions[i - 1];
+      memory.cachedRegions[0] = region;
       return region.data + (address - base);
+    }
   }
   throw std::runtime_error(
       "guest memory access outside mapped range: " + std::to_string(address) +
       " size " + std::to_string(size));
 }
+uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
+  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  return checkedPointerLocked(memory, address, size);
+}
 uint64_t read64(Memory &memory, uint64_t address) {
   checkCancelled(memory);
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
   uint64_t value;
-  std::memcpy(&value, guestPointer(memory, address, sizeof(value)),
+  std::memcpy(&value, checkedPointerLocked(memory, address, sizeof(value)),
               sizeof(value));
   return value;
 }
 void write64(Memory &memory, uint64_t address, uint64_t value) {
   checkCancelled(memory);
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
-  std::memcpy(guestPointer(memory, address, sizeof(value)), &value,
+  std::memcpy(checkedPointerLocked(memory, address, sizeof(value)), &value,
               sizeof(value));
 }
 extern "C" uint64_t __remill_read_memory_64(Memory *memory, uint64_t address) {
@@ -131,7 +159,7 @@ extern "C" uint8_t __remill_undefined_8() { return 0; }
     checkCancelled(*memory);                                                   \
     TYPE value = 0;                                                            \
     try {                                                                      \
-      std::memcpy(&value, guestPointer(*memory, address, sizeof(value)),       \
+      std::memcpy(&value, checkedPointerLocked(*memory, address, sizeof(value)),       \
                   sizeof(value));                                              \
     } catch (const std::runtime_error &error) {                                \
       memory->fault = error.what();                                            \
@@ -145,7 +173,7 @@ extern "C" uint8_t __remill_undefined_8() { return 0; }
     checkCancelled(*memory);                                                   \
     std::lock_guard<std::recursive_mutex> lock(guestAtomics);                  \
     try {                                                                      \
-      std::memcpy(guestPointer(*memory, address, sizeof(value)), &value,       \
+      std::memcpy(checkedPointerLocked(*memory, address, sizeof(value)), &value,       \
                   sizeof(value));                                              \
     } catch (const std::runtime_error &error) {                                \
       memory->fault = error.what();                                            \
@@ -168,7 +196,7 @@ extern "C" Memory *__remill_read_memory_f80(Memory *memory, uint64_t address,
   checkCancelled(*memory);
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
   try {
-    std::memcpy(value.data, guestPointer(*memory, address, 10), 10);
+    std::memcpy(value.data, checkedPointerLocked(*memory, address, 10), 10);
   } catch (const std::runtime_error &error) {
     memory->fault = error.what();
     if (memory->stopOnFault)
@@ -182,7 +210,7 @@ extern "C" Memory *__remill_write_memory_f80(Memory *memory, uint64_t address,
   checkCancelled(*memory);
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
   try {
-    std::memcpy(guestPointer(*memory, address, 10), value.data, 10);
+    std::memcpy(checkedPointerLocked(*memory, address, 10), value.data, 10);
   } catch (const std::runtime_error &error) {
     memory->fault = error.what();
     if (memory->stopOnFault)
@@ -234,7 +262,7 @@ static Memory *compareExchange(Memory *memory, uint64_t address, T &expected,
                                T desired) {
   checkCancelled(*memory);
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
-  auto pointer = guestPointer(*memory, address, sizeof(T));
+  auto pointer = checkedPointerLocked(*memory, address, sizeof(T));
   T current;
   std::memcpy(&current, pointer, sizeof(T));
   if (current == expected)
@@ -257,12 +285,16 @@ extern "C" Memory *__remill_compare_exchange_memory_64(Memory *memory,
 
 void guestRead(Memory &memory, uint64_t address, void *output, size_t size) {
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
-  std::memcpy(output, guestPointer(memory, address, size), size);
+  auto pointer = checkedPointerLocked(memory, address, size);
+  if (size)
+    std::memcpy(output, pointer, size);
 }
 void guestWrite(Memory &memory, uint64_t address, const void *input,
                 size_t size) {
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
-  std::memcpy(guestPointer(memory, address, size), input, size);
+  auto pointer = checkedPointerLocked(memory, address, size);
+  if (size)
+    std::memcpy(pointer, input, size);
 }
 
 // Remill's x86 rounding enum differs from Darwin arm64 FE_* constants.
@@ -285,3 +317,20 @@ extern "C" void __remill_fpu_set_rounding(int32_t mode) {
   if (mode < 0 || mode > 3 || std::fesetround(native[mode]))
     throw std::runtime_error("invalid guest floating-point rounding mode");
 }
+
+// These privileged operations cannot be executed by a PS4 user process. Keep
+// speculative traces linkable, but report an executed operation as a fault.
+#define UNSUPPORTED_PORT(BITS, TYPE)                                            \
+  extern "C" TYPE __remill_read_io_port_##BITS(Memory *, uint64_t port) {       \
+    throw std::runtime_error("unsupported guest I/O port read: " +              \
+                             std::to_string(port));                            \
+  }                                                                            \
+  extern "C" Memory *__remill_write_io_port_##BITS(                            \
+      Memory *, uint64_t port, TYPE) {                                          \
+    throw std::runtime_error("unsupported guest I/O port write: " +             \
+                             std::to_string(port));                            \
+  }
+UNSUPPORTED_PORT(8, uint8_t)
+UNSUPPORTED_PORT(16, uint16_t)
+UNSUPPORTED_PORT(32, uint32_t)
+#undef UNSUPPORTED_PORT

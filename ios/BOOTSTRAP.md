@@ -37,7 +37,11 @@ these modes. `--prepare-only` still compiles code; `--check` is the quick check.
 
 The configurable discovery budget counts host execution/build rounds. Each
 missing trace is lifted together with up to `--prefetch 12` nearby uncompiled
-direct callees from executable module segments. Unsupported services,
+direct callees or possible vtable/callback targets from executable module
+segments. Relocation records are bounds checked and speculative destinations
+require 16-byte alignment; executable segments also contain constants, so these
+are candidates rather than proven functions. Executed unaligned demands are
+always retained. Arbitrary code bytes are not scanned for guessed entries. Unsupported services,
 instructions and runtime failures stop the build explicitly. Exhausting the
 round budget is reported as **partial coverage**, then the current libraries
 and apps are built. A later invocation reuses those traces and continues.
@@ -72,6 +76,10 @@ The script applies these checked local Remill patches, in order:
 7. `remill-packed-shifts.patch`
 8. `remill-x87-control.patch`
 9. `remill-movemask.patch`
+10. `remill-startup-variable-blend.patch`
+11. `remill-startup-lane-insert.patch`
+12. `remill-startup-permute128.patch`
+13. `remill-startup-dword-shifts.patch`
 
 The FP80 stage downloads the checked official SoftFloat archive, builds helper
 libraries for all three targets and the host LLVM lowerer, and runs direct,

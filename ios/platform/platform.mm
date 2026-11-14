@@ -166,8 +166,11 @@ struct TouchCapture {
   return self;
 }
 - (CGFloat)unit {
+  const UIEdgeInsets safe = self.safeAreaInsets;
+  const CGFloat width = self.bounds.size.width - safe.left - safe.right;
+  const CGFloat height = self.bounds.size.height - safe.top - safe.bottom;
   return std::clamp<CGFloat>(
-      std::min(self.bounds.size.width, self.bounds.size.height) / 9, 30, 58);
+      std::min(width / 14, height / 9), 18, 58);
 }
 - (CGPoint)centre:(NSInteger)control {
   CGFloat u = self.unit;
@@ -175,6 +178,10 @@ struct TouchCapture {
   CGFloat left = safe.left + 2 * u,
           right = self.bounds.size.width - safe.right - 2 * u;
   CGFloat bottom = self.bounds.size.height - safe.bottom - 1.8 * u;
+  const bool compact =
+      (self.bounds.size.width - safe.left - safe.right) / u < 16;
+  const CGFloat menuY = compact ? bottom - 4 * u
+                               : self.bounds.size.height - safe.bottom - .7 * u;
   switch (control) {
   case 0:
     return CGPointMake(left, bottom);
@@ -193,11 +200,9 @@ struct TouchCapture {
   case 7:
     return CGPointMake(right, bottom - 2 * u);
   case 8:
-    return CGPointMake(self.bounds.size.width / 2 - u,
-                       self.bounds.size.height - safe.bottom - .7 * u);
+    return CGPointMake(self.bounds.size.width / 2 - u, menuY);
   case 9:
-    return CGPointMake(self.bounds.size.width / 2 + u,
-                       self.bounds.size.height - safe.bottom - .7 * u);
+    return CGPointMake(self.bounds.size.width / 2 + u, menuY);
   case 10:
     return CGPointMake(left + 2.2 * u, bottom - 1.6 * u); // D-pad
   case 11:
@@ -205,9 +210,9 @@ struct TouchCapture {
   case 12:
     return CGPointMake(right - 1.3 * u, bottom - 2.8 * u);
   case 13:
-    return CGPointMake(left - 1.2 * u, bottom + 1.05 * u);
+    return CGPointMake(left - 1.4 * u, bottom + 1.25 * u);
   default:
-    return CGPointMake(right - 3.8 * u, bottom + 1.05 * u);
+    return CGPointMake(right - 1.4 * u, bottom + 1.2 * u);
   }
 }
 - (void)drawRect:(CGRect)rect {

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
@@ -20,7 +21,7 @@ parser.add_argument(
     "--prefetch",
     type=int,
     default=12,
-    help="Additional nearest executable direct-call targets per build",
+    help="Additional nearest executable direct-call/relocation targets per build",
 )
 parser.add_argument(
     "--stop-file",
@@ -92,6 +93,21 @@ def candidates(missing):
         int(value, 16)
         for value in re.findall(r"\bsub_([0-9a-f]+)\(", stub_file.read_text())
     }
+    # Vtables and callbacks supply possible entries absent from direct calls.
+    # Executable segments also contain constants: restrict speculative targets
+    # to the supported modules' 16-byte function alignment. Executed unaligned
+    # targets remain valid demands and are never filtered.
+    for module in metadata["modules"]:
+        fixups = (root / (module["name"] + ".fixups")).read_bytes()
+        if len(fixups) % 24:
+            raise SystemExit("Truncated relocation records for " + module["name"])
+        for offset, value, target in struct.iter_unpack("<QQQ", fixups):
+            if offset + 8 > module["image_size"]:
+                raise SystemExit("Relocation destination outside module image")
+            if target < len(metadata["modules"]):
+                pc = metadata["modules"][target]["canonical"] + value
+                if pc % 16 == 0 and executable(pc):
+                    referenced.add(pc)
     nearby = sorted(
         (pc for pc in referenced - compiled if pc != missing and executable(pc)),
         key=lambda pc: (abs(pc - missing), pc),

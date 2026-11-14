@@ -18,6 +18,11 @@ struct Memory {
   };
   std::shared_ptr<std::vector<Region>> regions =
       std::make_shared<std::vector<Region>>();
+  // All access is under guestAtomics. Retaining the registry prevents pointer
+  // reuse from making a replaced registry look identical. Regions only append
+  // and backing allocations outlive guest workers in the current runtime.
+  std::shared_ptr<std::vector<Region>> cachedRegistry;
+  std::array<Region, 8> cachedRegions{};
   const std::atomic<bool> *stopping = nullptr;
   bool (*cancelled)() = nullptr;
   bool stopOnFault = false;

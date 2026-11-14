@@ -35,16 +35,30 @@ operations fail explicitly. A frozen 2,355-trace candidate builds for all three 
 simulator runs reach libc start and 18 workers on iPhone 17 Pro Max and iPad mini
 (A17 Pro) simulated models, then stop at VMOVMSKPS, matching the arm64 host.
 The new movemask patch passes 38,400 full-register native-oracle checks; the
-nine-patch corpus refresh is in progress. These are simulated models, not the
+nine-patch full refresh passed. Four further statically observed SIMD groups
+(variable blends, lane insert/extract, 128-bit lane permutations and dword
+shifts) pass 1,199,616 differential checks across 213 routines; their thirteen-
+patch full refresh now covers 3,033 current-provenance traces, with discovery
+continuing. Static presence is separate from execution. These are simulated models, not the
 physical iPad mini A20 Pro.
 See [FP80 boundaries and evidence](cpu/fp80/README.md).
 
 `game/build.py` produces Mac, iPhoneOS and simulator libraries. `advance.py`
 discovers executed targets in batches, stops explicitly on other errors and
-supports graceful stopping. Generated traces now carry input/slice/backend/IR
+supports graceful stopping. Prefetch includes aligned possible callbacks from
+bounds-checked relocations; four unaligned constant pointers were quarantined
+without removing executed demands. Generated traces now carry input/slice/backend/IR
 SHA provenance. A full relift replaced the earlier unknown-provenance host
 corpus; later generated entries use the same checked backend. All private images,
 IR, code archives and game assets remain in the external build tree.
+
+A sampled startup showed range scanning and nested lock acquisition dominating
+CPU use. A bounded eight-range cache retains the existing synchronization and
+removes redundant recursive locking. Independent native, ASan/UBSan and TSAN
+runs each pass 251,052 checks, including concurrent append, registry replacement,
+bounds, cancellation and CAS32/64. A controlled lookup benchmark shows strong
+hot-set gains but a 59% deliberate cache-thrash regression; neither is a measured
+game-frame result. See [memory review and limits](cpu/review/memory-cache.md).
 
 The new UIKit game launcher links the CPU runtime, in-process SDL Metal replay,
 touch/GameController input, AVAudioEngine output, Files import and local save
@@ -78,6 +92,9 @@ counts alone do not prove that the game has rendered.
 Host input/audio tests cover four pad slots, multitouch serialization, disconnect
 state, clipping/downmix and 400,000 concurrent ring-buffer frames. The sink requests
 48 kHz stereo and 256-frame I/O periods, and records observed periods/underruns.
+The iPad simulator also exposed portrait overlap between Menu/Pad and the right
+stick buttons. Compact layouts now move Menu/Pad above the control clusters
+and keep R3 separate; a new rendered UI snapshot verifies the adjustment.
 Actual device sound, touch ergonomics, physical controller reconnect and audio
 interruption recovery remain unverified. Real-runtime lifecycle tests pass 27
 sessions, including parked stop, repeated pause/resume, concurrent-entry rejection,

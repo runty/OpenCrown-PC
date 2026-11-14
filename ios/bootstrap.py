@@ -38,6 +38,10 @@ PATCHES = [
     "remill-packed-shifts.patch",
     "remill-x87-control.patch",
     "remill-movemask.patch",
+    "remill-startup-variable-blend.patch",
+    "remill-startup-lane-insert.patch",
+    "remill-startup-permute128.patch",
+    "remill-startup-dword-shifts.patch",
 ]
 
 
