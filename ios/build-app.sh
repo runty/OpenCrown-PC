@@ -11,6 +11,12 @@ game_output=$3
 build_root=$(cd "$game_output/.." && pwd)
 sdl_source=${DCP_SDL_SOURCE:-$build_root/macos-rendered/_deps/sdl3-src}
 platform=${DCP_BUILD_PLATFORM:-ios}
+extended_memory=${DCP_EXTENDED_MEMORY:-0}
+case "$extended_memory" in
+    0) memory_properties='{}'; memory_requested=false ;;
+    1) memory_properties=$'\n        com.apple.developer.kernel.increased-memory-limit: true\n        com.apple.developer.kernel.extended-virtual-addressing: true'; memory_requested=true ;;
+    *) echo 'DCP_EXTENDED_MEMORY must be 0 or 1' >&2; exit 2 ;;
+esac
 case "$platform" in
     ios) sdk=iphoneos; library_platform=ios; platform_library=iphoneos; destination='generic/platform=iOS' ;;
     simulator) sdk=iphonesimulator; library_platform=simulator; platform_library=iphonesimulator; destination='generic/platform=iOS Simulator' ;;
@@ -120,13 +126,17 @@ targets:
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: '0.2'
+    entitlements:
+      path: OpenCrown.entitlements
+      properties: $memory_properties
     info:
       path: Info.plist
       properties:
         CFBundleDisplayName: OpenCrown
-        CFBundleShortVersionString: '$(MARKETING_VERSION)'
-        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        CFBundleShortVersionString: '\$(MARKETING_VERSION)'
+        CFBundleVersion: '\$(CURRENT_PROJECT_VERSION)'
         DCPBuildID: '$revision'
+        DCPExtendedMemoryRequested: $memory_requested
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -140,3 +150,23 @@ if [[ $platform == simulator ]]; then options+=(CODE_SIGNING_ALLOWED=NO)
 else options+=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration); fi
 xcodebuild -project "$output/OpenCrownMobile.xcodeproj" -scheme OpenCrown -configuration Release -destination "$destination" -derivedDataPath "$output/DerivedData" "${options[@]}" build
 if [[ $platform == ios ]]; then codesign --verify --deep --strict "$output/DerivedData/Build/Products/Release-$sdk/OpenCrown.app"; fi
+
+python3 - "$output" "$sdk" "$platform" "$extended_memory" <<'PYVERIFY'
+import json,plistlib,subprocess,sys
+from pathlib import Path
+root=Path(sys.argv[1]);app=root/'DerivedData/Build/Products'/('Release-'+sys.argv[2])/'OpenCrown.app'
+info=plistlib.loads((app/'Info.plist').read_bytes())
+if info.get('CFBundleShortVersionString')!='0.2' or info.get('CFBundleVersion')!='1':
+    raise SystemExit('App version metadata is missing or incorrect')
+keys=['com.apple.developer.kernel.increased-memory-limit','com.apple.developer.kernel.extended-virtual-addressing']
+result={'build_id':info.get('DCPBuildID'),'version':info['CFBundleShortVersionString'],'build':info['CFBundleVersion'],'platform':sys.argv[3],'signed_entitlements_verified':False,'extended_memory_requested':sys.argv[4]=='1'}
+if sys.argv[3]=='ios':
+    signed=plistlib.loads(subprocess.check_output(['codesign','-d','--entitlements',':-',str(app)],stderr=subprocess.DEVNULL))
+    profile=plistlib.loads(subprocess.check_output(['security','cms','-D','-i',str(app/'embedded.mobileprovision')],stderr=subprocess.DEVNULL))['Entitlements']
+    if sys.argv[4]=='1' and any(signed.get(key) is not True or profile.get(key) is not True for key in keys):
+        raise SystemExit('Signed app/profile lack required memory entitlements')
+    result['signed_entitlements_verified']=True
+    result['memory_entitlements']={key:signed.get(key) is True and profile.get(key) is True for key in keys}
+(root/'signing-verification.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps(result))
+PYVERIFY

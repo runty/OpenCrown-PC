@@ -2,6 +2,25 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+Packaging now retains the actual version/build substitutions instead of letting
+the shell execute their names. Built bundles report version 0.2/build 1, and
+post-build verification records signature/profile memory-capability status.
+The ordinary device app signs with the cached profile; an explicit
+`DCP_EXTENDED_MEMORY=1` request currently fails because Xcode reports No Accounts
+and the wildcard profile lacks those capabilities. The unsigned simulator
+variant compiles with both entitlements requested. Diagnostics now include
+remaining dirty-memory allowance and physical memory. Neither simulator memory
+nor a successful signature proves hardware memory availability.
+
+The post-unwind private table review expands static coverage to 41,580 entries.
+A frozen 36,289-entry Metal run draws 2,080 frames / 32,709 draws, without a
+frontend error, before an internal case at `2006bab3` (now compiled). Loading
+content is still visible; TITLE/INN remain unverified. Original 1,800-vblank tests
+were too short for fresh startup, so the default now permits 7,200 while explicit
+negative budgets remain tested. Further startup branches vary with worker
+scheduling and are discovered under longer actual pad-input scripts. Partial
+mobile object caches are retained pending a useful runtime checkpoint.
+
 The mobile vblank timer now uses absolute, pause-excluded monotonic deadlines
 instead of appending a full 16.7 ms sleep to each frame's computation. The owned
 deadline/timing fixture passes 1,006 checks, with 60 waits plus 5 ms inter-frame

@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #import <mach/mach.h>
+#include <os/proc.h>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -64,7 +65,9 @@ NSDictionary *memorySnapshot() {
   return @{
     @"available" : @YES,
     @"phys_footprint_bytes" : @(info.phys_footprint),
-    @"resident_bytes" : @(info.resident_size)
+    @"resident_bytes" : @(info.resident_size),
+    @"remaining_dirty_memory_limit_bytes" : @(os_proc_available_memory()),
+    @"physical_memory_bytes" : @(NSProcessInfo.processInfo.physicalMemory)
   };
 }
 NSDictionary *guestSnapshot() {
@@ -881,6 +884,9 @@ UIButton *button(NSString *title, id target, SEL action) {
   return @{
     @"build_id" : NSBundle.mainBundle.infoDictionary[@"DCPBuildID"]
         ?: @"unknown",
+    @"app_version" : NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"unknown",
+    @"app_build" : NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] ?: @"unknown",
+    @"extended_memory_requested" : @([NSBundle.mainBundle.infoDictionary[@"DCPExtendedMemoryRequested"] boolValue]),
     @"game_artifact" : gameArtifact,
     @"nonuniform_snapshot_saved" : @(_snapshotHasContent),
     @"session_id" : _sessionID ?: @"unknown",

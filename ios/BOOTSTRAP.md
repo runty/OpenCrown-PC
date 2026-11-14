@@ -188,3 +188,24 @@ Their limits are documented in [SIMD review](cpu/review/confirmed-simd.md),
 [cancellation review](game/thread-cancel.md). Game packaging verifies archive
 SHA-256 values from the selected platform's `artifact.json`; the app exports
 that identity separately from its frontend source build ID.
+
+## Signing and memory capabilities
+
+The app packer checks the built bundle’s version/build fields and writes
+`signing-verification.json` beside the app output. It verifies the device
+signature and, when requested, both signed and provisioning-profile memory
+entitlements. Simulator output explicitly records that it is unsigned.
+
+`DCP_EXTENDED_MEMORY=1` requests Apple’s
+[increased memory limit](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.kernel.increased-memory-limit)
+and [extended virtual addressing](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.kernel.extended-virtual-addressing).
+The default `0` retains the cached-profile build path. Requesting these does not
+guarantee additional memory on any device; exported diagnostics report current
+remaining dirty-memory allowance, physical memory and sampled footprint.
+
+On this development Mac, the cached wildcard profile signs the ordinary build,
+but Xcode currently reports **No Accounts** when asked to issue a profile with
+these new capabilities. Extended-memory device signing is therefore unverified
+and fails explicitly until a suitable profile/account is available. No profile
+for another game is reused under its bundle identity. The same source compiles
+for both SDKs; hardware memory/termination behavior remains an acceptance gate.
