@@ -81,3 +81,8 @@ individually before aggregate compilation. A failed batch leaves completed peer
 traces reusable, while invalid entry points remain unpublished. Address spellings
 are normalized before parallel scheduling. Re-running a failed batch remains
 explicit; unsupported instructions are never replaced with successful stubs.
+
+Headless runs can select an [INN checkpoint and desktop-format input script](headless.md).
+Reports retain the requested scene, observation flag and exact script SHA-256.
+The default remains TITLE plus 120 advancing flips/vblanks; interactive mobile
+play ignores headless overrides.

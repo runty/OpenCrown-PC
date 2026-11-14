@@ -1,5 +1,6 @@
 // Headless save/pad/audio services, following linux-port/src/hle counterparts.
 #include "offline-services.h"
+#include "../../linux-port/src/hle/kernel/pure.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -15,6 +16,7 @@
 namespace {
 using Clock = std::chrono::steady_clock;
 DcpOfflineHooks hooks;
+std::vector<dcp::hle::InputEvent> input_events;
 std::mutex state_lock, pace_lock, save_lock;
 std::string mounted;
 bool mount_writable = false, mount_transition = false,
@@ -407,7 +409,14 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
     } else if (hooks.scripted_input && slot == 0) {
       uint64_t frame =
           hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
-      if (frame >= 300 && frame < 310)
+      if (!hooks.input_script.empty()) {
+        pad.buttons = dcp::hle::script_buttons_at(input_events, frame);
+        if (pad.buttons & dcp::hle::kScriptStickLeft) pad.lx = 0;
+        if (pad.buttons & dcp::hle::kScriptStickRight) pad.lx = 255;
+        if (pad.buttons & dcp::hle::kScriptStickUp) pad.ly = 0;
+        if (pad.buttons & dcp::hle::kScriptStickDown) pad.ly = 255;
+        pad.buttons &= ~dcp::hle::kScriptStickMask;
+      } else if (frame >= 300 && frame < 310)
         pad.buttons = 8;
       else if (frame >= 600 && frame <= 3488 && (frame - 600) % 180 < 8)
         pad.buttons = 0x4000;
@@ -630,6 +639,11 @@ uint32_t audio_service(const char *name, const uint64_t *a) {
 } // namespace
 
 void dcp_offline_init(DcpOfflineHooks callbacks) {
+  std::vector<dcp::hle::InputEvent> parsed;
+  int bad_line = 0;
+  if (!callbacks.input_script.empty() &&
+      !dcp::hle::parse_input_script(callbacks.input_script, &parsed, &bad_line))
+    throw std::runtime_error("Invalid input script line " + std::to_string(bad_line));
   std::lock_guard<std::mutex> pace(pace_lock);
   if (hooks.audio_stop && std::any_of(ports.begin(), ports.end(),
                                       [](const Port &p) { return p.used; }))
@@ -637,6 +651,7 @@ void dcp_offline_init(DcpOfflineHooks callbacks) {
   std::lock_guard<std::mutex> operation(save_lock);
   std::lock_guard<std::mutex> lock(state_lock);
   hooks = std::move(callbacks);
+  input_events = std::move(parsed);
   if (hooks.save_root.empty())
     throw std::runtime_error("offline adapter requires a disposable save root");
   std::filesystem::create_directories(hooks.save_root);

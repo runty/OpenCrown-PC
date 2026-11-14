@@ -781,6 +781,7 @@ for platform, target, sdk in platforms:
         (source / "ios/game/thread-services.cpp", "threads"),
         (source / "ios/game/file-services.cpp", "files"),
         (source / "ios/game/offline-services.cpp", "offline"),
+        (source / "linux-port/src/hle/kernel/pure.cpp", "pure"),
         (source / "ios/game/font-services.cpp", "font"),
         (source / "ios/game/ime-services.cpp", "ime"),
         (source / "ios/game/libc-bulk.cpp", "libc-bulk"),

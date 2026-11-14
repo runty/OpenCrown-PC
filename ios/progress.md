@@ -2,6 +2,25 @@
 
 ## 2026-11-14 — Startup coverage, bounded dispatch and real frame checks
 
+Headless scene selection and scripted input are now connected and verified.
+The default stays TITLE plus 120 advancing flips/vblanks; INN is an explicit
+alternative. Configured names and positive finite budgets are validated, and
+input uses the desktop parser with an exact file SHA-256 in the report. Empty
+scripts mean idle. Tests pass 24 config and 80 pad/script checks (also under
+ASan/UBSan), all three SDK compilations, and six actual-runtime bounded/negative
+cases with 24 checks. None reports boot acceptance. A repeat of the actual
+runtime lifecycle passes 27 sessions with maximum stop 10.2 ms, and storage
+still passes 137 core / 108 service checks over four simulated relaunches.
+See [unattended checkpoints](game/headless.md).
+
+The independent static table catalog validates 111 guarded tables, 5,117 entries
+and 1,395 unique targets including defaults, with 29,386 case-CFG instructions
+checked. 1,330 targets were prefetched in a parallel batch. Ambiguous low-byte
+guards and unresolved indirect exits remain rejected; static inventory does not
+claim execution. The current corpus has 22,597 entries, current provenance and
+three explicitly marked bulk libc adapters. Startup discovery continues; TITLE,
+INN and nonuniform game images remain unverified.
+
 Clean frontend `79fc148` now builds for both iPhoneOS and Simulator; the signed
 iPhoneOS bundle verifies. The 13,307-entry artifact is linked into both. Phone
 and tablet simulator runs each pass real libc startup and 64 strlen checks,

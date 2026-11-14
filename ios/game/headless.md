@@ -1,0 +1,58 @@
+# Unattended scene checkpoints and input
+
+Headless Mac runs default to the real TITLE scene followed by at least 120
+additional flips and vblanks. `DCP_CHECKPOINT_SCENE=INN` chooses INN instead;
+only observing that exact scene and both advancing counters can complete it.
+`title_seen` remains an independent report field. Merely configuring INN does
+not establish that it was reached. Interactive mobile play has no automatic
+checkpoint stop and ignores these harness environment overrides.
+
+| Variable | Default | Valid override |
+| --- | --- | --- |
+| `DCP_CHECKPOINT_SCENE` | `TITLE` | 1–15 uppercase letters, digits or underscores |
+| `DCP_MAX_TRACE_ENTRIES` | 100,000,000 | 1–10,000,000,000 |
+| `DCP_MAX_VBLANKS` | 1,800 | 1–216,000 |
+| `DCP_INPUT_SCRIPT` | Built-in boot input | Path to a text file, maximum 1 MiB |
+
+The input file uses exactly the desktop runner's parser and button/left-stick
+mapping. A line is `frame buttons`; button names combine with `+` or `|`, and
+`#` starts a comment. Each state persists until the next line. An empty or
+comment-only file means explicit idle, without built-in button presses.
+Malformed scripts fail before game execution, naming the line. A real input
+producer takes precedence over scripted input. Script-only stick bits never
+leak into the guest's button mask.
+
+The existing [Mac smoke script](../../macos/headless-input.txt) is available
+unchanged. Use a disposable save copy, with the game stopped while copying.
+The supplied `DCP_SAVE_ROOT` is writable; do not point tests at live progress.
+For example, after preparing a disposable Felix save and a frozen host build:
+
+```sh
+DCP_CHECKPOINT_SCENE=INN DCP_MAX_VBLANKS=6000 \
+DCP_INPUT_SCRIPT="$PWD/macos/headless-input.txt" \
+/Volumes/office/Build/OpenCrown/ios-host/opencrown-aot-host \
+  --game-root /Volumes/phil/Games/PS4/DragonsCrownPro/CUSA10454 \
+  --save-root /Volumes/office/Build/OpenCrown/ios-inn-test/saves \
+  --output /Volumes/office/Build/OpenCrown/ios-inn-test/run \
+  --seconds 120 --offscreen
+```
+
+The report includes requested scene, observed checkpoint flag and SHA-256 of the
+exact input file bytes. The host additionally requires a drawn, nonuniform RGB
+readback and no guest/render error. Inspect the image for a recognizable scene.
+Increasing a budget or selecting a scene is not an acceptance override.
+
+```sh
+./ios/game/test-headless.sh /Volumes/office/Build/OpenCrown/headless-probe \
+  /Volumes/office/Build/OpenCrown/ios-game
+```
+
+Verification passes 24 configuration checks, 80 pad/script ABI checks in native
+and ASan/UBSan runs, and all three SDK compilations. Six actual-runtime negative
+and bounded-run cases pass 24 checks: INN remains incomplete under a one-entry
+trace budget, invalid scenes/scripts and oversize scripts stop before execution,
+and valid/empty script hashes match independently calculated SHA-256 values.
+The real-runtime lifecycle fixture still passes 27 sessions (maximum stop 10.2 ms
+in this run). Storage fixtures still pass 137 core and 108 service checks across
+four simulated relaunches. These tests do not establish real INN boot or save
+reopening; those require continued executed-target coverage and actual images.

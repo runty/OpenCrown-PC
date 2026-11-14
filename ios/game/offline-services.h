@@ -11,6 +11,9 @@ struct DcpOfflineHooks {
   bool (*stopping)(void *context) = nullptr;
   std::string save_root;
   bool scripted_input = false;
+  // Same frame/button format as the desktop runner. Empty keeps the built-in
+  // boot script; a nonempty comment/blank script explicitly means idle.
+  std::string input_script;
   // Optional portable host services. No UIKit/platform implementation is linked
   // by default. Callbacks run without state_lock; init requires quiescent
   // callers.

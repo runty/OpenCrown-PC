@@ -4,6 +4,8 @@
 #include "ime-services.h"
 #include "game.h"
 #include "gnm-services.h"
+#include "headless-config.h"
+#include <CommonCrypto/CommonDigest.h>
 #ifdef DCP_NATIVE_LIBC_BULK
 #include "libc-bulk.h"
 #endif
@@ -22,6 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -86,8 +89,10 @@ struct Engine {
   std::atomic<bool> gnmReady{false};
   std::atomic<bool> titleSeen{false};
   std::atomic<bool> booted{false};
-  std::atomic<uint64_t> titleVblank{0};
-  std::atomic<uint64_t> titleFlip{0};
+  dcp::game::HeadlessConfig headless;
+  std::atomic<bool> checkpointSeen{false};
+  std::atomic<uint64_t> checkpointVblank{0}, checkpointFlip{0};
+  std::string inputScriptHash;
   uint64_t heapTrace = 0;
   std::chrono::steady_clock::time_point epoch =
       std::chrono::steady_clock::now();
@@ -386,13 +391,13 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   } else if (name == "sceVideoOutWaitVblank") {
     std::this_thread::sleep_for(std::chrono::microseconds(16667));
     const uint64_t frame = ++engine().vblanks;
-    if (!engine().interactive && engine().titleSeen.load() &&
-        frame >= engine().titleVblank.load() + 120 &&
-        dcp_gnm_stats().flips >= engine().titleFlip.load() + 120) {
+    if (!engine().interactive && engine().checkpointSeen.load() &&
+        frame >= engine().checkpointVblank.load() + 120 &&
+        dcp_gnm_stats().flips >= engine().checkpointFlip.load() + 120) {
       engine().booted = true;
       throw std::runtime_error("boot checkpoint complete");
     }
-    if (!engine().interactive && frame > 1800)
+    if (!engine().interactive && frame > engine().headless.vblank_budget)
       throw std::runtime_error("vblank checkpoint budget reached");
     returnToGuest(state, *memory, 0);
   } else if (name == "sceVideoOutSetBufferAttribute") {
@@ -796,6 +801,10 @@ extern "C" const char *dcp_cpu_report() {
   engine().gnmReady = true;
   std::string stage = "load", error;
   try {
+    if (!engine().interactive)
+      engine().headless = dcp::game::headless_config(
+          std::getenv("DCP_CHECKPOINT_SCENE"), std::getenv("DCP_MAX_TRACE_ENTRIES"),
+          std::getenv("DCP_MAX_VBLANKS"));
     DcpFileHooks files;
     files.context = owner.get();
     files.pointer = [](void *context, uint64_t address, size_t size,
@@ -825,6 +834,26 @@ extern "C" const char *dcp_cpu_report() {
     };
     offline.save_root = files.save_root;
     offline.scripted_input = !engine().interactive;
+    if (offline.scripted_input) {
+      if (const char *path = std::getenv("DCP_INPUT_SCRIPT")) {
+        constexpr size_t limit = 1024 * 1024;
+        std::ifstream input(path, std::ios::binary);
+        if (!input)
+          throw std::runtime_error("Cannot open DCP_INPUT_SCRIPT");
+        std::string script(limit + 1, 0);
+        input.read(script.data(), script.size());
+        if (input.bad() || size_t(input.gcount()) > limit)
+          throw std::runtime_error("Input script exceeds 1 MiB or could not be read");
+        script.resize(size_t(input.gcount()));
+        unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+        CC_SHA256(script.data(), CC_LONG(script.size()), digest);
+        for (auto byte : digest) {
+          engine().inputScriptHash += "0123456789abcdef"[byte >> 4];
+          engine().inputScriptHash += "0123456789abcdef"[byte & 15];
+        }
+        offline.input_script = script.empty() ? "\n" : std::move(script);
+      }
+    }
 #ifdef DCP_MOBILE_PLATFORM
     if (engine().interactive) {
       offline.input_read = [](void *, unsigned slot, DcpPlatformPad *pad) {
@@ -966,7 +995,7 @@ extern "C" const char *dcp_cpu_report() {
   else if (*dcp_thread_error())
     error = dcp_thread_error();
   if (engine().booted.load() && firstError.empty()) {
-    stage = "title";
+    stage = engine().headless.scene == "TITLE" ? "title" : "checkpoint";
     error.clear();
   }
   if (engine().userStop.load() && joined) {
@@ -991,6 +1020,9 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"libc_strlen_checks\":" << engine().libcChecks
       << ",\"libc_start_result\":" << engine().libcResult
       << ",\"title_seen\":" << (engine().titleSeen.load() ? "true" : "false")
+      << ",\"checkpoint_scene\":" << jsonString(engine().headless.scene)
+      << ",\"checkpoint_seen\":" << (engine().checkpointSeen ? "true" : "false")
+      << ",\"input_script_sha256\":" << jsonString(engine().inputScriptHash)
       << ",\"checkpoint_complete\":"
       << (engine().booted.load() ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
@@ -1044,7 +1076,7 @@ extern "C" Memory *__remill_sync_hyper_call(State &state, Memory *,
 extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
   if (pollRuntime())
     throw std::runtime_error("bootstrap stopped");
-  if (++engine().steps > 100000000 && !engine().interactive)
+  if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
   const uint64_t observedPC = canonical(pc);
   if (observedPC >= 0x20000000 && observedPC < 0x30000000) {
@@ -1079,9 +1111,11 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
       if (changed)
         recordEvent(std::string("scene ") + name);
     }
-    if (!std::strcmp(name, "TITLE") && !engine().titleSeen.exchange(true)) {
-      engine().titleVblank = engine().vblanks.load();
-      engine().titleFlip = dcp_gnm_stats().flips;
+    if (!std::strcmp(name, "TITLE"))
+      engine().titleSeen = true;
+    if (name == engine().headless.scene && !engine().checkpointSeen.exchange(true)) {
+      engine().checkpointVblank = engine().vblanks.load();
+      engine().checkpointFlip = dcp_gnm_stats().flips;
     }
   }
 }

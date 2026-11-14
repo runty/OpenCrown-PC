@@ -634,6 +634,10 @@ def main():
                 "Discovery stopped gracefully; remove ios-game/advance.stop to resume. No apps were built."
             )
     run("game-libraries", [*builder, "--ios", "--simulator"])
+    run(
+        "headless-config",
+        [SOURCE / "ios/game/test-headless.sh", root / "headless-probe", game],
+    )
     plan.update(
         {
             "completed_utc": datetime.now(timezone.utc).isoformat(),
