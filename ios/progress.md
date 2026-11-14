@@ -1,5 +1,33 @@
 # Device port progress
 
+## 2026-11-14 — Clean physical Town; settled performance remains too slow
+
+Clean frontend `368caf2` with the frozen50,340-entry core passes the iPad's
+extended Town gate:6,456 rendered frames /225,962,278 entries /303.27seconds,
+exactly600 advancing flips and vblanks after observation, no guest/frontend
+error. The downloaded final PNG shows clean Town and Felix, without the earlier
+logo overlay. This qualifies this later scene, not the cause of the earlier
+capture difference. All28 prior save/checkpoint/image files retain their hashes;
+only two new session images appear. Normal launcher mode is verified afterward.
+
+The longer window exposes unacceptable settled speed:592 rendered frames over
+115.69seconds after the first Town heartbeat, about5.12fps. Native Town also
+advances roughly120frames per22–26seconds. The clean native600-frame gate passes
+5,993 rendered frames /208,525,509entries /315.31seconds. The prompt's earlier
+59.46fps result does not extend to Town. Profiling translated game execution
+is now the critical path, alongside remaining adventure coverage. No playable
+performance claim is made.
+
+Interactive iPhone Simulator touch reaches the character menu, navigates
+Equipment→Armory→Stats, and shows the exact retained Felix values:LV1,EXP351,
+NEXT850,HP300,STR16,CON14,DEX12,INT4,MGR7,LUC10,skill point1;47gold appears in
+the character menu. Final image is inspected. Its600-second diagnostic run
+stops cleanly after8,289frames /437,557,255entries. This is reopening existing
+progress, not saving newly earned progress. An apparent brief menu disappearance
+does not establish a release-cancel input defect; original held-mask/edge audit
+and settled navigation support no input workaround.
+
+
 ## 2026-11-14 — Physical Town gate and clean live touch movement
 
 The clean `1d0adf7`/50,327-entry app passes the physical iPad Town component gate
