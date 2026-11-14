@@ -15,6 +15,7 @@ inline bool completedInScene(NSDictionary *guest) {
 struct CompletedFrame {
   uint64_t flip;
   double seconds;
+  double replayMs;
 };
 
 // Count completed render intervals between the first and last captured flips
@@ -33,6 +34,10 @@ inline NSDictionary *settledTiming(const std::deque<CompletedFrame> &frames,
   if (end - first < 2)
     return nil;
   auto last = end - 1;
+  std::vector<double> replay;
+  for (auto it = first; it != end; ++it)
+    replay.push_back(it->replayMs);
+  std::sort(replay.begin(), replay.end());
   std::vector<double> intervals;
   for (auto it = first + 1; it != end; ++it) {
     if (it->flip <= (it - 1)->flip)
@@ -51,14 +56,16 @@ inline NSDictionary *settledTiming(const std::deque<CompletedFrame> &frames,
     @"guest_flip_intervals" : @(last->flip - first->flip),
     @"skipped_inside" : @(last->flip - first->flip - size),
     @"seconds" : @(seconds),
+    @"replay_work_p50_ms" : @(replay[(replay.size() - 1) / 2]),
+    @"replay_work_p95_ms" : @(replay[(95 * replay.size() + 99) / 100 - 1]),
     @"fps" : @(size / seconds),
     @"p50_ms" : @(intervals[(size - 1) / 2]),
     @"p95_ms" : @(intervals[(95 * size + 99) / 100 - 1])
   };
 }
 inline void recordCompleted(std::deque<CompletedFrame> &frames, uint64_t flip,
-                            double seconds) {
-  frames.push_back({flip, seconds});
+                            double seconds, double replayMs) {
+  frames.push_back({flip, seconds, replayMs});
   if (frames.size() > 3601)
     frames.pop_front();
 }

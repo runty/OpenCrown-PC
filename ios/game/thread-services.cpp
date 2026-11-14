@@ -313,7 +313,22 @@ bool dcp_thread_service(const char *name, const uint64_t a[6],
     return false;
   *result = ok;
   if (named(name, "scePthreadYield") || named(name, "sched_yield")) {
-    std::this_thread::yield();
+    // Repeated yields are the game polling for another worker to finish.
+    // Let that worker run after a short burst, then resume ordinary yields.
+    thread_local unsigned burst = 0;
+    thread_local Clock::time_point since;
+    const auto now = Clock::now();
+    if (now - since >= std::chrono::milliseconds(1)) {
+      burst = 0;
+      since = now;
+    }
+    if (++burst >= 8) {
+      std::this_thread::sleep_for(std::chrono::microseconds(50));
+      burst = 0;
+      since = Clock::now();
+    } else {
+      std::this_thread::yield();
+    }
   } else if (named(name, "scePthreadCreate")) {
     if (!a[0] || !a[2]) {
       *result = invalid;

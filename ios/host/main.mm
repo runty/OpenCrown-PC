@@ -190,6 +190,7 @@ int main(int argc, char **argv) {
           return false;
         dcp::mobile::ReplayFrame frame;
         std::string error;
+        const auto pumpStart = Clock::now();
         auto result = replay->pump(0, &frame, &error);
         if (result == dcp::mobile::PumpResult::Error) {
           if (hostError.empty())
@@ -201,8 +202,10 @@ int main(int argc, char **argv) {
           return false;
         ++consumed;
         if (frame.width > 0 && frame.height > 0) {
+          const auto pumpEnd = Clock::now();
           dcp::mobile::recordCompleted(completedFrames, frame.flip,
-              std::chrono::duration<double>(Clock::now() - started).count());
+              std::chrono::duration<double>(pumpEnd - started).count(),
+              std::chrono::duration<double, std::milli>(pumpEnd - pumpStart).count());
           last = frame;
           ++rendered;
           if (frame.draws) {

@@ -88,8 +88,10 @@ struct Engine {
   std::chrono::nanoseconds pausedTime{0};
   dcp::game::VblankClock vblankClock;
   std::atomic<bool> interactive{false};
-  std::atomic<uint64_t> steps{0};
-  std::atomic<uint64_t> vblanks{0};
+  // Trace entry is written millions of times a second. Keep it off the
+  // lines containing pause, timing and frame counters read by other workers.
+  alignas(128) std::atomic<uint64_t> steps{0};
+  alignas(128) std::atomic<uint64_t> vblanks{0};
   uint64_t directCursor = 0;
   bool userLogged = false;
   std::atomic<uint64_t> libcChecks{0};
@@ -322,6 +324,19 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
       return memory;
     }
   }
+  if (name.compare(0, 6, "sceGnm") == 0) {
+    if (name == "sceGnmSubmitAndFlipCommandBuffers" ||
+        name == "sceGnmSubmitAndFlipCommandBuffersForWorkload") {
+      for (size_t i = 6; i < 9; ++i)
+        arguments[i] = read64(*memory, r.rsp.qword + 8 + (i - 6) * 8);
+    }
+    if (dcp_gnm_service(importName, arguments, &gnmResult)) {
+      if (dcp_gnm_stats().rejected_accesses)
+        throw std::runtime_error("GNM rejected a guest memory access");
+      returnToGuest(state, *memory, gnmResult);
+      return memory;
+    }
+  }
   uint64_t offlineResult;
   if (dcp_offline_service(importName, arguments, &offlineResult)) {
     returnToGuest(state, *memory, offlineResult);
@@ -329,10 +344,6 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   }
   const float floating[2] = {state.vec[0].xmm.floats.elems[0],
                              state.vec[1].xmm.floats.elems[0]};
-  if (name == "sceGnmSubmitAndFlipCommandBuffers" ||
-      name == "sceGnmSubmitAndFlipCommandBuffersForWorkload")
-    for (size_t i = 6; i < 9; ++i)
-      arguments[i] = read64(*memory, r.rsp.qword + 8 + (i - 6) * 8);
   uint64_t fontResult;
   if (dcp_font_service(importName, arguments, floating, &fontResult)) {
     returnToGuest(state, *memory, fontResult);
@@ -351,12 +362,6 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   uint64_t threadResult;
   if (dcp_thread_service(importName, arguments, &threadResult)) {
     returnToGuest(state, *memory, threadResult);
-    return memory;
-  }
-  if (dcp_gnm_service(importName, arguments, &gnmResult)) {
-    if (dcp_gnm_stats().rejected_accesses)
-      throw std::runtime_error("GNM rejected a guest memory access");
-    returnToGuest(state, *memory, gnmResult);
     return memory;
   }
   if (name == "sceKernelGetProcessTimeCounterFrequency") {

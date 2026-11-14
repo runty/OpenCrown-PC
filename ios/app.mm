@@ -725,7 +725,9 @@ UIButton *button(NSString *title, id target, SEL action) {
   std::string error;
   const double pumpStart = CACurrentMediaTime();
   auto result = _replay->pump(0, &frame, &error);
-  _pumpDurations.milliseconds((CACurrentMediaTime() - pumpStart) * 1000.0);
+  const double pumpEnd = CACurrentMediaTime();
+  const double pumpMs = (pumpEnd - pumpStart) * 1000.0;
+  _pumpDurations.milliseconds(pumpMs);
   if (result == dcp::mobile::PumpResult::Error) {
     self.status.text = _hostError = @(error.c_str());
     NSLog(@"OpenCrown render failed: %@", _hostError);
@@ -734,7 +736,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   }
   if (result == dcp::mobile::PumpResult::Frame) {
     if (_diagnosticStartup)
-      dcp::mobile::recordCompleted(_completedFrames, frame.flip, CACurrentMediaTime());
+      dcp::mobile::recordCompleted(_completedFrames, frame.flip, pumpEnd, pumpMs);
     ++_replayedFrames;
     _needsPresent = YES;
     _gameIntervals.observe(sender.timestamp);
