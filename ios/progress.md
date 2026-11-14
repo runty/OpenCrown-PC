@@ -1,5 +1,43 @@
 # Device port progress
 
+## 2026-11-13 — Translated routines execute on both devices
+
+Implementation 31ffb1e adds the checked guest runtime and eight Remill AOT
+synthetic routines to the signed arm64 app. Both the iPhone 17 Pro Max and
+iPad mini (A20 Pro) execute the same corpus with 146 checks passing, zero
+failures and two workers. Each passes again after a terminated-process relaunch,
+and its persistent launch count advances from 3 to 4. All runs use devicectl
+without LLDB. The app's recursive signature verifies.
+
+The arm64 Mac harness reports exactly the same results and corpus hash:
+8447df7e24d3edc8c43647f2beb892df881aa3afeb314eb74ecc9de2c56a81f7.
+Seven routines compare with actual native x86-64 execution under Rosetta.
+The eighth uses seeded per-worker guest FS/TLS memory and expected arithmetic.
+Each worker executes eight input vectors per routine, plus nine memory/dispatch
+checks. Arithmetic flags compare CF/PF/ZF/SF/OF where defined and selected by
+the fixture. Coverage includes branching, rotation, unaligned reads/writes,
+direct/indirect guest calls, stack/return state, AVX XOR and guest TLS isolation.
+Invalid reads/writes, final valid qword, unresolved targets and a translated
+out-of-range memory access are checked. Runtime bridges record faults without
+unwinding across nounwind LLVM intrinsics.
+
+Build with ios/cpu/build.py, then pass its output directory as the third
+argument to ios/build-probe.sh, as documented in README.md. The build runs the
+native oracle, generates the expected vectors and dispatch table, tests the
+arm64 Mac library and produces a static iPhoneOS library. Remill's example
+lifter leaves some callee bodies external, so the builder explicitly lifts
+those entry points and verifies them through real guest call/return execution.
+The generated tables, IR, objects, oracle results and device JSON stay external.
+
+Private evidence is in cpu-harness/ and ios-probe/ under the OpenCrown build
+root. mac-results.json, verification.json and cpu-results/cpu-relaunch device
+JSON files identify source revision and corpus. ios-cpu-app-build.log records
+the provisioned Release build. The probe displays and exports its CPU report.
+
+P1 remains open for real eboot/libc routines, atomics, guest-to-HLE calls and
+callbacks, broader SIMD/flags coverage, performance and interpreter comparison.
+These eight routines are synthetic. The complete game has yet to boot on a device.
+
 ## 2026-11-13 — P0 hardware shell and initial P1 lift
 
 The signed arm64 shell is installed on both reference devices as OpenCrown Probe
