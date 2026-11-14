@@ -76,7 +76,8 @@ input script. Each run creates an independent
 `Documents/DiagnosticSessions/<session UUID>/ProbeSaves` and checkpoint folder;
 ordinary player saves are never selected by this mode. It exports first
 nonuniform and last rendered game PNGs in that same session folder and requests stop after 120 wall-clock
-seconds. The timer belongs to that session and cannot stop a later session.
+seconds by default (`DCP_DIAGNOSTIC_SECONDS` accepts only finite 1–600-second
+values, and invalid values reject before guest startup). The timer belongs to that session and cannot stop a later session.
 Reports label the disposable save scope and diagnostic mode. Normal Home Screen
 launch requires Play and retains its ordinary local saves. Missing inputs,
 guest errors and incomplete checkpoints remain explicit failures. This option
@@ -94,3 +95,19 @@ means the normal component completed UI resource initialization and entered its
 transition-to-idle helper. Completed reports export the observation stage and
 checkpoint method. INN does not reuse the audio selector or constructor state0.
 Its visible interior and reopened character still require independent checks.
+
+`--diagnostic-seeded-startup` is the explicit seeded variant. Stage a quiescent
+copy at `Documents/DiagnosticSaveSeed` first. The app takes and validates a
+checkpoint, then restores it into the new session's private ProbeSaves before
+starting the guest. It does not select normal ProbeSaves or modify the seed.
+A missing/invalid seed rejects startup. For an INN investigation, supply the
+existing runtime-validated `DCP_CHECKPOINT_SCENE=INN`, trace/vblank budgets and
+a longer diagnostic duration through the launch environment. Merely restoring
+a snapshot does not establish that the game reopened its character.
+
+The seeded frontend passes five Simulator cases: nonfinite/over-budget
+durations, missing seed, a one-second seeded stop and normal launch with an
+invalid diagnostic variable. Three real disposable source files restore
+byte-for-byte; seed/source and ordinary save/checkpoint sentinels remain
+unchanged. The normal app still waits for Play. Both SDKs compile, and the
+iPhoneOS package passes strict signature/profile checks.

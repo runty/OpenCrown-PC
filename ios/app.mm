@@ -145,6 +145,8 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   BOOL _running;
   BOOL _autoStarted;
   BOOL _diagnosticStartup;
+  BOOL _diagnosticSeeded;
+  double _diagnosticStopSeconds;
   NSString *_sessionSaveRoot;
   NSString *_sessionCheckpointRoot;
   NSString *_hostError;
@@ -250,6 +252,9 @@ UIButton *button(NSString *title, id target, SEL action) {
   _diagnosticPhase = @"launcher";
   _diagnosticStartup = [NSProcessInfo.processInfo.arguments
       containsObject:@"--diagnostic-startup"];
+  _diagnosticSeeded = [NSProcessInfo.processInfo.arguments
+      containsObject:@"--diagnostic-seeded-startup"];
+  _diagnosticStartup = _diagnosticStartup || _diagnosticSeeded;
   id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
   _metalInfo = @{
     @"name" : gpu.name ?: @"unavailable",
@@ -393,6 +398,21 @@ UIButton *button(NSString *title, id target, SEL action) {
     std::lock_guard<std::mutex> lock(_diagnosticStateLock);
     _saveError = nil;
   }
+  _diagnosticStopSeconds = 120;
+  if (_diagnosticStartup)
+    if (const char *duration = std::getenv("DCP_DIAGNOSTIC_SECONDS")) {
+      char *end = nullptr;
+      double value = std::strtod(duration, &end);
+      if (end == duration || *end || !std::isfinite(value) || value < 1 ||
+          value > 600) {
+        _running = NO;
+        self.status.text = @"Invalid diagnostic duration (use 1–600 seconds).";
+        [self recordStartupFailure:self.status.text stage:@"configuration"];
+        [self updateButtons];
+        return;
+      }
+      _diagnosticStopSeconds = value;
+    }
   self.status.text = @"Checking game files and recovering local saves…";
   [self emitLiveDiagnostics:YES];
   [self updateButtons];
@@ -404,6 +424,14 @@ UIButton *button(NSString *title, id target, SEL action) {
       std::filesystem::create_directories(
           std::filesystem::path(self->_sessionSaveRoot.fileSystemRepresentation)
               .parent_path());
+      if (self->_diagnosticSeeded) {
+        const std::filesystem::path checkpoints(
+            self->_sessionCheckpointRoot.fileSystemRepresentation);
+        const auto seed = dcp::storage::checkpoint_saves(
+            root / "DiagnosticSaveSeed", checkpoints);
+        dcp::storage::restore_checkpoint(
+            checkpoints / seed, self->_sessionSaveRoot.fileSystemRepresentation);
+      }
       self->_saves = std::make_unique<dcp::storage::SaveTransactions>(
           self->_sessionSaveRoot.fileSystemRepresentation,
           self->_sessionCheckpointRoot.fileSystemRepresentation);
@@ -506,7 +534,7 @@ UIButton *button(NSString *title, id target, SEL action) {
                          forMode:NSRunLoopCommonModes];
   dcp_platform_set_paused(0);
   dcp_game_set_paused(!dcp_platform_active());
-  double stopSeconds = _diagnosticStartup ? 120.0 : 0.0;
+  double stopSeconds = _diagnosticStartup ? _diagnosticStopSeconds : 0.0;
 #if TARGET_OS_SIMULATOR
   if (!_diagnosticStartup)
     if (const char *duration = std::getenv("DCP_SIM_STOP_SECONDS"))
@@ -932,7 +960,12 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"timestamp" : @([NSDate.date timeIntervalSince1970]),
     @"phase" : _diagnosticPhase ?: @"launcher",
     @"diagnostic_startup" : @(_diagnosticStartup),
-    @"save_scope" : _diagnosticStartup ? @"disposable diagnostic session" : @"local player",
+    @"diagnostic_seeded" : @(_diagnosticSeeded),
+    @"diagnostic_stop_seconds" : @(_diagnosticStartup ? _diagnosticStopSeconds : 0),
+    @"save_scope" : _diagnosticStartup
+        ? (_diagnosticSeeded ? @"disposable seeded diagnostic session"
+                             : @"disposable diagnostic session")
+        : @"local player",
     @"snapshot_directory" : _diagnosticStartup
         ? [@"DiagnosticSessions" stringByAppendingPathComponent:_sessionID]
         : @".",

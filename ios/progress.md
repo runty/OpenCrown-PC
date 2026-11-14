@@ -1,5 +1,24 @@
 # Device port progress
 
+## 2026-11-14 — Seeded device-test support and 50,285-entry core
+
+The explicit seeded diagnostic variant restores a quiescent staged save into
+a new UUID session through the existing validated checkpoint transactions.
+Five Simulator cases pass: invalid durations, missing seed, bounded seeded stop
+and normal launch. All three original disposable files retain their hashes,
+as do the source and normal save/checkpoint sentinels. No character-reopening
+claim follows from this frontend copy test. Both SDK builds pass; iPhoneOS
+signature/profile checks pass. The previously qualified physical app is retained.
+
+Private original-byte/provenance-window analysis supplies 296 direct-branch
+continuations plus 15 closure targets. Thirty adversarial checks pass; the
+existing-boundary/same-owner/direct-window rule reaches zero missing targets.
+It is a compile-only overapproximation, not overall coverage or reachability.
+A separate four-case backward-guarded table batch brings all three archives
+to 50,285 entries. The 49,970-entry copied-Felix run reached 102,018,652 entries
+and another loading frame before that table miss. INN visibility and character
+reopening remain pending; the TITLE passes below remain the qualified baseline.
+
 ## 2026-11-14 — TITLE also passes both simulators; INN marker connected
 
 The matching 49,492-entry core now passes in the iPhone and tablet simulators:
