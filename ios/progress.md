@@ -1,5 +1,37 @@
 # Device port progress
 
+## 2026-11-14 — Save-dialog rendering stalls reproduced and reduced
+
+An isolated interactive iPhone Simulator run reproduces the player's Create
+save data prompt with real platform audio. A native sample attributes nearly
+all main-thread samples to texture lookup: AOT copied and byte-hashed the same
+full atlas for every glyph/sprite draw. The same frontend and frozen50,292-entry
+game archive were used for three180-second runs; archived inputs retain hashes.
+
+Per-frame snapshot reuse removes repeated glyph copies. Accelerated full
+SHA-256 then replaces the large byte-serial FNV content hash. Final prompt
+replay-pump median/p95/p99 are9.98/10.33/10.69ms in the rolling window, versus
+baseline p99 about1,920ms. The final69.09-second interval renders at59.46fps.
+The final SHA variant's PNG was inspected and shows the complete Yes/No prompt.
+This is a Simulator result, not a physical-iPad performance qualification.
+The intermediate cache-only variant's final PNG has incomplete prompt text;
+no pixel-equivalence or general gameplay-rendering claim follows from these
+snapshots. Further scene/animation verification remains required.
+
+Live SHA-run audio samples at84/111seconds have zero underruns; shutdown's final
+counter includes768 underrun frames. Native and ThreadSanitizer concurrent
+fixtures pass200frames ×128atlas draws with exactly200owned snapshots and no
+reported race. The byte4096 regression verifies next-frame invalidation and
+unchanged reuse. All36,864 saved RGB and1,504BC checks pass; allthreeSDK
+renderer archives compile. Normal player saves and live Mac/iCloud data are
+not used by the comparison.
+
+Frontend diagnostics now time replay/present/heartbeat work. The explicit timed
+interactive test mode keeps normal input/audio but isolated UUID saves. Resume
+mode reuses an existing diagnostic working save without seeding it again and
+stores new images separately. Six earlier Simulator configuration/resume cases
+pass; actual character reopening from the same working folder is still pending.
+
 ## 2026-11-14 — Physical iPad INN and copied Felix verified
 
 Clean frontend `0e15ee5` with the frozen 50,292-entry core passes the seeded

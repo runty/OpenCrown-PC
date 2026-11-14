@@ -12,7 +12,11 @@
 #include "platform/io.h"
 #endif
 
+#ifdef DCP_AOT
+#include <CommonCrypto/CommonDigest.h>
+#endif
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -123,7 +127,14 @@ struct Backend::Impl {
     std::unique_ptr<Device> dev;
     std::unordered_map<uint64_t, Target> targets;  // by colour target base address
     // watched: pages write-protected by texwatch, stale when written_since(seq); else stale when the first 512 B change.
-    struct Tex { TexId id = 0; uint64_t last = 0, seq = 0, head = 0; bool watched = false; };
+    struct Tex {
+        TexId id = 0;
+        uint64_t last = 0, seq = 0, head = 0;
+        bool watched = false;
+#ifdef DCP_AOT
+        std::array<uint8_t, CC_SHA256_DIGEST_LENGTH> digest{};
+#endif
+    };
     std::unordered_map<uint64_t, Tex> texs;        // by T# + content hash
     uint64_t reuploads = 0;
     Prompts prompts;                               // button-prompt glyph swap (prompts.h)
@@ -179,10 +190,13 @@ struct Backend::Impl {
         tiled = formats::gnm_tiled_size(s);
         uint64_t key = fnv(t, 28);
         auto it = texs.find(key);
+        // All draws in one replayed frame share the first synchronized texture
+        // snapshot. Re-copying and hashing a whole atlas per glyph can block the
+        // UI for seconds. A later frame always checks for guest writes again.
+        if (it != texs.end() && it->second.last == frame_no) return it->second.id;
 #ifndef DCP_AOT
-        if (it != texs.end()) {  // fast paths: no readable() probe, no hashing (hundreds of lookups per frame)
+        if (it != texs.end()) {  // watched pages avoid hashing across unchanged frames
             Tex& x = it->second;
-            if (x.last == frame_no) return x.id;  // already checked this frame
             if (x.watched) {
                 uint64_t now = texwatch::seq_now();
                 if (!texwatch::written_since(base, tiled, x.seq)) {
@@ -207,7 +221,12 @@ struct Backend::Impl {
         std::vector<uint8_t> snapshot(size_t(tiled), uint8_t{});
         if (!aot_capture_copy(base, snapshot.data(), snapshot.size())) return 0;
         const uint8_t *texture_bytes = snapshot.data();
-        uint64_t head = fnv(texture_bytes, size_t(tiled));
+        // CommonCrypto uses the host's accelerated SHA implementation. Unlike
+        // byte-serial FNV this remains affordable for a full UI atlas every
+        // frame; every byte still participates in cache invalidation.
+        std::array<uint8_t, CC_SHA256_DIGEST_LENGTH> digest{};
+        CC_SHA256(texture_bytes, CC_LONG(tiled), digest.data());
+        uint64_t head = 0;
 #else
         const uint8_t *texture_bytes = reinterpret_cast<const uint8_t*>(base);
         uint64_t head = fnv(texture_bytes, tiled < 512 ? tiled : 512);
@@ -215,7 +234,7 @@ struct Backend::Impl {
         if (it != texs.end()) {
             Tex& x = it->second;
 #ifdef DCP_AOT
-            bool stale = head != x.head;
+            bool stale = digest != x.digest;
 #else
             bool stale = x.watched ? texwatch::written_since(base, tiled, x.seq) : head != x.head;
 #endif
@@ -255,7 +274,11 @@ struct Backend::Impl {
             if (it != texs.end()) dev->destroy(it->second.id), texs.erase(it);
             return 0;
         }
-        texs[key] = {id, frame_no, seq, head, watched};
+        texs[key] = {id, frame_no, seq, head, watched
+#ifdef DCP_AOT
+                     , digest
+#endif
+        };
         if (prompts.is_atlas(base, s.width, s.height, lin.data(), lin.size())) prompts.atlas_ids.insert(id);
         else prompts.atlas_ids.erase(id);
         // DCP_RENDER_TEXDUMP=hexaddr[,path.png]: write this texture's decoded alpha-over-grey image once (debug aid).

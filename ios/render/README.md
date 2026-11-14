@@ -136,9 +136,11 @@ On the M5 Max/macOS 27.2.1, with Metal API validation enabled:
   rejection and reinitialization.
 - The capture-to-Metal fixture produces a PNG through wrapper observation,
   DrawRec, marker, Frame queue, Backend decoder and actual Metal rendering.
-- The texture-cache fixture changes byte 4096 between two draws in one frame,
-  observes the required reupload and then verifies reuse for unchanged data.
-- A concurrent-writer fixture runs 200 frames and 200 texture snapshots. Its guest
+- The texture-cache fixture changes byte 4096 between two draws in one frame.
+  Both draws use that frame's first synchronized snapshot; the next frame detects
+  the mutation and reuploads, and a third unchanged frame reuses the upload.
+- A concurrent-writer fixture runs 200 frames with 128 repeated atlas draws per
+  frame and exactly 200 texture snapshots. Its guest
   texture address deliberately has no native mapping, and its copy callback
   changes the source before returning. Every uploaded byte must match the owned
   snapshot. Native and ThreadSanitizer runs pass with no race reports; the latter
@@ -158,3 +160,20 @@ source edits. Existing gpu and texwatch CTests both pass. Their logs are
 `/Volumes/office/Build/OpenCrown/ios-render-mac-regression-{build,tests}.log`.
 Live game draw coverage, simulator/device presentation, display changes and
 sustained performance remain integration work.
+
+
+### UI atlas performance
+
+AOT replay now checks each texture once per replayed frame. All repeated glyph
+and sprite draws share the first owned synchronized snapshot; guest writes after
+that copy become visible on the next frame. There is no unsynchronized detile or
+partial-content shortcut. Across frames, CommonCrypto SHA-256 covers every byte
+of the snapshot, replacing byte-serial FNV for the large content hash. Descriptor
+keys and the desktop write-protection path retain their existing behavior.
+
+This removes the per-glyph full-atlas copy/hash that stalled the Create save data
+prompt. The 128-draw concurrent fixture passes native and ThreadSanitizer, and
+the renderer verifier still checks all36,864 saved RGB channels plus1,504 BC
+channels/edges. Updated Mac, Simulator and iPhoneOS archives compile. Real-game
+performance measurements are recorded in the progress ledger; fixture timings
+alone do not establish gameplay frame rate.

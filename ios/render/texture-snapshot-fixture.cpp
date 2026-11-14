@@ -121,7 +121,11 @@ int main() {
     draw->tex[0][2] = 63 | (63u << 14);
     draw->tex[0][3] = 0xfac | (8u << 20) | (9u << 28);
     draw->tex[0][4] = 63u << 13;
-    frame.draws.push_back(std::move(draw));
+    // Many UI glyphs use the same atlas. The callback deliberately mutates
+    // guest bytes after every snapshot: all repeated draws must still share
+    // the first snapshot of this frame, with a fresh check next frame.
+    for (unsigned i = 0; i < 128; ++i)
+      frame.draws.push_back(std::make_unique<DrawRec>(*draw));
     std::atomic<bool> stop{false};
     std::atomic<unsigned> writes{0};
     std::thread writer([&] {
@@ -142,11 +146,11 @@ int main() {
     uploads = count->uploads;
     snapshots = memory.snapshots.load();
     checked = count->checked;
-    assert(count->draws == 200 && snapshots == 200 && uploads > 0 &&
+    assert(count->draws == 200 * 128 && snapshots == 200 && uploads > 0 &&
            writes > 0 && checked >= 16384);
   }
   shutdown_aot_capture();
-  std::printf("{\"frames\":200,\"snapshots\":%u,\"uploads\":%u,\"checked_"
+  std::printf("{\"frames\":200,\"draws_per_frame\":128,\"snapshots\":%u,\"uploads\":%u,\"checked_"
               "bytes\":%llu,\"failed\":0}\n",
               snapshots, uploads, static_cast<unsigned long long>(checked));
 }

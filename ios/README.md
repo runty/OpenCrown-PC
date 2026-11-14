@@ -59,3 +59,26 @@ unaligned load/store, direct/indirect translated calls, AVX bitwise operations,
 guest FS/TLS on two workers, checked memory boundaries and unresolved targets.
 The memory bridges record errors without unwinding through Remill's nounwind
 intrinsics. These fixtures precede the real-module and broader P1 CPU tests.
+
+
+## Isolated interactive diagnostics
+
+`--diagnostic-interactive-startup` starts timed normal game execution with real
+platform audio/input, but keeps saves/checkpoints and captured PNGs in a fresh
+`Documents/DiagnosticSessions/<UUID>` folder. It supplies no automatic controller
+input. `DCP_DIAGNOSTIC_SECONDS` must be finite and in1..600 (default120). Unlike
+`--diagnostic-startup`, it does not use the scripted checkpoint driver or null
+audio. Normal Home Screen launch still waits for Play and uses local player saves.
+
+Any diagnostic startup may set `DCP_DIAGNOSTIC_RESUME_UUID` to an existing test
+UUID to reopen that same working save/checkpoint folder without restoring a seed.
+Invalid/missing sessions and combining resume with seeded startup reject before
+game execution. New PNGs use the new run's UUID folder so previous evidence is
+retained. Normal launch ignores this test variable. Reports distinguish run ID,
+save-session ID and resumed/seeded/interactive modes. A retained file or a frontend
+resume test does not itself prove an actual character was reopened.
+
+`main_thread_work` reports bounded rolling milliseconds for replay pump,
+drawable presentation and diagnostic heartbeats. Pump samples include empty
+queue polls. These durations complement frame-arrival/present intervals; neither
+software counter alone proves a screen was rendered correctly.

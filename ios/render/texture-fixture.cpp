@@ -85,12 +85,16 @@ int main() {
       frame.draws.push_back(std::move(draw));
     }
     backend.draw(frame);
-    assert(count->draws == 2 && count->uploads == 2);
+    // Both draws share this frame's first snapshot. The mid-frame mutation
+    // must invalidate the texture on the next frame, including byte 4096.
+    assert(count->draws == 2 && count->uploads == 1);
     backend.draw(frame);
     assert(count->draws == 4 && count->uploads == 2);
+    backend.draw(frame);
+    assert(count->draws == 6 && count->uploads == 2);
   }
   shutdown_aot_capture();
   munmap(texture, 16384);
-  std::puts("AOT texture pass: byte 4096 mutation reuploads in same frame; "
+  std::puts("AOT texture pass: byte 4096 mutation reuploads next frame; "
             "unchanged content reuses texture");
 }

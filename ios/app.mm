@@ -28,12 +28,14 @@ struct FrameIntervals {
   std::array<double, capacity> values{};
   size_t count = 0, next = 0;
   double last = 0;
+  void milliseconds(double value) {
+    values[next] = value;
+    next = (next + 1) % capacity;
+    count = std::min(count + 1, capacity);
+  }
   void observe(double now) {
-    if (last > 0 && now > last) {
-      values[next] = (now - last) * 1000.0;
-      next = (next + 1) % capacity;
-      count = std::min(count + 1, capacity);
-    }
+    if (last > 0 && now > last)
+      milliseconds((now - last) * 1000.0);
     last = now;
   }
   NSDictionary *json() const {
@@ -146,9 +148,13 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   BOOL _autoStarted;
   BOOL _diagnosticStartup;
   BOOL _diagnosticSeeded;
+  BOOL _diagnosticInteractive;
+  BOOL _diagnosticResumed;
   double _diagnosticStopSeconds;
   NSString *_sessionSaveRoot;
   NSString *_sessionCheckpointRoot;
+  NSString *_sessionSnapshotRoot;
+  NSString *_saveSessionID;
   NSString *_hostError;
   NSString *_saveError;
   BOOL _storageBusy;
@@ -164,6 +170,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   NSTimeInterval _sessionStarted;
   CFTimeInterval _lastHeartbeat;
   FrameIntervals _gameIntervals, _drawableIntervals;
+  FrameIntervals _pumpDurations, _presentDurations, _heartbeatDurations;
 }
 @property(nonatomic, strong) UILabel *status;
 @property(nonatomic, strong) UIButton *play;
@@ -254,7 +261,10 @@ UIButton *button(NSString *title, id target, SEL action) {
       containsObject:@"--diagnostic-startup"];
   _diagnosticSeeded = [NSProcessInfo.processInfo.arguments
       containsObject:@"--diagnostic-seeded-startup"];
-  _diagnosticStartup = _diagnosticStartup || _diagnosticSeeded;
+  _diagnosticInteractive = [NSProcessInfo.processInfo.arguments
+      containsObject:@"--diagnostic-interactive-startup"];
+  _diagnosticStartup = _diagnosticStartup || _diagnosticSeeded ||
+                       _diagnosticInteractive;
   id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
   _metalInfo = @{
     @"name" : gpu.name ?: @"unavailable",
@@ -351,7 +361,7 @@ UIButton *button(NSString *title, id target, SEL action) {
 }
 - (NSString *)gameSnapshotPath:(NSString *)name {
   NSString *root = _diagnosticStartup
-      ? [_sessionSaveRoot stringByDeletingLastPathComponent]
+      ? _sessionSnapshotRoot
       : documents();
   return [root stringByAppendingPathComponent:name];
 }
@@ -377,10 +387,13 @@ UIButton *button(NSString *title, id target, SEL action) {
     return;
   _running = YES;
   _sessionID = NSUUID.UUID.UUIDString;
+  _saveSessionID = _sessionID;
+  _diagnosticResumed = NO;
   NSString *saveParent = _diagnosticStartup
       ? [[documents() stringByAppendingPathComponent:@"DiagnosticSessions"]
           stringByAppendingPathComponent:_sessionID]
       : documents();
+  _sessionSnapshotRoot = saveParent;
   _sessionSaveRoot = [saveParent stringByAppendingPathComponent:@"ProbeSaves"];
   _sessionCheckpointRoot =
       [saveParent stringByAppendingPathComponent:@"SaveCheckpoints"];
@@ -393,6 +406,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   _snapshotHasContent = NO;
   _gameIntervals = FrameIntervals{};
   _drawableIntervals = FrameIntervals{};
+  _pumpDurations = _presentDurations = _heartbeatDurations = FrameIntervals{};
   _hostError = nil;
   {
     std::lock_guard<std::mutex> lock(_diagnosticStateLock);
@@ -413,6 +427,24 @@ UIButton *button(NSString *title, id target, SEL action) {
       }
       _diagnosticStopSeconds = value;
     }
+  if (_diagnosticStartup)
+    if (const char *resume = std::getenv("DCP_DIAGNOSTIC_RESUME_UUID")) {
+      NSString *value = [[NSString alloc] initWithUTF8String:resume];
+      NSUUID *identifier = value ? [[NSUUID alloc] initWithUUIDString:value] : nil;
+      if (!identifier || _diagnosticSeeded) {
+        _running = NO;
+        self.status.text = @"Invalid diagnostic resume session or conflicting seed mode.";
+        [self recordStartupFailure:self.status.text stage:@"configuration"];
+        [self updateButtons];
+        return;
+      }
+      _diagnosticResumed = YES;
+      _saveSessionID = identifier.UUIDString;
+      NSString *parent = [[documents() stringByAppendingPathComponent:@"DiagnosticSessions"]
+          stringByAppendingPathComponent:_saveSessionID];
+      _sessionSaveRoot = [parent stringByAppendingPathComponent:@"ProbeSaves"];
+      _sessionCheckpointRoot = [parent stringByAppendingPathComponent:@"SaveCheckpoints"];
+    }
   self.status.text = @"Checking game files and recovering local saves…";
   [self emitLiveDiagnostics:YES];
   [self updateButtons];
@@ -421,6 +453,15 @@ UIButton *button(NSString *title, id target, SEL action) {
     try {
       const std::filesystem::path root(documents().fileSystemRepresentation);
       dcp::storage::validate_game(root / "Game");
+      if (self->_diagnosticResumed) {
+        std::error_code error;
+        const auto status = std::filesystem::symlink_status(
+            self->_sessionSaveRoot.fileSystemRepresentation, error);
+        if (error || !std::filesystem::is_directory(status))
+          throw std::runtime_error("Diagnostic save session does not exist");
+      }
+      std::filesystem::create_directories(
+          self->_sessionSnapshotRoot.fileSystemRepresentation);
       std::filesystem::create_directories(
           std::filesystem::path(self->_sessionSaveRoot.fileSystemRepresentation)
               .parent_path());
@@ -509,7 +550,8 @@ UIButton *button(NSString *title, id target, SEL action) {
   setenv("DCP_SAVE_ROOT",
          _sessionSaveRoot.fileSystemRepresentation,
          1);
-  setenv("DCP_GAME_MODE", _diagnosticStartup ? "checkpoint" : "play", 1);
+  setenv("DCP_GAME_MODE",
+         _diagnosticStartup && !_diagnosticInteractive ? "checkpoint" : "play", 1);
   if (_diagnosticStartup)
     setenv("DCP_INPUT_SCRIPT",
            [documents() stringByAppendingPathComponent:@"diagnostic-input.txt"]
@@ -674,7 +716,9 @@ UIButton *button(NSString *title, id target, SEL action) {
   }
   dcp::mobile::ReplayFrame frame;
   std::string error;
+  const double pumpStart = CACurrentMediaTime();
   auto result = _replay->pump(0, &frame, &error);
+  _pumpDurations.milliseconds((CACurrentMediaTime() - pumpStart) * 1000.0);
   if (result == dcp::mobile::PumpResult::Error) {
     self.status.text = _hostError = @(error.c_str());
     NSLog(@"OpenCrown render failed: %@", _hostError);
@@ -697,10 +741,12 @@ UIButton *button(NSString *title, id target, SEL action) {
   }
   int width = 0, height = 0;
   SDL_GetWindowSizeInPixels(_gameWindow, &width, &height);
+  const double presentStart = CACurrentMediaTime();
   if (_replay->present(width, height)) {
     ++_presentedFrames;
     _drawableIntervals.observe(sender.timestamp);
   }
+  _presentDurations.milliseconds((CACurrentMediaTime() - presentStart) * 1000.0);
 }
 - (void)attachGameControls:(UIView *)content {
   dcp_platform_attach_touch_overlay((__bridge void *)content);
@@ -961,10 +1007,14 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"phase" : _diagnosticPhase ?: @"launcher",
     @"diagnostic_startup" : @(_diagnosticStartup),
     @"diagnostic_seeded" : @(_diagnosticSeeded),
+    @"diagnostic_interactive" : @(_diagnosticInteractive),
+    @"diagnostic_resumed" : @(_diagnosticResumed),
+    @"save_session_id" : _diagnosticStartup ? (_saveSessionID ?: @"") : @"",
     @"diagnostic_stop_seconds" : @(_diagnosticStartup ? _diagnosticStopSeconds : 0),
     @"save_scope" : _diagnosticStartup
-        ? (_diagnosticSeeded ? @"disposable seeded diagnostic session"
-                             : @"disposable diagnostic session")
+        ? (_diagnosticResumed ? @"resumed diagnostic session"
+           : (_diagnosticSeeded ? @"disposable seeded diagnostic session"
+                                : @"disposable diagnostic session"))
         : @"local player",
     @"snapshot_directory" : _diagnosticStartup
         ? [@"DiagnosticSessions" stringByAppendingPathComponent:_sessionID]
@@ -978,6 +1028,11 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"replayed_draws" : @(_replayedDraws),
     @"captured_frame_intervals" : _gameIntervals.json(),
     @"drawable_present_intervals" : _drawableIntervals.json(),
+    @"main_thread_work" : @{
+      @"replay_pump" : _pumpDurations.json(),
+      @"drawable_present" : _presentDurations.json(),
+      @"diagnostic_heartbeat" : _heartbeatDurations.json()
+    },
     @"interval_measurement" :
         @"Main-thread captured-frame arrivals and successful drawable-present "
         @"calls; paused gaps excluded",
@@ -1025,6 +1080,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   _lastHeartbeat = now;
   [self queueDiagnostic:[self diagnosticSnapshot]
                filename:@"diagnostics-live.json"];
+  _heartbeatDurations.milliseconds((CACurrentMediaTime() - now) * 1000.0);
 }
 - (void)recordStartupFailure:(NSString *)error stage:(NSString *)stage {
   _diagnosticPhase = stage;
