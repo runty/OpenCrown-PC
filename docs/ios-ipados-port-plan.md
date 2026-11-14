@@ -2,7 +2,7 @@
 
 The first release target is offline Dragon’s Crown Pro (CUSA10454, patch 1.03) on an iPhone 17 Pro Max and an iPad mini (A20 Pro). Build one arm64 iOS app on the Mac, sign it for both devices and launch it from each Home Screen. Acceptance requires a playable town and adventure loop on each device, including touch, a controller, audio and a save that survives termination. Keep the tested Mac build available for comparisons.
 
-The Mac implementation at `784fe46` executes the game's x86-64 instructions through Rosetta. It supplies a working reference for loader results, gameplay, saves and the SDL Metal renderer. Eight game shaders already compile and link with the iPhoneOS 27.2 SDK. The iPad now executes real modules and renders TITLE/INN. The matching Simulator save-data prompt sustains about59.5fps after a renderer fix. A longer physical iPad Town window runs at only about5.1fps, so execution performance remains a release blocker. [Mac verification](../macos/app-bundle.md) · [Gameplay fixture](../macos/gameplay-smoke.md) · [Earlier feasibility study](macos-port-plan.md#phase-2-feasibility-on-ios-and-ipados)
+The Mac implementation at `784fe46` executes the game's x86-64 instructions through Rosetta. It supplies a working reference for loader results, gameplay, saves and the SDL Metal renderer. Eight game shaders already compile and link with the iPhoneOS 27.2 SDK. The iPad executes the real modules and renders TITLE, INN and Town. The matching Simulator save-data prompt sustains about59.5fps after a renderer fix. A scripted 3,000-frame Town walk on the physical iPad rendered at 45.4 fps after changes to guest memory access and Metal texture reuse. Combat, physical-phone performance and sustained play remain open. [Mac verification](../macos/app-bundle.md) · [Gameplay fixture](../macos/gameplay-smoke.md) · [Earlier feasibility study](macos-port-plan.md#phase-2-feasibility-on-ios-and-ipados)
 
 ## Execution design and first decision
 
@@ -49,25 +49,18 @@ Before choosing a translator, run a small bake-off. Inspect available lifters fo
 | P1 | iPad passes the expanded 1,906-check / 85-routine probe, then executes actual libc startup and the game. The iPhone passed the original synthetic corpus and remains away; current real-module proof on that phone is pending. |
 | P2 | The iPad reaches TITLE and copied-Felix INN with checked component/frame advancement and no error. The current build cold-reopens the same working save twice without reseeding; both images show Felix LV1. The current real-game iPhone gate remains pending. |
 | P3 | Visible TITLE passes on iPad and both simulators; visible INN and Felix pass on iPad and native host. Native and physical iPad Town pass extended advancing-frame gates with clean inspected images. Physical-phone scenes remain open. |
-| P4 | Real interactive audio/input adapters run. The user reports severe iPad save-dialog stalls; the matching Simulator reproduction is reduced from roughly two-second replay stalls to about 10 ms and 59.46 fps. Clean fix passes a 180-second physical iPad prompt run at about10 ms replay work with zero audio underruns/clipping and a complete image. Simulator touch also loads Felix, walks in Town and opens Stats with the retained values. The longer physical Town window measures only5.12fps; this is not playable performance. Physical controls/reconnect, interruptions and sustained gameplay remain pending. |
+| P4 | Real interactive audio/input adapters run. The user reports severe iPad save-dialog stalls; the matching Simulator reproduction is reduced from roughly two-second replay stalls to about 10 ms and 59.46 fps. Clean fix passes a 180-second physical iPad prompt run at about10 ms replay work with zero audio underruns/clipping and a complete image. Simulator touch also loads Felix, walks in Town and opens Stats with the retained values. The signed iPad build completes a 3,000-frame walk at 45.4 rendered fps with a 34.2 ms p95 frame interval. Physical controls/reconnect, interruptions and sustained gameplay remain pending. |
 | P5 | Files import and transactional save recovery pass host fixtures. Repeated iPad installs preserve assets and save/checkpoint files. Two same-working-save character reloads pass on the iPad; new-progress save/reloads, provider behavior and disposable iCloud handoff/conflicts still need qualification. |
-| P6 | Both-device town/combat loops, sustained physical timing and adventure completion remain open. No playable-release claim. |
+| P6 | A short iPad walk exceeds the initial 30 fps target. The 30-minute Town/combat qualification, real-time audio and simulation checks, physical phone and adventure clear remain open. |
 
 Continue without user input in this order:
 
-1. Profile and improve the translated execution path: the longer physical Town window measures592frames /115.69seconds (5.12fps), despite the fixed prompt renderer. Reproduce a settled workload and compare timing with identical traces and inputs; retain memory, cancellation and atomic guarantees. Continue bounded adventure/combat coverage after each meaningful performance improvement.
-2. Keep the qualified 50,292-entry core as the isolated comparison baseline for the save-dialog fix. The prompt improvement now passes on iPad. The newer50,340-entry core and ordered DirectMemory service pass the physical Town gate with a clean image. Its low settled frame rate remains open.
+1. Extend the iPad route beyond Town to visible combat. Measure replayed frame intervals separately per scene, including sustained thermal behavior, damage and return to Town.
+2. Retain the 50,292-entry save-dialog baseline and use the 50,340-entry build with the committed Felix walking route to compare Town changes. The signed build uses the native CRILAYLA decoder for 91 of 94 observed calls. Track the remaining translated calls and preserve memory, cancellation and atomic behavior.
 3. The iPad has twice cold-reopened its existing diagnostic working save with Felix visible and no reseeding. Next create new progress and save/reload it. Never use normal player roots or live cloud progress for these experiments.
 4. Qualify real input/audio/lifecycle on the iPad, and run the same current app/core on the actual iPhone when it returns. Simulator success does not substitute for either device.
 5. Finish disposable cloud-provider handoff/conflict cases and sustained gameplay measurements before enabling live progress writes or declaring the port complete.
 
-
-The immediate critical path is real-module startup, then live replay and a
-simulator play/save loop. In parallel, preserve reproducible source/dependency
-pins and build the signed universal app. When hardware returns, install the same
-qualified build and close each phone/tablet gate separately. Devices being away
-does not prevent host/simulator implementation, and does not waive the physical
-acceptance criteria.
 
 P0 → P1 → P2 is the critical path. A synthetic Metal draw, fixture capture and import prototype can proceed independently. Live rendering and controls need P2. File-free CI can build the shell and run synthetic CPU/render fixtures. Real-game acceptance runs privately on each device with the same signed build, recording commit, dump hashes, device/OS, input route, log and result. Track phone and tablet passes separately.
 

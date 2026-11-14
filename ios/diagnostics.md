@@ -127,3 +127,22 @@ reports median and p95 milliseconds, skipped flips and elapsed time. It uses
 the first and last captured flips within the window. The report omits replay
 timing if another observed component replaces the requested scene. Drawable
 presents and repeated images do not count as extra game frames.
+
+To repeat the 3,000-frame Felix walk on the native host, use a disposable
+copy of the Felix slot, start the runner from the repository root and pass
+the usual game, save and output arguments. Set these variables before launch.
+
+```sh
+export DCP_INPUT_SCRIPT="$PWD/ios/host/routes/felix-to-town.txt"
+export DCP_CHECKPOINT_INPUT="$(cat ios/host/routes/town-walk.txt)"
+export DCP_CHECKPOINT_SCENE=TOWN DCP_CHECKPOINT_SETTLE_FRAMES=3000
+export DCP_MAX_TRACE_ENTRIES=2000000000 DCP_MAX_VBLANKS=30000
+```
+
+For an iPad seeded diagnostic, stage the same boot script as
+`Documents/diagnostic-input.txt` and pass the walk text in the launch
+environment. The route waits for the entrance transition, walks down the
+street and alternates directions. Check `checkpoint_complete`,
+`checkpoint_scene_changed == false`, the captured image, and
+`settled_replay_timing`. Read the actual decoder counts in
+`guest.native_crilayla`. These runs use paced null audio.

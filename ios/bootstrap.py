@@ -71,6 +71,18 @@ def output(command):
     return subprocess.check_output([str(part) for part in command], text=True).strip()
 
 
+def render_cache_options(directory, source):
+    # CMake records the checkout's absolute path. A new pipeline pin may
+    # use a different checkout in the same external build workspace.
+    cache = directory / "CMakeCache.txt"
+    if cache.is_file():
+        prefix = "CMAKE_HOME_DIRECTORY:INTERNAL="
+        for line in cache.read_text().splitlines():
+            if line.startswith(prefix) and Path(line[len(prefix):]).resolve() != source.resolve():
+                return ["--fresh"]
+    return []
+
+
 def main():
     if sys.version_info < (3, 12):
         raise SystemExit(
@@ -495,13 +507,15 @@ def main():
         ("simulator", "iphonesimulator", "18.0"),
     ]:
         directory = root / "ios-render" / platform
+        renderer_source = SOURCE / "ios/render"
         run(
             "render-" + platform + "-configure",
             [
                 "cmake",
+                *render_cache_options(directory, renderer_source),
                 *common,
                 "-S",
-                SOURCE / "ios/render",
+                renderer_source,
                 "-B",
                 directory,
                 f"-DDCP_SDL_SOURCE={sdl}",

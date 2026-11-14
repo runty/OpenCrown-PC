@@ -1,5 +1,52 @@
 # Device port progress
 
+## 2026-11-14 — Physical iPad Town walks at 45 fps
+
+Signed build `34e793f` ran the same 3,000-frame Felix walk twice on the
+iPad mini (A20 Pro), iPadOS 27.2.1, with the 50,340-entry core and a fresh
+disposable copy of the same save each time. Both runs reached TITLE, INN and
+Town. Neither left Town during its measurement window. The final images show
+Felix, the street and the HUD. Counting completed Metal replay intervals gives
+the following results.
+
+| iPad walk | Seconds | Rendered fps | Guest fps | Median interval | 95th percentile | Skipped flips inside window |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| First | 66.00 | 45.42 | 45.44 | 17.19 ms | 34.16 ms | 1 |
+| Repeat | 66.12 | 45.34 | 45.38 | 17.28 ms | 34.46 ms | 2 |
+
+The game called the CRILAYLA decoder 94 times on each route. The native
+implementation handled 91 in-place calls and decoded 283,831,168 bytes.
+Three calls used the original translated routine. In isolation, the revised
+decoder shortened the host boot-to-checkpoint run from 327 to 220 seconds,
+while settled Town still ran at about 5 fps. Differential tests compared
+four input/output layouts with the original routine, using eight game
+records and 113 generated cases in native, ASan/UBSan and TSan configurations.
+
+The larger frame-rate gain came from reducing contention and repeated work.
+Guest memory checks use per-thread mapping caches and ordered page locks,
+with full synchronization for guest atomic instructions. Metal reuses a
+previous texture only after checking its complete contents. The intermediate
+iPad walk measured 27.29 fps. Cheaper scalar memory checks, fast polling for
+clear runtime signals and eliminating redundant presents brought it above
+45 fps. The final host run measured 57.17 rendered fps on the same walk.
+An earlier input script returned to the Inn and was excluded.
+
+Both iPad runs ended in fair thermal state, at sampled peak footprints of
+2.17 and 2.18 GB. They reported zero guest, frontend and save errors.
+The previous 60 and 70 diagnostic files, respectively, retained their hashes,
+as did the seed and ordinary player files. The normal launcher was restored
+after each run. The checked-memory suite passed 267,089 checks per
+native, ASan/UBSan and TSan build. All 27 host runtime lifecycle sessions
+passed. In an additional active-Town test, the first resumed flip took 34 ms
+and stop/join took 29 ms.
+
+These scripted walks use paced null audio. The next gates are actual combat,
+new progress saved and reopened, real controls and audio, a sustained
+Town/combat loop, and qualification on the physical iPhone. The earlier
+iPhone Simulator build completed a 1,450-frame Town walk. Follow the
+[walking fixture instructions](diagnostics.md#measuring-town-frame-timing)
+to reproduce the comparison.
+
 ## 2026-11-14 — Clean physical Town; settled performance remains too slow
 
 Clean frontend `368caf2` with the frozen50,340-entry core passes the iPad's
