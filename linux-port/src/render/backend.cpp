@@ -8,7 +8,9 @@
 #include <unistd.h>
 
 #include <cerrno>
+#ifndef DCP_AOT
 #include "platform/io.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -25,7 +27,9 @@
 #include "device.h"
 #include "png.h"
 #include "prompts.h"
+#ifndef DCP_AOT
 #include "texwatch.h"
+#endif
 
 namespace dcp::render {
 namespace {
@@ -84,6 +88,9 @@ uint64_t fnv(const void* p, size_t n, uint64_t h = 1469598103934665603ull) {
 // short count at the first unreadable page instead of faulting (texwatch's read-only pages still read fine).
 bool readable(uint64_t a, uint64_t n) {
     if (!a) return false;
+#ifdef DCP_AOT
+    return n <= (64ULL << 20) && n <= UINT64_MAX - a && aot_capture_memory(a, size_t(n), false);
+#else
     constexpr uint64_t kPage = 4096;
 #ifdef __APPLE__
     if (n > UINT64_MAX - a) return false;
@@ -106,6 +113,7 @@ bool readable(uint64_t a, uint64_t n) {
         if (r != k) return false;
     }
     return true;
+#endif
 #endif
 }
 
@@ -171,6 +179,7 @@ struct Backend::Impl {
         tiled = formats::gnm_tiled_size(s);
         uint64_t key = fnv(t, 28);
         auto it = texs.find(key);
+#ifndef DCP_AOT
         if (it != texs.end()) {  // fast paths: no readable() probe, no hashing (hundreds of lookups per frame)
             Tex& x = it->second;
             if (x.last == frame_no) return x.id;  // already checked this frame
@@ -182,21 +191,44 @@ struct Backend::Impl {
                 }
             }
         }
+#endif
         // Protect before reading (validates the range and makes a write racing the detile below mark the texture stale).
         uint64_t seq = 0;
+#ifdef DCP_AOT
+        bool watched = false;
+#else
         bool early = it == texs.end() || it->second.watched;
         bool watched = early && texwatch::protect(base, tiled, &seq);
+#endif
         if (!watched && !readable(base, tiled)) return 0;
-        uint64_t head = fnv(reinterpret_cast<const void*>(base), tiled < 512 ? tiled : 512);
+#ifdef DCP_AOT
+        // Own a synchronized snapshot: hashing and detiling must observe the same
+        // bytes even when a translated worker updates the texture concurrently.
+        std::vector<uint8_t> snapshot(size_t(tiled), uint8_t{});
+        if (!aot_capture_copy(base, snapshot.data(), snapshot.size())) return 0;
+        const uint8_t *texture_bytes = snapshot.data();
+        uint64_t head = fnv(texture_bytes, size_t(tiled));
+#else
+        const uint8_t *texture_bytes = reinterpret_cast<const uint8_t*>(base);
+        uint64_t head = fnv(texture_bytes, tiled < 512 ? tiled : 512);
+#endif
         if (it != texs.end()) {
             Tex& x = it->second;
+#ifdef DCP_AOT
+            bool stale = head != x.head;
+#else
             bool stale = x.watched ? texwatch::written_since(base, tiled, x.seq) : head != x.head;
+#endif
             x.last = frame_no;
             if (!stale) return x.id;
             if (++reuploads <= 8 || (reuploads & (reuploads - 1)) == 0)
                 std::fprintf(stderr, "render: texture %llx %ux%u rewritten by the game, re-uploading (%llu so far, %s)\n",
                              (unsigned long long)base, s.width, s.height, (unsigned long long)reuploads,
+#ifdef DCP_AOT
+                             "full content hash");
+#else
                              x.watched ? "write-protect" : "head hash");
+#endif
         }
         TexFormat fmt;
         switch (g.data_format()) {
@@ -210,8 +242,10 @@ struct Backend::Impl {
                 std::fprintf(stderr, "render: texture format %u (%s) not handled\n", g.data_format(), info.name ? info.name : "?");
             return 0;
         }
-        std::vector<uint8_t> lin = formats::gnm_detile({reinterpret_cast<const uint8_t*>(base), size_t(tiled)}, s);
+        std::vector<uint8_t> lin = formats::gnm_detile({texture_bytes, size_t(tiled)}, s);
+#ifndef DCP_AOT
         if (!early) watched = texwatch::protect(base, tiled, &seq);  // head-hashed texture: try write tracking again
+#endif
         TexId id = dev->upload(it != texs.end() ? it->second.id : 0,  // re-upload in place
                                fmt, int(s.width), int(s.height), lin.data(), lin.size(), false);
         if (!id) {
@@ -696,7 +730,13 @@ void Backend::set_prompt_kbm(bool kbm) {
 void Backend::set_prompt_bindings(const std::map<std::string, std::string>& b) { m_->prompts.set_bindings(b); }
 Backend::~Backend() = default;
 
-bool Backend::init() { return init(make_gl_device()); }
+bool Backend::init() {
+#ifdef DCP_AOT
+    return false; // AOT hosts explicitly supply their in-process device.
+#else
+    return init(make_gl_device());
+#endif
+}
 
 bool Backend::init(std::unique_ptr<Device> dev) {
     Impl& m = *m_;

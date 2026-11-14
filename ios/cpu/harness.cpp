@@ -1,5 +1,7 @@
-#include "fixtures.h"
 #include "runtime.h"
+
+#include "fixtures.h"
+#include <cmath>
 #include <cstring>
 #include <future>
 #include <sstream>
@@ -15,6 +17,23 @@ static uint64_t flags(const State &state) {
   return uint64_t(state.aflag.cf) | (uint64_t(state.aflag.pf) << 2) |
          (uint64_t(state.aflag.zf) << 6) | (uint64_t(state.aflag.sf) << 7) |
          (uint64_t(state.aflag.of) << 11);
+}
+static bool reciprocalMatches(uint64_t actual, uint64_t reference) {
+  for (unsigned i = 0; i < 2; ++i) {
+    uint32_t a = actual >> (i * 32), r = reference >> (i * 32);
+    float af, rf;
+    std::memcpy(&af, &a, 4);
+    std::memcpy(&rf, &r, 4);
+    if (std::isnan(rf)) {
+      if (!std::isnan(af))
+        return false;
+    } else if (std::isinf(rf) || rf == 0.0f) {
+      if (a != r)
+        return false;
+    } else if (!std::isfinite(af) || std::fabs((af - rf) / rf) > 0.000367f)
+      return false;
+  }
+  return true;
 }
 static unsigned run(unsigned worker) {
   unsigned passed = 0;
@@ -35,7 +54,9 @@ static unsigned run(unsigned worker) {
     write64(memory, stack, 0xfeedface);
     dispatch(state, test.pc, &memory);
     const uint64_t expected = test.tls ? tlsValue + test.b : test.result;
-    if (!memory.fault.empty() || state.gpr.rax.qword != expected ||
+    if (!memory.fault.empty() ||
+        (test.approximate ? !reciprocalMatches(state.gpr.rax.qword, expected)
+                          : state.gpr.rax.qword != expected) ||
         state.gpr.rsp.qword != stack + 8 || state.gpr.rip.qword != 0xfeedface ||
         memory.returns == 0 ||
         (test.checkFlags && flags(state) != test.flags) ||
@@ -75,6 +96,33 @@ static unsigned run(unsigned worker) {
   if (read64(memory, Memory::base + 65528) != 42)
     throw std::runtime_error("last guest qword failed");
   ++passed;
+  // Extended memory bridges preserve all ten bytes, accept the final complete
+  // value and reject partial/overflow accesses without modifying neighbours.
+  float80_t extended{};
+  for (unsigned i = 0; i < 10; ++i)
+    extended.data[i] = uint8_t(0x31 + i * 17);
+  for (uint64_t address : {Memory::base + 3, Memory::base + 65526}) {
+    __remill_write_memory_f80(&memory, address, extended);
+    float80_t copy{};
+    __remill_read_memory_f80(&memory, address, copy);
+    if (std::memcmp(copy.data, extended.data, 10))
+      throw std::runtime_error("extended memory copy lost bits");
+    ++passed;
+  }
+  memory.stopOnFault = true;
+  const auto before = memory.bytes;
+  for (uint64_t address : {Memory::base - 1, Memory::base + 65527, UINT64_MAX}) {
+    bool readRejected = false, writeRejected = false;
+    try {
+      __remill_read_memory_f80(&memory, address, extended);
+    } catch (const std::runtime_error &) { readRejected = true; }
+    try {
+      __remill_write_memory_f80(&memory, address, extended);
+    } catch (const std::runtime_error &) { writeRejected = true; }
+    if (!readRejected || !writeRejected || memory.bytes != before)
+      throw std::runtime_error("invalid extended memory access accepted");
+    passed += 2;
+  }
   State state{};
   bool rejected = false;
   try {
@@ -104,7 +152,11 @@ extern "C" const char *dcp_cpu_report() {
     auto second = std::async(std::launch::async, run, 2);
     unsigned passed = first.get() + second.get();
     std::array<uint8_t, 16> shared{};
-    auto increment = [&shared] {
+    uint64_t atomic64Pc = 0;
+    for (const auto &test : cases)
+      if (!std::strcmp(test.name, "atomic64")) atomic64Pc = test.pc;
+    if (!atomic64Pc) throw std::runtime_error("missing 64-bit CAS fixture");
+    auto increment = [&shared](uint64_t pc) {
       Memory memory;
       memory.stopOnFault = true;
       addRegion(memory, shared.data(), shared.size());
@@ -113,19 +165,29 @@ extern "C" const char *dcp_cpu_report() {
         state.gpr.rdi.qword = reinterpret_cast<uint64_t>(shared.data());
         state.gpr.rsp.qword = Memory::base + 0xff00;
         write64(memory, state.gpr.rsp.qword, 0xfeedface);
-        dispatch(state, 0xa000, &memory);
+        dispatch(state, pc, &memory);
         if (!memory.fault.empty())
           throw std::runtime_error(memory.fault);
       }
     };
-    auto counterFirst = std::async(std::launch::async, increment);
-    auto counterSecond = std::async(std::launch::async, increment);
+    auto counterFirst = std::async(std::launch::async, increment, 0xa000);
+    auto counterSecond = std::async(std::launch::async, increment, 0xa000);
     counterFirst.get();
     counterSecond.get();
     uint32_t total;
     std::memcpy(&total, shared.data(), 4);
     if (total != 200)
       throw std::runtime_error("concurrent guest CAS lost an increment");
+    ++passed;
+    shared.fill(0);
+    auto wideFirst = std::async(std::launch::async, increment, atomic64Pc);
+    auto wideSecond = std::async(std::launch::async, increment, atomic64Pc);
+    wideFirst.get();
+    wideSecond.get();
+    uint64_t wideTotal;
+    std::memcpy(&wideTotal, shared.data(), 8);
+    if (wideTotal != 200)
+      throw std::runtime_error("concurrent 64-bit guest CAS lost an increment");
     ++passed;
     std::ostringstream json;
     json << "{\"passed\":" << passed << ",\"failed\":0,\"workers\":2,"

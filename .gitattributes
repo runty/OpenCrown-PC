@@ -2,3 +2,7 @@
 * text=auto
 *.jpg binary
 *.png binary
+
+# Patch context and the unmodified third-party decoder retain upstream spacing.
+ios/*.patch -whitespace
+ios/render/third_party/bcdec.h -whitespace

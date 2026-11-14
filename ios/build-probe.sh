@@ -7,6 +7,12 @@ fi
 source_dir=$(cd "$(dirname "$0")/.." && pwd)
 build_dir=$1
 team=$2
+build_platform=${DCP_BUILD_PLATFORM:-ios}
+case "$build_platform" in
+    ios) library_platform=ios; destination=generic/platform=iOS; product_sdk=iphoneos ;;
+    simulator) library_platform=simulator; destination='generic/platform=iOS Simulator'; product_sdk=iphonesimulator ;;
+    *) echo "DCP_BUILD_PLATFORM must be ios or simulator" >&2; exit 2 ;;
+esac
 python3 - "$build_dir" <<'PY'
 from pathlib import Path
 import sys
@@ -19,19 +25,31 @@ cp "$source_dir/ios/main.mm" "$build_dir/Source/main.mm"
 cpu_enabled=0
 library_dependency=""
 if [[ $# -eq 3 ]]; then
-    cp "$3/ios/libcpu-fixtures.a" "$build_dir/Source/libcpu-fixtures.a"
-    if [[ -f "$3/ios/libfreetype.a" ]]; then
-        cp "$3/ios/libfreetype.a" "$build_dir/Source/libfreetype.a"
+    cp "$3/$library_platform/libcpu-fixtures.a" "$build_dir/Source/libcpu-fixtures.a"
+    if [[ -f "$3/$library_platform/libfreetype.a" ]]; then
+        cp "$3/$library_platform/libfreetype.a" "$build_dir/Source/libfreetype.a"
     else
         rm -f "$build_dir/Source/libfreetype.a"
+    fi
+    if [[ -d "$3/ThirdPartyNotices" ]]; then
+        mkdir -p "$build_dir/Source/ThirdPartyNotices"
+        cp "$3/ThirdPartyNotices/"* "$build_dir/Source/ThirdPartyNotices/"
+    fi
+    if [[ -f "$3/$library_platform/libdcp-fp80.a" ]]; then
+        cp "$3/$library_platform/libdcp-fp80.a" "$build_dir/Source/"
+    else
+        rm -f "$build_dir/Source/libdcp-fp80.a"
     fi
     cpu_enabled=1
     library_dependency=$'      - framework: Source/libcpu-fixtures.a\n        embed: false'
     if [[ -f "$build_dir/Source/libfreetype.a" ]]; then
         library_dependency+=$'\n      - framework: Source/libfreetype.a\n        embed: false'
     fi
+    if [[ -f "$build_dir/Source/libdcp-fp80.a" ]]; then
+        library_dependency+=$'\n      - framework: Source/libdcp-fp80.a\n        embed: false'
+    fi
 else
-    rm -f "$build_dir/Source/libcpu-fixtures.a" "$build_dir/Source/libfreetype.a"
+    rm -f "$build_dir/Source/libcpu-fixtures.a" "$build_dir/Source/libfreetype.a" "$build_dir/Source/libdcp-fp80.a"
 fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi
@@ -58,6 +76,7 @@ $library_dependency
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: '1,2'
         CLANG_ENABLE_OBJC_ARC: YES
+        ARCHS: arm64
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
         GCC_PREPROCESSOR_DEFINITIONS: DCP_CPU_FIXTURES=$cpu_enabled
         CURRENT_PROJECT_VERSION: 1
@@ -75,5 +94,13 @@ $library_dependency
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
 YAML
 xcodegen generate --spec "$build_dir/project.yml" --project "$build_dir"
-xcodebuild -project "$build_dir/OpenCrownProbe.xcodeproj" -scheme OpenCrownProbe -configuration Release -destination generic/platform=iOS -derivedDataPath "$build_dir/DerivedData" -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
-codesign --verify --deep --strict "$build_dir/DerivedData/Build/Products/Release-iphoneos/OpenCrownProbe.app"
+build_options=()
+if [[ $build_platform == simulator ]]; then
+    build_options+=(CODE_SIGNING_ALLOWED=NO)
+else
+    build_options+=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration)
+fi
+xcodebuild -project "$build_dir/OpenCrownProbe.xcodeproj" -scheme OpenCrownProbe -configuration Release -destination "$destination" -derivedDataPath "$build_dir/DerivedData" "${build_options[@]}" build
+if [[ $build_platform == ios ]]; then
+    codesign --verify --deep --strict "$build_dir/DerivedData/Build/Products/Release-$product_sdk/OpenCrownProbe.app"
+fi

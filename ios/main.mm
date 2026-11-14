@@ -1,4 +1,5 @@
 #import <Metal/Metal.h>
+#import <TargetConditionals.h>
 #import <UIKit/UIKit.h>
 #import <sys/utsname.h>
 #import <unistd.h>
@@ -48,14 +49,19 @@ extern "C" const char *dcp_cpu_report();
                             .firstObject;
   NSString *path =
       [documents stringByAppendingPathComponent:@"diagnostics.json"];
+#if TARGET_OS_SIMULATOR
+  const bool replacePaths = false;
+#else
+  const bool replacePaths = true;
+#endif
   setenv("DCP_GAME_ROOT",
          [documents stringByAppendingPathComponent:@"Game"]
              .fileSystemRepresentation,
-         1);
+         replacePaths);
   setenv("DCP_SAVE_ROOT",
          [documents stringByAppendingPathComponent:@"ProbeSaves"]
              .fileSystemRepresentation,
-         1);
+         replacePaths);
   NSDictionary *previous = [NSDictionary
       dictionaryWithContentsOfFile:
           [documents stringByAppendingPathComponent:@"launches.plist"]];

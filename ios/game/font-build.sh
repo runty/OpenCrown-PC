@@ -22,5 +22,7 @@ cmake "${common[@]}" -B "$build_root/freetype-mac" -DCMAKE_OSX_SYSROOT=macosx -D
 cmake --build "$build_root/freetype-mac" --parallel 8
 cmake "${common[@]}" -B "$build_root/freetype-ios" -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_DEPLOYMENT_TARGET=18.0
 cmake --build "$build_root/freetype-ios" --parallel 8
+cmake "${common[@]}" -B "$build_root/freetype-simulator" -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_DEPLOYMENT_TARGET=18.0
+cmake --build "$build_root/freetype-simulator" --parallel 8
 cp "$font_source/docs/FTL.TXT" "$build_root/FreeType-FTL.txt"
 cp "$font_source/LICENSE.TXT" "$build_root/FreeType-LICENSE.txt"

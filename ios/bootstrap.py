@@ -1,0 +1,561 @@
+#!/usr/bin/env python3
+"""Build the mobile port from pinned sources without installing or launching apps."""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+from pathlib import Path
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+from datetime import datetime, timezone
+
+SOURCE = Path(__file__).resolve().parents[1]
+REMILL = "66c488c9911fd9b368e4d0c9647d74239f8bba8b"
+ARCHIVES = {
+    "sdl": (
+        "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz",
+        "9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3",
+    ),
+    "freetype": (
+        "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz",
+        "bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103",
+    ),
+}
+PATCHES = [
+    "remill-llvm23.patch",
+    "remill-lifter-lifetime.patch",
+    "remill-packed-simd.patch",
+    "remill-pcmpistrm.patch",
+    "remill-sse41-lanes.patch",
+    "remill-avx-extract.patch",
+    "remill-packed-shifts.patch",
+    "remill-x87-control.patch",
+]
+
+
+def digest(path):
+    result = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            result.update(chunk)
+    return result.hexdigest()
+
+
+def external(path):
+    path = path.expanduser().resolve()
+    if (
+        len(path.parts) < 3
+        or path.parts[1] != "Volumes"
+        or not Path("/Volumes", path.parts[2]).is_mount()
+    ):
+        raise SystemExit(f"Path must be on a mounted external disk: {path}")
+    return path
+
+
+def output(command):
+    return subprocess.check_output([str(part) for part in command], text=True).strip()
+
+
+def main():
+    if sys.version_info < (3, 12):
+        raise SystemExit(
+            "Python 3.12 or newer is required (safe tar extraction filter)"
+        )
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--root",
+        type=Path,
+        required=True,
+        help="External build workspace, separate from the game dump",
+    )
+    parser.add_argument(
+        "--dump",
+        type=Path,
+        required=True,
+        help="Private decrypted CUSA10454 dump; never copied into source",
+    )
+    parser.add_argument(
+        "--team", help="Apple development team for signed iPhone/iPad app"
+    )
+    parser.add_argument(
+        "--backend-root", type=Path, help="Reuse pinned Remill sources and build cache"
+    )
+    parser.add_argument("--sdl-source", type=Path, help="Reuse SDL 3.4.18 source cache")
+    parser.add_argument(
+        "--font-source", type=Path, help="Reuse FreeType 2.13.3 source cache"
+    )
+    parser.add_argument("--font-output", type=Path, help="Reuse font-build.sh output")
+    parser.add_argument("--fp80-output", type=Path, help="Reuse SoftFloat/lowering build output")
+    parser.add_argument(
+        "--llvm-prefix", type=Path, default=Path("/opt/homebrew/opt/llvm")
+    )
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=128,
+        help="Trace discovery rounds; 0 skips discovery",
+    )
+    parser.add_argument("--prefetch", type=int, default=12)
+    parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="Build dependencies, fixtures and seed module libraries; skip discovery and signed apps",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate configuration and print resolved paths without changing files",
+    )
+    args = parser.parse_args()
+    if args.rounds < 0 or args.prefetch < 0 or args.jobs < 1:
+        parser.error("rounds/prefetch must be nonnegative and jobs positive")
+    if not args.team and not (args.prepare_only or args.check):
+        parser.error("--team is required for signed app builds (or use --prepare-only)")
+    root, dump = external(args.root), external(args.dump)
+    if root == dump or root.is_relative_to(dump) or dump.is_relative_to(root):
+        parser.error("Build workspace and dump must be separate directory trees")
+    backend = external(args.backend_root or root / "cpu-backends")
+    font_output = external(args.font_output or root / "font-probe")
+    fp80_output = external(args.fp80_output or root / "fp80-probe")
+    cached_sources = root / "macos-rendered/_deps"
+    sdl = external(
+        args.sdl_source
+        or (
+            cached_sources / "sdl3-src"
+            if (cached_sources / "sdl3-src").exists()
+            else root / "sources/sdl"
+        )
+    )
+    font = external(
+        args.font_source
+        or (
+            cached_sources / "freetype-src"
+            if (cached_sources / "freetype-src").exists()
+            else root / "sources/freetype"
+        )
+    )
+    llvm = args.llvm_prefix.expanduser().resolve()
+    for tool in [
+        "cmake",
+        "ninja",
+        "git",
+        "curl",
+        "spirv-cross",
+        "xcrun",
+        "xcodebuild",
+    ] + ([] if args.prepare_only else ["xcodegen"]):
+        if not shutil.which(tool):
+            raise SystemExit(
+                f"Required tool is missing: {tool}; bootstrap does not install software"
+            )
+    version = output([llvm / "bin/llvm-config", "--version"])
+    if version != "23.1.5":
+        raise SystemExit(f"Expected LLVM 23.1.5, found {version} at {llvm}")
+    sdks = {
+        sdk: {
+            "path": output(["xcrun", "--sdk", sdk, "--show-sdk-path"]),
+            "version": output(["xcrun", "--sdk", sdk, "--show-sdk-version"]),
+        }
+        for sdk in ["macosx", "iphoneos", "iphonesimulator"]
+    }
+    expected = {
+        "eboot.bin": "f9bff150c4c28507096e7e143a07492063ed89bf05ac6cb995a55a0946e3508a",
+        "sce_module/libc.prx": "1e952f9486c966e8e3058c01902c8d9c7382acfd3030362db19dfd74681f925c",
+    }
+    for name, sha in expected.items():
+        path = dump / name
+        if not path.is_file() or digest(path) != sha:
+            raise SystemExit(f"Unsupported or missing private executable: {path}")
+    subprocess.run(
+        ["df", "-h", str(Path("/Volumes", root.parts[2])), "/System/Volumes/Data"],
+        check=True,
+    )
+    plan = {
+        "root": str(root),
+        "dump": str(dump),
+        "backend": str(backend),
+        "sdl_source": str(sdl),
+        "font_source": str(font),
+        "font_output": str(font_output),
+        "fp80_output": str(fp80_output),
+        "softfloat_archive_sha256": "21130ce885d35c1fe73fc1e1bf2244178167e05c6747cad5f450cc991714c746",
+        "llvm": str(llvm),
+        "sdks": sdks,
+        "remill_revision": REMILL,
+        "archives": ARCHIVES,
+        "prepare_only": args.prepare_only,
+        "patches": {name: digest(SOURCE / "ios" / name) for name in PATCHES},
+        "sdl_patch": digest(SOURCE / "ios/render/sdl-simulator-metal.patch"),
+    }
+    print(json.dumps(plan, indent=2), flush=True)
+    if args.check:
+        return
+    # Catch pre-lock legacy discovery jobs too. Do not print process arguments:
+    # lifters can carry private game instruction bytes on their command line.
+    game = root / "ios-game"
+    for line in output(["ps", "-axo", "command="]).splitlines():
+        try:
+            words = shlex.split(line)
+        except ValueError:
+            continue
+        if (
+            any(word.endswith(("/advance.py", "/build.py")) for word in words)
+            and "--root" in words
+        ):
+            index = words.index("--root") + 1
+            if index < len(words):
+                active_root = Path(words[index]).resolve()
+                active_backend = active_root.parent / "cpu-backends"
+                for option in ["--backend-root", "--remill"]:
+                    if option in words:
+                        active_backend = Path(words[words.index(option) + 1]).resolve()
+                if active_root == game or active_backend == backend:
+                    raise SystemExit(
+                        f"An existing build/discovery process uses this game or backend cache; let it finish or request its graceful stop"
+                    )
+    root.mkdir(parents=True, exist_ok=True)
+    lock = (root / "bootstrap.lock").open("a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit("Another bootstrap owns this workspace")
+    backend.mkdir(parents=True, exist_ok=True)
+    backend_lock = (backend / "bootstrap.lock").open("a")
+    try:
+        fcntl.flock(backend_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit("Another bootstrap owns this backend cache")
+    logs = root / "bootstrap-logs"
+    logs.mkdir(exist_ok=True)
+    env = dict(
+        os.environ,
+        DCP_BACKEND_ROOT=str(backend),
+        DCP_FONT_SOURCE=str(font),
+        DCP_FONT_OUTPUT=str(font_output),
+        DCP_FP80_OUTPUT=str(fp80_output),
+        DCP_LLVM_PREFIX=str(llvm),
+        DCP_SDL_SOURCE=str(sdl),
+    )
+    dump_icon = dump / "sce_sys/icon0.png"
+    if "DCP_APP_ICON" not in env and dump_icon.is_file():
+        env["DCP_APP_ICON"] = str(dump_icon)
+        env.setdefault("DCP_APP_ICON_ALLOW_UPSCALE", "1")
+    stop_requested = False
+
+    def stop(signum, frame):
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+
+    def check_stop():
+        if stop_requested or (root / "bootstrap.stop").exists():
+            print(
+                "Bootstrap stopped between stages; current child finished and caches retained",
+                flush=True,
+            )
+            raise SystemExit(0)
+
+    def run(name, command, round_limit=False):
+        check_stop()
+        log = logs / (name + ".log")
+        print(f"{name}: {log}", flush=True)
+        with log.open("w") as stream:
+            result = subprocess.run(
+                [str(part) for part in command],
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+            )
+        check_stop()
+        if result.returncode:
+            if round_limit and log.read_text(errors="replace").rstrip().endswith(
+                "Trace discovery reached its round limit; rerun to resume cached work"
+            ):
+                print(
+                    "Trace discovery budget reached; packaging partial coverage. Real game boot is not verified.",
+                    flush=True,
+                )
+                return
+            raise SystemExit(f"{name} failed ({result.returncode}); read {log}")
+
+    def patch(tree, path):
+        # reverse-check distinguishes an already applied patch from divergent source.
+        if (
+            subprocess.run(
+                ["git", "-C", str(tree), "apply", "--reverse", "--check", str(path)],
+                capture_output=True,
+            ).returncode
+            == 0
+        ):
+            return
+        if subprocess.run(
+            ["git", "-C", str(tree), "apply", "--check", str(path)], capture_output=True
+        ).returncode:
+            raise SystemExit(
+                f"Patch neither cleanly applies nor reverse-checks: {path}; inspect {tree}, no reset performed"
+            )
+        run("patch-" + path.stem, ["git", "-C", tree, "apply", path])
+
+    def archive_source(kind, target):
+        if target.exists():
+            return
+        url, sha = ARCHIVES[kind]
+        downloads = root / "downloads"
+        downloads.mkdir(exist_ok=True)
+        archive = downloads / (kind + ".tar.gz")
+        if not archive.exists():
+            temporary = archive.with_suffix(".partial")
+            run(
+                "download-" + kind,
+                ["curl", "--fail", "--location", "--retry", "3", url, "-o", temporary],
+            )
+            if digest(temporary) != sha:
+                raise SystemExit(f"Archive SHA mismatch: {temporary}")
+            temporary.replace(archive)
+        if digest(archive) != sha:
+            raise SystemExit(f"Archive SHA mismatch: {archive}")
+        unpack = downloads / (kind + "-unpack")
+        unpack.mkdir(exist_ok=True)
+        with tarfile.open(archive) as tar:
+            tar.extractall(unpack, filter="data")
+        children = list(unpack.iterdir())
+        if len(children) != 1 or not children[0].is_dir():
+            raise SystemExit(f"Unexpected archive layout: {archive}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        children[0].rename(target)
+        unpack.rmdir()
+
+    remill = backend / "remill"
+    if not remill.exists():
+        backend.mkdir(parents=True, exist_ok=True)
+        run(
+            "remill-clone",
+            ["git", "clone", "https://github.com/lifting-bits/remill.git", remill],
+        )
+        run("remill-pin", ["git", "-C", remill, "checkout", "--detach", REMILL])
+    if output(["git", "-C", remill, "rev-parse", "HEAD"]) != REMILL:
+        raise SystemExit(
+            f"Remill cache is not pinned to {REMILL}; refusing to reset it"
+        )
+    run("patch-remill", [sys.executable, SOURCE / "ios/patch-set.py", remill,
+                         *[SOURCE / "ios" / name for name in PATCHES]])
+    archive_source("sdl", sdl)
+    archive_source("freetype", font)
+    # Explicitly reused sources must at least match the release ABI/version.
+    sdl_header = (sdl / "include/SDL3/SDL_version.h").read_text()
+    if not all(
+        re.search(
+            r"#define\s+SDL_" + key + r"_VERSION\s+" + str(value) + r"\b", sdl_header
+        )
+        for key, value in [("MAJOR", 3), ("MINOR", 4), ("MICRO", 18)]
+    ):
+        raise SystemExit("SDL source is not release 3.4.18")
+    ft_header = (font / "include/freetype/freetype.h").read_text()
+    if not all(
+        re.search(r"#define\s+FREETYPE_" + key + r"\s+" + str(value) + r"\b", ft_header)
+        for key, value in [("MAJOR", 2), ("MINOR", 13), ("PATCH", 3)]
+    ):
+        raise SystemExit("FreeType source is not release 2.13.3")
+    patch(sdl, SOURCE / "ios/render/sdl-simulator-metal.patch")
+    common = ["-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"]
+    run(
+        "remill-deps-configure",
+        [
+            "cmake",
+            *common,
+            "-S",
+            remill / "dependencies",
+            "-B",
+            backend / "remill-deps",
+            "-DUSE_EXTERNAL_LLVM=ON",
+            f"-DCMAKE_PREFIX_PATH={llvm}",
+            f"-DCMAKE_INSTALL_PREFIX={backend / 'remill-install'}",
+        ],
+    )
+    run(
+        "remill-deps-build",
+        ["cmake", "--build", backend / "remill-deps", "--parallel", args.jobs],
+    )
+    run(
+        "remill-configure",
+        [
+            "cmake",
+            *common,
+            "-S",
+            remill,
+            "-B",
+            backend / "remill-build",
+            f"-DCMAKE_PREFIX_PATH={llvm};{backend / 'remill-install'}",
+            f"-DCMAKE_INSTALL_PREFIX={backend / 'remill-install'}",
+        ],
+    )
+    run(
+        "remill-build",
+        ["cmake", "--build", backend / "remill-build", "--parallel", args.jobs],
+    )
+    run("fp80", [sys.executable, SOURCE / "ios/cpu/fp80/build.py", "--output", fp80_output, "--llvm", llvm, "--jobs", args.jobs])
+    run("fp80-oracle", [sys.executable, SOURCE / "ios/cpu/fp80/test.py", "--build", fp80_output])
+    run("fp80-lowered", [sys.executable, SOURCE / "ios/cpu/fp80/lowered-test.py", "--build", fp80_output])
+    run("fp80-control", [sys.executable, SOURCE / "ios/cpu/fp80/control-test.py", "--build", fp80_output, "--backend-root", backend, "--llvm", llvm])
+    run("font", ["bash", SOURCE / "ios/game/font-build.sh", font, font_output])
+    run(
+        "platform",
+        ["bash", SOURCE / "ios/platform/build-check.sh", root / "platform-probe"],
+    )
+    run("storage", ["bash", SOURCE / "ios/storage/build.sh", root / "storage-probe"])
+    for platform, sdk, minimum in [
+        ("mac", "macosx", "15.0"),
+        ("iphoneos", "iphoneos", "18.0"),
+        ("simulator", "iphonesimulator", "18.0"),
+    ]:
+        directory = root / "ios-render" / platform
+        run(
+            "render-" + platform + "-configure",
+            [
+                "cmake",
+                *common,
+                "-S",
+                SOURCE / "ios/render",
+                "-B",
+                directory,
+                f"-DDCP_SDL_SOURCE={sdl}",
+                f"-DDCP_FREETYPE_SOURCE={font}",
+                "-DCMAKE_OSX_ARCHITECTURES=arm64",
+                f"-DCMAKE_OSX_SYSROOT={sdk}",
+                f"-DCMAKE_OSX_DEPLOYMENT_TARGET={minimum}",
+                *([] if platform == "mac" else ["-DCMAKE_SYSTEM_NAME=iOS"]),
+            ],
+        )
+        run(
+            "render-" + platform + "-build",
+            ["cmake", "--build", directory, "--parallel", args.jobs],
+        )
+    run(
+        "render-fixtures",
+        [
+            sys.executable,
+            SOURCE / "ios/render/run-fixtures.py",
+            "--build",
+            root / "ios-render/mac",
+            "--output",
+            root / "ios-render/verified",
+        ],
+    )
+    run(
+        "cpu-fixtures",
+        [
+            sys.executable,
+            SOURCE / "ios/cpu/build.py",
+            "--remill",
+            backend,
+            "--llvm",
+            llvm,
+            "--output",
+            root / "cpu-harness",
+        ],
+    )
+    builder = [
+        sys.executable,
+        SOURCE / "ios/game/build.py",
+        "--root",
+        game,
+        "--dump",
+        dump,
+    ]
+    if not list((game / "traces").glob("*.ll")):
+        run(
+            "game-seed",
+            [
+                *builder,
+                "--lift",
+                "300717e0",
+                "--lift",
+                "30000000",
+                "--lift",
+                "2054c690",
+            ],
+        )
+    else:
+        run("game-cache-check", builder)
+    provenance = json.loads((game / "trace-provenance.json").read_text())
+    if not provenance["complete_current_backend"]:
+        run("game-relift", [*builder, "--relift-all"])
+    if not args.prepare_only and args.rounds:
+        run(
+            "game-discovery",
+            [
+                sys.executable,
+                SOURCE / "ios/game/advance.py",
+                "--root",
+                game,
+                "--dump",
+                dump,
+                "--rounds",
+                args.rounds,
+                "--prefetch",
+                args.prefetch,
+            ],
+            round_limit=True,
+        )
+        if (game / "advance.stop").exists():
+            raise SystemExit(
+                "Discovery stopped gracefully; remove ios-game/advance.stop to resume. No apps were built."
+            )
+    run("game-libraries", [*builder, "--ios", "--simulator"])
+    plan.update(
+        {
+            "completed_utc": datetime.now(timezone.utc).isoformat(),
+            "source_revision": output(["git", "-C", SOURCE, "rev-parse", "HEAD"]),
+            "source_dirty": bool(
+                output(["git", "-C", SOURCE, "status", "--porcelain"])
+            ),
+            "lifter_sha256": digest(backend / "remill-build/bin/lift/remill-lift-23"),
+            "runtime_bc_sha256": digest(
+                backend / "remill-build/lib/Arch/X86/Runtime/amd64_avx.bc"
+            ),
+        }
+    )
+    plan["dependency_revisions"] = {
+        str(path.parent.relative_to(backend)): output(
+            ["git", "-C", path.parent, "rev-parse", "HEAD"]
+        )
+        for directory in [backend / "remill-deps", backend / "remill-build/_deps"]
+        for path in directory.rglob(".git")
+        if path.is_dir()
+    }
+    (root / "bootstrap-manifest.json").write_text(json.dumps(plan, indent=2) + "\n")
+    if args.prepare_only:
+        print(
+            "Prepared dependencies, fixtures and seed game libraries. No signed app, installation or device verification was performed."
+        )
+        return
+    for platform in ["simulator", "ios"]:
+        env["DCP_BUILD_PLATFORM"] = platform
+        run(
+            "app-" + platform,
+            [
+                "bash",
+                SOURCE / "ios/build-app.sh",
+                root / ("mobile-app-" + platform),
+                args.team,
+                game,
+            ],
+        )
+    print(
+        "Built simulator and signed iPhone/iPad apps. Neither app was installed or launched; real game boot remains a separate verification step."
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,184 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -221,9 +221,9 @@
+   auto num_groups = NumVectorElems(dst_vec);
+ 
+   _Pragma("unroll") for (std::size_t i = 0; i < num_groups; ++i) {
+-    auto order = UShr8(imm, TruncTo<uint8_t>(i * 2));
++    auto order = UShr8(imm, TruncTo<uint8_t>((i % 4) * 2));
+     auto sel = UAnd8(order, 0x3_u8);
+-    auto sel_val = UExtractV32(Select(i < 2, src1_vec, src2_vec), sel);
++    auto sel_val = UExtractV32(Select((i % 4) < 2, src1_vec, src2_vec), (i / 4) * 4 + sel);
+     dst_vec.elems[i] = sel_val;
+   }
+   UWriteV32(dst, dst_vec);
+@@ -2390,4 +2390,166 @@
+ IF_AVX(DEF_ISEL(VADDSUBPD_XMMdq_XMMdq_MEMdq) = ADDSUBPD<VV128W, V128, MV128>;)
+ IF_AVX(DEF_ISEL(VADDSUBPD_XMMdq_XMMdq_XMMdq) = ADDSUBPD<VV128W, V128, V128>;)
+ IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_MEMqq) = ADDSUBPD<VV256W, V256, MV256>;)
+-IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)
+\ No newline at end of file
++IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)
++// OpenCrown: SSE4.1 lane insertion and immediate floating-point bit blends.
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(INSERTPS, D dst, S1 src1, S2 src2, I8 immediate) {
++  auto result = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto control = Read(immediate);
++  const size_t source_lane = NumVectorElems(second) == 1 ? 0 : ((control >> 6) & 3);
++  result = UInsertV32(result, (control >> 4) & 3, UExtractV32(second, source_lane));
++  _Pragma("unroll") for (size_t i = 0; i < 4; ++i) {
++    if (control & (1u << i)) result = UInsertV32(result, i, 0_u32);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++template <typename D, typename S1, typename S2>
++DEF_SEM(BLENDPS, D dst, S1 src1, S2 src2, I8 immediate) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    result = UInsertV32(result, i, (mask & (1u << i)) ? UExtractV32(second, i) : UExtractV32(first, i));
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(INSERTPS_XMMps_XMMps_IMMb) = INSERTPS<V128W,V128,V128>;
++DEF_ISEL(INSERTPS_XMMps_MEMd_IMMb) = INSERTPS<V128W,V128,MV32>;
++IF_AVX(DEF_ISEL(VINSERTPS_XMMdq_XMMdq_XMMdq_IMMb) = INSERTPS<VV128W,V128,V128>;)
++IF_AVX(DEF_ISEL(VINSERTPS_XMMdq_XMMdq_MEMd_IMMb) = INSERTPS<VV128W,V128,MV32>;)
++DEF_ISEL(BLENDPS_XMMdq_XMMdq_IMMb) = BLENDPS<V128W,V128,V128>;
++DEF_ISEL(BLENDPS_XMMdq_MEMdq_IMMb) = BLENDPS<V128W,V128,MV128>;
++IF_AVX(DEF_ISEL(VBLENDPS_XMMdq_XMMdq_XMMdq_IMMb) = BLENDPS<VV128W,V128,V128>;)
++IF_AVX(DEF_ISEL(VBLENDPS_XMMdq_XMMdq_MEMdq_IMMb) = BLENDPS<VV128W,V128,MV128>;)
++IF_AVX(DEF_ISEL(VBLENDPS_YMMqq_YMMqq_YMMqq_IMMb) = BLENDPS<VV256W,V256,V256>;)
++IF_AVX(DEF_ISEL(VBLENDPS_YMMqq_YMMqq_MEMqq_IMMb) = BLENDPS<VV256W,V256,MV256>;)
++
++// A full-precision reciprocal is within RCPPS's relative-error bound. Like RCPPS,
++// denormal inputs are signed zero and tiny results are flushed regardless of MXCSR.
++namespace {
++template <typename D, typename S>
++DEF_SEM(RCPPS, D dst, S src) {
++  auto input = UReadV32(src);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i) {
++    union { uint32_t bits; float value; } lane;
++    lane.bits = UExtractV32(input, i);
++    const uint32_t sign = lane.bits & 0x80000000u;
++    const uint32_t exponent = lane.bits & 0x7f800000u;
++    const uint32_t mantissa = lane.bits & 0x007fffffu;
++    if (!exponent) lane.bits = sign | 0x7f800000u;
++    else if (exponent == 0x7f800000u) lane.bits = mantissa ? (lane.bits | 0x00400000u) : sign;
++    else if ((lane.bits & 0x7fffffffu) >= 0x7e800000u) lane.bits = sign;
++    else {
++      lane.value = FDiv(1.0f, lane.value);
++      if (!(lane.bits & 0x7f800000u)) lane.bits = sign;
++    }
++    result = UInsertV32(result, i, lane.bits);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(RCPPS_XMMps_XMMps) = RCPPS<V128W,V128>;
++DEF_ISEL(RCPPS_XMMps_MEMps) = RCPPS<V128W,MV128>;
++IF_AVX(DEF_ISEL(VRCPPS_XMMdq_XMMdq) = RCPPS<VV128W,V128>;)
++IF_AVX(DEF_ISEL(VRCPPS_XMMdq_MEMdq) = RCPPS<VV128W,MV128>;)
++IF_AVX(DEF_ISEL(VRCPPS_YMMqq_YMMqq) = RCPPS<VV256W,V256>;)
++IF_AVX(DEF_ISEL(VRCPPS_YMMqq_MEMqq) = RCPPS<VV256W,MV256>;)
++
++namespace {
++template <typename D, typename S>
++DEF_SEM(VPERMILPS_IMM, D dst, S src, I8 immediate) {
++  auto input = UReadV32(src);
++  auto result = UClearV32(UReadV32(dst));
++  auto control = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i) {
++    result = UInsertV32(result, i, UExtractV32(input, (i / 4) * 4 + ((control >> ((i % 4) * 2)) & 3)));
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++IF_AVX(DEF_ISEL(VPERMILPS_XMMdq_XMMdq_IMMb) = VPERMILPS_IMM<VV128W,V128>;)
++IF_AVX(DEF_ISEL(VPERMILPS_XMMdq_MEMdq_IMMb) = VPERMILPS_IMM<VV128W,MV128>;)
++IF_AVX(DEF_ISEL(VPERMILPS_YMMqq_YMMqq_IMMb) = VPERMILPS_IMM<VV256W,V256>;)
++IF_AVX(DEF_ISEL(VPERMILPS_YMMqq_MEMqq_IMMb) = VPERMILPS_IMM<VV256W,MV256>;)
++
++IF_AVX(DEF_ISEL(VSHUFPS_XMMdq_XMMdq_XMMdq_IMMb) = SHUFPS<VV128W,V128,V128>;)
++IF_AVX(DEF_ISEL(VSHUFPS_XMMdq_XMMdq_MEMdq_IMMb) = SHUFPS<VV128W,V128,MV128>;)
++IF_AVX(DEF_ISEL(VSHUFPS_YMMqq_YMMqq_YMMqq_IMMb) = SHUFPS<VV256W,V256,V256>;)
++IF_AVX(DEF_ISEL(VSHUFPS_YMMqq_YMMqq_MEMqq_IMMb) = SHUFPS<VV256W,V256,MV256>;)
++
++namespace {
++template <typename D, typename S>
++DEF_SEM(VPERMILPD_IMM, D dst, S src, I8 immediate) {
++  auto input = UReadV64(src);
++  auto result = UClearV64(UReadV64(dst));
++  auto control = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i) {
++    result = UInsertV64(result, i, UExtractV64(input, (i / 2) * 2 + ((control >> i) & 1)));
++  }
++  UWriteV64(dst, result);
++  return memory;
++}
++}
++IF_AVX(DEF_ISEL(VPERMILPD_XMMdq_XMMdq_IMMb) = VPERMILPD_IMM<VV128W,V128>;)
++IF_AVX(DEF_ISEL(VPERMILPD_XMMdq_MEMdq_IMMb) = VPERMILPD_IMM<VV128W,MV128>;)
++IF_AVX(DEF_ISEL(VPERMILPD_YMMqq_YMMqq_IMMb) = VPERMILPD_IMM<VV256W,V256>;)
++IF_AVX(DEF_ISEL(VPERMILPD_YMMqq_MEMqq_IMMb) = VPERMILPD_IMM<VV256W,MV256>;)
++
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(BLENDPD, D dst, S1 src1, S2 src2, I8 immediate) {
++  auto first = UReadV64(src1);
++  auto second = UReadV64(src2);
++  auto result = UClearV64(UReadV64(dst));
++  auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    result = UInsertV64(result, i, (mask & (1u << i)) ? UExtractV64(second, i) : UExtractV64(first, i));
++  }
++  UWriteV64(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(BLENDPD_XMMdq_XMMdq_IMMb) = BLENDPD<V128W,V128,V128>;
++DEF_ISEL(BLENDPD_XMMdq_MEMdq_IMMb) = BLENDPD<V128W,V128,MV128>;
++IF_AVX(DEF_ISEL(VBLENDPD_XMMdq_XMMdq_XMMdq_IMMb) = BLENDPD<VV128W,V128,V128>;)
++IF_AVX(DEF_ISEL(VBLENDPD_XMMdq_XMMdq_MEMdq_IMMb) = BLENDPD<VV128W,V128,MV128>;)
++IF_AVX(DEF_ISEL(VBLENDPD_YMMqq_YMMqq_YMMqq_IMMb) = BLENDPD<VV256W,V256,V256>;)
++IF_AVX(DEF_ISEL(VBLENDPD_YMMqq_YMMqq_MEMqq_IMMb) = BLENDPD<VV256W,V256,MV256>;)
++
++namespace {
++template <typename D, typename S>
++DEF_SEM(RSQRTPS, D dst, S src) {
++  auto input = UReadV32(src);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i) {
++    union { uint32_t bits; float value; } lane;
++    lane.bits = UExtractV32(input, i);
++    const uint32_t sign = lane.bits & 0x80000000u;
++    const uint32_t exponent = lane.bits & 0x7f800000u;
++    const uint32_t mantissa = lane.bits & 0x007fffffu;
++    if (!exponent) lane.bits = sign | 0x7f800000u;
++    else if (exponent == 0x7f800000u && mantissa) lane.bits |= 0x00400000u;
++    else if (sign) lane.bits = 0xffc00000u;
++    else if (exponent == 0x7f800000u) lane.bits = 0;
++    else lane.value = FDiv(1.0f, __builtin_sqrtf(lane.value));
++    result = UInsertV32(result, i, lane.bits);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(RSQRTPS_XMMps_XMMps) = RSQRTPS<V128W,V128>;
++DEF_ISEL(RSQRTPS_XMMps_MEMps) = RSQRTPS<V128W,MV128>;
++IF_AVX(DEF_ISEL(VRSQRTPS_XMMdq_XMMdq) = RSQRTPS<VV128W,V128>;)
++IF_AVX(DEF_ISEL(VRSQRTPS_XMMdq_MEMdq) = RSQRTPS<VV128W,MV128>;)
++IF_AVX(DEF_ISEL(VRSQRTPS_YMMqq_YMMqq) = RSQRTPS<VV256W,V256>;)
++IF_AVX(DEF_ISEL(VRSQRTPS_YMMqq_MEMqq) = RSQRTPS<VV256W,MV256>;)

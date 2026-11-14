@@ -25,7 +25,12 @@ namespace dcp::render {
 namespace {
 
 uint8_t* g_base = nullptr;
+#ifdef DCP_AOT
+std::atomic<bool> g_enabled{false};
+AotCaptureHooks g_aot_hooks;
+#else
 bool g_enabled = false;
+#endif
 
 // ---- per-DCB GPU state (the GNM context state the wrappers set) ----
 struct State {
@@ -57,7 +62,10 @@ State& state_of(uint64_t dcb) {  // caller holds the lock
 // ENOMEM on unmapped pages; guest memory is never PROT_NONE (texwatch only drops write access), so mapped = readable.
 std::atomic<uint64_t> g_vq_calls{0};
 bool readable(uint64_t a, uint64_t n) {
-    if (!a || n > (64ull << 20)) return false;
+    if (!a || n > (64ull << 20) || a > UINT64_MAX - n) return false;
+#ifdef DCP_AOT
+    return g_aot_hooks.memory && g_aot_hooks.memory(g_aot_hooks.context, a, size_t(n), false);
+#else
     struct Region { uint64_t lo = 0, hi = 0; };
     thread_local Region cache[16];
     thread_local unsigned next = 0;
@@ -77,12 +85,32 @@ bool readable(uint64_t a, uint64_t n) {
     }
     cache[next++ % 16] = {lo, hi};
     return true;
+#endif
 }
+
+#ifdef DCP_AOT
+// Never hold a capture-state lock across a guest memory callback. Guest atomic
+// regions can themselves enter capture observers, so that lock order would invert.
+bool copy_with_hooks(const AotCaptureHooks &hooks, void *destination, uint64_t address, size_t bytes) {
+    if ((!destination && bytes) || !address || bytes > (64ULL << 20) || address > UINT64_MAX - bytes ||
+        !hooks.memory || !hooks.memory(hooks.context, address, bytes, false)) return false;
+    if (hooks.copy_memory) return hooks.copy_memory(hooks.context, address, destination, bytes);
+    std::memcpy(destination, reinterpret_cast<const void*>(address), bytes);
+    return true;
+}
+bool copy_memory_unlocked(void *destination, uint64_t address, size_t bytes) {
+    return g_enabled.load(std::memory_order_acquire) && copy_with_hooks(g_aot_hooks, destination, address, bytes);
+}
+#endif
 
 template <size_t N>
 void copy_dw(uint32_t (&dst)[N], uint64_t src) {
+#ifdef DCP_AOT
+    if (!copy_memory_unlocked(dst, src, N * 4)) std::memset(dst, 0, N * 4);
+#else
     if (src && readable(src, N * 4)) std::memcpy(dst, reinterpret_cast<const void*>(src), N * 4);
     else std::memset(dst, 0, N * 4);
+#endif
 }
 
 // ---- program pointer -> pool index ----
@@ -97,9 +125,20 @@ int pool_index(uint64_t prog, uint64_t pool, int n, int stride, int tag) {
     g_prog_lock.unlock_shared();
     if (r != -2) return r;
     r = -1;
+#ifdef DCP_AOT
+    std::vector<uint8_t> pool_bytes(size_t(n) * size_t(stride));
+    if (!copy_memory_unlocked(pool_bytes.data(), reinterpret_cast<uint64_t>(g_base) + pool, pool_bytes.size())) return -1;
+    for (int i = 0; i < n && r < 0; ++i)
+        for (int o = 0; o < stride; o += 8) {
+            uint64_t value;
+            std::memcpy(&value, pool_bytes.data() + size_t(i) * stride + o, sizeof(value));
+            if (value == prog) { r = i; break; }
+        }
+#else
     for (int i = 0; i < n && r < 0; ++i)
         for (int o = 0; o < stride; o += 8)
             if (*reinterpret_cast<uint64_t*>(g_base + pool + uint64_t(i) * stride + o) == prog) { r = i; break; }
+#endif
     g_prog_lock.lock();
     (*g_prog_index)[key] = r;
     g_prog_lock.unlock();
@@ -108,7 +147,12 @@ int pool_index(uint64_t prog, uint64_t pool, int n, int stride, int tag) {
 }
 
 // ---- observers (SysV, original argument registers) ----
-#define OBS(name) DCP_SYSV void name(uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5)
+#ifdef DCP_AOT
+#define OBS_ABI
+#else
+#define OBS_ABI DCP_SYSV
+#endif
+#define OBS(name) OBS_ABI void name(uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5)
 #define UNUSED_ARGS (void)a0, (void)a1, (void)a2, (void)a3, (void)a4, (void)a5
 struct Locked {
     Locked() { g_state_lock.lock(); }
@@ -122,27 +166,56 @@ OBS(obs_set_cb) {  // (cue, stage, slot, V#*)
     UNUSED_ARGS;
     int s = stage_ix(a1);
     if (s < 0 || a2 >= 8) return;
+#ifdef DCP_AOT
+    VSharp resource;
+    copy_dw(resource.w, a3);
+    Locked l;
+    state_of(a0 - kCueOffset).cb[s][a2] = resource;
+#else
     Locked l;
     copy_dw(state_of(a0 - kCueOffset).cb[s][a2].w, a3);
+#endif
 }
 OBS(obs_set_tex) {  // (cue, stage, slot, T#*)
     UNUSED_ARGS;
     if (a1 != 1 || a2 >= 2) return;
+#ifdef DCP_AOT
+    uint32_t resource[8];
+    copy_dw(resource, a3);
+    Locked l;
+    std::memcpy(state_of(a0 - kCueOffset).tex[a2], resource, sizeof(resource));
+#else
     Locked l;
     copy_dw(state_of(a0 - kCueOffset).tex[a2], a3);
+#endif
 }
 OBS(obs_set_samp) {
     UNUSED_ARGS;
     if (a1 != 1 || a2 >= 2) return;
+#ifdef DCP_AOT
+    uint32_t resource[4];
+    copy_dw(resource, a3);
+    Locked l;
+    std::memcpy(state_of(a0 - kCueOffset).samp[a2], resource, sizeof(resource));
+#else
     Locked l;
     copy_dw(state_of(a0 - kCueOffset).samp[a2], a3);
+#endif
 }
 OBS(obs_set_vb) {  // (cue, stage, first, count, V#[])
     UNUSED_ARGS;
-    if (a1 != 2 || a2 + a3 > 16) return;
+    if (a1 != 2 || a2 > 16 || a3 > 16 - a2) return;
+#ifdef DCP_AOT
+    VSharp resources[16];
+    for (uint64_t i = 0; i < a3; ++i) copy_dw(resources[i].w, a4 ? a4 + i * 16 : 0);
+    Locked l;
+    State& s = state_of(a0 - kCueOffset);
+    for (uint64_t i = 0; i < a3; ++i) s.vb[a2 + i] = resources[i];
+#else
     Locked l;
     State& s = state_of(a0 - kCueOffset);
     for (uint64_t i = 0; i < a3; ++i) copy_dw(s.vb[a2 + i].w, a4 ? a4 + i * 16 : 0);
+#endif
     s.nvb = int(a2 + a3);
 }
 OBS(obs_set_blend) { UNUSED_ARGS; if (a1 == 0) { Locked l; state_of(a0).blend = uint32_t(a2); } }
@@ -193,6 +266,7 @@ OBS_CLS(obs_layer_replay, Cls::Layer)
 std::atomic<uint64_t> g_cursor_xy{0};
 std::atomic<uint32_t> g_cursor_seq{0};
 const bool g_cursor_log = std::getenv("DCP_CURSOR_LOG") != nullptr;
+#ifndef DCP_AOT
 OBS(obs_cursor_update) {
     UNUSED_ARGS;
     if (!a0 || !*reinterpret_cast<const uint64_t*>(a0 + 0x1e0)) return;
@@ -223,6 +297,8 @@ OBS(obs_cursor_update) {
 // Optional: on a different build the site check fails, we log once and the touch screen runs open loop.
 constexpr uint32_t kCursorUpdate = 0x39ad80;
 constexpr uint8_t kCursorUpdateBytes[] = {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57};  // push rbp; mov rbp,rsp; push r15
+
+#endif
 
 // ---- hook installation ----
 struct HookSpec {
@@ -255,6 +331,7 @@ const HookSpec kHooks[] = {
     {0x5a3a00, (void*)&obs_layer_replay, {1, 3, 2}, false},
 };
 
+#ifndef DCP_AOT
 bool prologue_ok(const uint8_t* p, const HookSpec& h) {
     if (h.jcc_last) return p[0] == 0x89 && p[1] == 0xc8 && p[2] == 0x85 && p[3] == 0xc0 && p[4] == 0x0f && p[5] == 0x84;
     bool head = p[0] == 0x55 && p[1] == 0x48 && p[2] == 0x89 && p[3] == 0xe5;
@@ -326,6 +403,8 @@ patch:
     return true;
 }
 
+#endif
+
 // ---- draw records and frames ----
 std::mutex g_rec_mutex;
 std::unordered_set<DrawRec*>* g_pending;     // recorded, marker not yet submitted
@@ -345,7 +424,14 @@ uint64_t vertices_needed(const DrawRec& r) {
 }
 
 void copy_bytes(std::vector<uint8_t>& out, uint64_t a, uint64_t n) {
+#ifdef DCP_AOT
+    out.clear();
+    if (!n || !readable(a, n)) return;
+    out.resize(size_t(n));
+    if (!copy_memory_unlocked(out.data(), a, size_t(n))) out.clear();
+#else
     if (n && readable(a, n)) out.assign(reinterpret_cast<const uint8_t*>(a), reinterpret_cast<const uint8_t*>(a) + n);
+#endif
 }
 
 }  // namespace
@@ -366,10 +452,94 @@ uint32_t fairy_cursor(float* x, float* y) {
 }
 
 uint32_t sprite_ps_table(uint32_t perm) {
+#ifdef DCP_AOT
+    AotCaptureHooks hooks;
+    uint64_t address;
+    {
+        std::shared_lock lock(g_state_lock);
+        if (!g_enabled.load(std::memory_order_acquire) || !g_base || perm >= 48) return 0xffffffffu;
+        hooks = g_aot_hooks;
+        address = reinterpret_cast<uint64_t>(g_base) + 0x79f890 + perm * 4;
+    }
+    uint32_t value;
+    return copy_with_hooks(hooks, &value, address, sizeof(value)) ? value : 0xffffffffu;
+#else
     if (!g_base || perm >= 48) return 0xffffffffu;
     return reinterpret_cast<const uint32_t*>(g_base + 0x79f890)[perm];
+#endif
 }
 
+#ifdef DCP_AOT
+void shutdown_aot_capture() {
+    g_enabled.store(false, std::memory_order_release);
+    std::scoped_lock lock(g_state_lock, g_rec_mutex, g_q_mutex);
+    if (g_pending) for (DrawRec *record : *g_pending) delete record;
+    delete g_pending; g_pending = nullptr;
+    delete g_cur; g_cur = nullptr;
+    delete g_queue; g_queue = nullptr;
+    delete g_states; g_states = nullptr;
+    delete g_prog_index; g_prog_index = nullptr;
+    g_base = nullptr;
+    g_aot_hooks = {};
+    std::memset(g_display, 0, sizeof(g_display));
+    g_ndisplay = 0;
+    g_flip = 0;
+    g_cursor_xy = 0;
+    g_cursor_seq = 0;
+    t_dcb = 0;
+    t_cls = Cls::None;
+    g_q_cv.notify_all();
+}
+bool initialize_aot_capture(uint8_t *base, size_t image_size, AotCaptureHooks hooks) {
+    shutdown_aot_capture();
+    if (!base || !hooks.memory || image_size < 0xe97ad0 + 25 * 0x30 ||
+        !hooks.memory(hooks.context, reinterpret_cast<uint64_t>(base), image_size, false)) return false;
+    auto states = std::make_unique<std::unordered_map<uint64_t, State>>();
+    auto programs = std::make_unique<std::unordered_map<uint64_t, int>>();
+    auto pending = std::make_unique<std::unordered_set<DrawRec*>>();
+    auto current = std::make_unique<std::vector<std::unique_ptr<DrawRec>>>();
+    auto queue = std::make_unique<std::deque<std::unique_ptr<Frame>>>();
+    std::scoped_lock lock(g_state_lock, g_rec_mutex, g_q_mutex);
+    g_base = base;
+    g_aot_hooks = hooks;
+    g_states = states.release();
+    g_prog_index = programs.release();
+    g_pending = pending.release();
+    g_cur = current.release();
+    g_queue = queue.release();
+    g_enabled.store(true, std::memory_order_release);
+    return true;
+}
+bool aot_capture_memory(uint64_t address, size_t bytes, bool writing) {
+    AotCaptureHooks hooks;
+    {
+        std::shared_lock lock(g_state_lock);
+        if (!g_enabled.load(std::memory_order_acquire)) return false;
+        hooks = g_aot_hooks;
+    }
+    return hooks.memory && hooks.memory(hooks.context, address, bytes, writing);
+}
+bool aot_capture_copy(uint64_t address, void *destination, size_t bytes) {
+    AotCaptureHooks hooks;
+    {
+        std::shared_lock lock(g_state_lock);
+        if (!g_enabled.load(std::memory_order_acquire)) return false;
+        hooks = g_aot_hooks;
+    }
+    return copy_with_hooks(hooks, destination, address, bytes);
+}
+bool observe_aot_entry(uint64_t offset, const uint64_t arguments[6]) {
+    if (!g_enabled || !arguments) return false;
+    using Observer = void (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+    for (const HookSpec &hook : kHooks)
+        if (hook.addr == offset) {
+            reinterpret_cast<Observer>(hook.observer)(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+            return true;
+        }
+    return false;
+}
+bool install_hooks(uint8_t*) { return false; }
+#else
 bool install_hooks(uint8_t* base) {
     g_base = base;
     g_states = new std::unordered_map<uint64_t, State>();
@@ -398,11 +568,17 @@ bool install_hooks(uint8_t* base) {
     return true;
 }
 
+#endif
+
 std::atomic<uint64_t> g_draw_ticks{0}, g_draw_calls{0};
 void on_draw_impl(uint32_t* cmd, uint32_t size, uint32_t count, uint64_t index_addr, bool indexed);
 
 void on_draw(uint32_t* cmd, uint32_t size, uint32_t count, uint64_t index_addr, bool indexed) {
     if (!g_enabled || !cmd || size < 4) return;
+#ifdef DCP_AOT
+    if (size > 0x4000 || !g_aot_hooks.memory ||
+        !g_aot_hooks.memory(g_aot_hooks.context, reinterpret_cast<uint64_t>(cmd), size_t(size) * 4, true)) return;
+#endif
     uint64_t t0 = dcp::hle::host_ns();
     on_draw_impl(cmd, size, count, index_addr, indexed);
     g_draw_ticks += dcp::hle::host_ns() - t0;
@@ -429,9 +605,20 @@ void on_draw_impl(uint32_t* cmd, uint32_t size, uint32_t count, uint64_t index_a
         uint32_t isz = s.index_size ? 4 : 2;
         if (count > (1u << 20) || !readable(index_addr, uint64_t(count) * isz)) return;
         r->indices.resize(count);
+#ifdef DCP_AOT
+        std::vector<uint8_t> index_bytes;
+        copy_bytes(index_bytes, index_addr, uint64_t(count) * isz);
+        if (index_bytes.size() != uint64_t(count) * isz) return;
+        for (uint32_t i = 0; i < count; ++i) {
+            uint32_t value = 0;
+            std::memcpy(&value, index_bytes.data() + size_t(i) * isz, isz);
+            r->indices[i] = value;
+        }
+#else
         for (uint32_t i = 0; i < count; ++i)
             r->indices[i] = isz == 4 ? reinterpret_cast<const uint32_t*>(index_addr)[i]
                                      : reinterpret_cast<const uint16_t*>(index_addr)[i];
+#endif
     }
     uint64_t nv = vertices_needed(*r);
     r->vb.resize(size_t(s.nvb));
@@ -467,6 +654,10 @@ void on_marker(const uint32_t* payload, uint32_t ndw) {
 }
 
 void set_display_buffers(void* const* addrs, int start, int n) {
+#ifdef DCP_AOT
+    if (!addrs || start < 0 || n < 0 || start >= 16) return;
+    std::lock_guard<std::mutex> lock(g_rec_mutex);
+#endif
     for (int i = 0; i < n && start + i < 16; ++i) g_display[start + i] = reinterpret_cast<uint64_t>(addrs[i]);
     if (start + n > g_ndisplay) g_ndisplay = start + n < 16 ? start + n : 16;
 }
@@ -481,7 +672,12 @@ void on_flip(uint32_t display_index) {
                      (unsigned long long)g_vq_calls.exchange(0));
     }
     f->vblank = dcp::hle::vblank_count_public();
+#ifdef DCP_AOT
+    { std::lock_guard<std::mutex> lock(g_rec_mutex);
+      f->display = display_index < 16 ? g_display[display_index] : 0; }
+#else
     f->display = display_index < 16 ? g_display[display_index] : 0;
+#endif
     {
         std::lock_guard<std::mutex> g(g_rec_mutex);
         f->draws.swap(*g_cur);
@@ -500,11 +696,11 @@ void on_flip(uint32_t display_index) {
 }
 
 std::unique_ptr<Frame> take_frame(uint32_t timeout_ms) {
-    if (!g_queue) return nullptr;
     std::unique_lock<std::mutex> g(g_q_mutex);
+    if (!g_queue) return nullptr;
     if (g_queue->empty() && timeout_ms)
-        g_q_cv.wait_for(g, std::chrono::milliseconds(timeout_ms), [] { return !g_queue->empty(); });
-    if (g_queue->empty()) return nullptr;
+        g_q_cv.wait_for(g, std::chrono::milliseconds(timeout_ms), [] { return !g_queue || !g_queue->empty(); });
+    if (!g_queue || g_queue->empty()) return nullptr;
     auto f = std::move(g_queue->front());
     g_queue->pop_front();
     return f;

@@ -1,0 +1,16 @@
+diff --git a/src/gpu/metal/SDL_gpu_metal.m b/src/gpu/metal/SDL_gpu_metal.m
+--- a/src/gpu/metal/SDL_gpu_metal.m
++++ b/src/gpu/metal/SDL_gpu_metal.m
+@@ -4574,6 +4574,12 @@
+                 [device supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily1_v4] :
+                 [device supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily2_v1];
+         }
++#elif TARGET_OS_SIMULATOR
++        // OpenCrown: the simulator advertises Common1/Apple1 even on this M5 host.
++        // Permit simulator-only validation of the renderer's basic draw subset.
++        if (@available(iOS 13.0, tvOS 13.0, *)) {
++            hasHardwareSupport = [device supportsFamily:MTLGPUFamilyCommon1];
++        }
+ #elif defined(SDL_PLATFORM_VISIONOS)
+         hasHardwareSupport = true;
+ #else

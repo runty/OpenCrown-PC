@@ -3,6 +3,7 @@
 // Built into dcp_hle (-fno-exceptions); no GL here. Everything is inert until install_hooks() succeeds.
 #pragma once
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -56,6 +57,22 @@ struct Frame {
 // nothing further) if an expected prologue is not found, i.e. a different eboot build.
 bool install_hooks(uint8_t* eboot_base);
 bool capture_enabled();
+#ifdef DCP_AOT
+// Lifecycle calls require all guest workers and the frame consumer to be stopped.
+struct AotCaptureHooks {
+    void *context = nullptr;
+    bool (*memory)(void *context, uint64_t address, size_t bytes, bool writing) = nullptr;
+    // Snapshot the complete span under the guest memory synchronization lock.
+    // Optional only for immutable/single-threaded fixtures; runtime must provide it.
+    bool (*copy_memory)(void *context, uint64_t address, void *destination, size_t bytes) = nullptr;
+};
+bool initialize_aot_capture(uint8_t *eboot_base, size_t image_size, AotCaptureHooks hooks);
+void shutdown_aot_capture();
+bool aot_capture_memory(uint64_t address, size_t bytes, bool writing);
+bool aot_capture_copy(uint64_t address, void *destination, size_t bytes);
+// Called before executing the original wrapper entry instructions. Arguments are SysV integer args.
+bool observe_aot_entry(uint64_t eboot_offset, const uint64_t arguments[6]);
+#endif
 // Player 0's fairy cursor as last sampled at Cursor_Update entry (centred 1920x1080 px, y down). Returns the sample
 // counter (0 = never sampled: hook off or no cursor yet).
 uint32_t fairy_cursor(float* x, float* y);

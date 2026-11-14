@@ -2,8 +2,10 @@
 """Build private real-module traces, stopping on explicit missing coverage."""
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import struct
@@ -13,7 +15,40 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--root", type=Path, required=True)
 parser.add_argument("--dump", type=Path, required=True)
 parser.add_argument("--lift", action="append", default=[])
+parser.add_argument(
+    "--relift-all",
+    action="store_true",
+    help="Refresh every cached trace with the current lifter and semantics",
+)
 parser.add_argument("--ios", action="store_true")
+parser.add_argument("--simulator", action="store_true")
+parser.add_argument(
+    "--backend-root",
+    type=Path,
+    default=os.environ.get("DCP_BACKEND_ROOT"),
+    help="Remill source/build/install parent (default ROOT/../cpu-backends)",
+)
+parser.add_argument(
+    "--font-source",
+    type=Path,
+    default=os.environ.get("DCP_FONT_SOURCE"),
+    help="FreeType 2.13.3 source directory",
+)
+parser.add_argument(
+    "--font-output",
+    type=Path,
+    default=os.environ.get("DCP_FONT_OUTPUT"),
+    help="font-build.sh output directory",
+)
+parser.add_argument(
+    "--fp80-output", type=Path, default=os.environ.get("DCP_FP80_OUTPUT"),
+    help="SoftFloat helpers/lowering output (default ROOT/../fp80-probe)",
+)
+parser.add_argument(
+    "--llvm-prefix",
+    type=Path,
+    default=os.environ.get("DCP_LLVM_PREFIX", "/opt/homebrew/opt/llvm"),
+)
 args = parser.parse_args()
 root = args.root.resolve()
 if (
@@ -24,9 +59,48 @@ if (
     parser.error("Build root must be on a mounted external disk")
 root.mkdir(parents=True, exist_ok=True)
 source = Path(__file__).resolve().parents[2]
-llvm = Path("/opt/homebrew/opt/llvm/bin")
-backend = root.parent / "cpu-backends"
+llvm = args.llvm_prefix.resolve() / "bin"
+backend = (args.backend_root or root.parent / "cpu-backends").resolve()
+font_source = (
+    args.font_source or root.parent / "macos-rendered/_deps/freetype-src"
+).resolve()
+font_output = (args.font_output or root.parent / "font-probe").resolve()
 lifter = backend / "remill-build/bin/lift/remill-lift-23"
+runtime_bc = backend / "remill-build/lib/Arch/X86/Runtime/amd64_avx.bc"
+fp80_output = (args.fp80_output or root.parent / "fp80-probe").resolve()
+fp80_lower = fp80_output / "fp80-lower"
+if not fp80_lower.is_file() or not (fp80_output / "manifest.json").is_file():
+    raise SystemExit("Build FP80 support first: python3 ios/cpu/fp80/build.py --output " + str(fp80_output))
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def write_json(path, value):
+    temporary = path.with_suffix(path.suffix + ".partial")
+    temporary.write_text(json.dumps(value, indent=2) + "\n")
+    temporary.replace(path)
+
+
+backend_snapshot = {
+    "lifter_path": str(lifter),
+    "lifter_sha256": sha256(lifter),
+    "runtime_bc_path": str(runtime_bc),
+    "runtime_bc_sha256": sha256(runtime_bc),
+    "remill_revision": subprocess.check_output(
+        ["git", "-C", str(backend / "remill"), "rev-parse", "HEAD"], text=True
+    ).strip(),
+    "sse_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/SSE.cpp"),
+    "avx_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/AVX.cpp"),
+    "x87_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/X87.cpp"),
+    "fp80_lower_sha256": sha256(fp80_lower),
+    "fp80_manifest_sha256": sha256(fp80_output / "manifest.json"),
+}
 
 
 def run(command, log):
@@ -324,15 +398,29 @@ with (root / "strlen-reference-result.json").open("w") as stream:
     )
 trace_dir = root / "traces"
 trace_dir.mkdir(exist_ok=True)
-for text in args.lift:
+requested = set(args.lift)
+if args.relift_all:
+    requested.update(path.stem for path in trace_dir.glob("*.ll"))
+new_records = {}
+module_hashes = {
+    module["name"]: hashlib.sha256(module["image"]).hexdigest() for module in modules
+}
+for text in sorted(requested, key=lambda value: int(value, 16)):
     pc = int(text, 16)
     module = next(
         m for m in modules if m["canonical"] <= pc < m["canonical"] + len(m["image"])
     )
     offset = pc - module["canonical"]
+    if not any(
+        segment["flags"] & 1
+        and segment["vaddr"] <= offset < segment["vaddr"] + segment["filesz"]
+        for segment in module["segments"]
+    ):
+        raise SystemExit("Trace entry is outside executable file bytes: " + text)
     begin = max(0, offset - 0x1000)
     end = min(len(module["image"]), offset + 0x3000)
     out = trace_dir / (hex(pc)[2:] + ".ll")
+    temporary = out.with_suffix(".ll.partial")
     run(
         [
             lifter,
@@ -347,18 +435,47 @@ for text in args.lift:
             "--bytes",
             module["image"][begin:end].hex(),
             "--ir_out",
-            out,
+            temporary,
         ],
         hex(pc)[2:] + "-lift.log",
     )
     # Permit explicit runtime faults to unwind to the outer diagnostic boundary.
     # x86 unwind directives/attributes are replaced by the arm64 target compiler.
-    ir = out.read_text().replace(" nounwind", "")
+    ir = temporary.read_text().replace(" nounwind", "")
     for group in re.findall(r"^attributes #(\d+) = \{\s*\}$", ir, re.M):
         ir = re.sub(r"^attributes #" + group + r" = \{\s*\}\n", "", ir, flags=re.M)
         ir = re.sub(r" #" + group + r"\b", "", ir)
     ir = re.sub(r"^(define .*?) \{$", r"\1 uwtable {", ir, flags=re.M)
-    out.write_text(ir)
+    temporary.write_text(ir)
+    raw_ir_sha256 = sha256(temporary)
+    fp80_lowered = "x86_fp80" in ir
+    if fp80_lowered:
+        lowered = out.with_suffix(".ll.lowered.partial")
+        run([fp80_lower, temporary, lowered, "--remill-control"], out.stem + "-fp80-lower.log")
+        if "x86_fp80" in lowered.read_text():
+            raise SystemExit("FP80 lowering left unsupported storage or operations in " + out.name)
+        lowered.replace(temporary)
+    temporary.replace(out)
+    new_records[out.stem] = {
+        "schema": 1,
+        "pc": out.stem,
+        "module": module["name"],
+        "raw_ir_sha256": raw_ir_sha256,
+        "fp80_lowered": fp80_lowered,
+        "module_image_sha256": module_hashes[module["name"]],
+        "input_offset_begin": begin,
+        "input_offset_end": end,
+        "input_slice_sha256": hashlib.sha256(module["image"][begin:end]).hexdigest(),
+        "backend": backend_snapshot,
+        "builder_sha256": sha256(Path(__file__)),
+        "settings": {
+            "os": "linux",
+            "arch": "amd64_avx",
+            "address": module["canonical"] + begin,
+            "entry_address": pc,
+        },
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+    }
 
 # Observe every signed trace entry, including direct calls resolved by the linker.
 for path in sorted(trace_dir.glob("*.ll")):
@@ -377,6 +494,50 @@ for path in sorted(trace_dir.glob("*.ll")):
             raise SystemExit("Cannot instrument " + path.name)
         ir += "\ndeclare void @dcp_trace_enter(ptr, i64)\n"
         path.write_text(ir)
+
+# Preserve unknown/stale provenance explicitly. Existing IR is never attributed
+# retrospectively to the currently installed semantics.
+provenance = {}
+for path in sorted(trace_dir.glob("*.ll")):
+    record_path = path.with_suffix(".provenance.json")
+    if path.stem in new_records:
+        record = new_records[path.stem]
+        record["ir_sha256"] = sha256(path)
+        record["entry_instrumentation"] = 1
+        write_json(record_path, record)
+    else:
+        record = json.loads(record_path.read_text()) if record_path.exists() else None
+    current = bool(
+        record
+        and record.get("backend") == backend_snapshot
+        and record.get("ir_sha256") == sha256(path)
+        and record.get("module_image_sha256") == module_hashes.get(record.get("module"))
+    )
+    provenance[path.stem] = {
+        "status": "current" if current else "stale" if record else "unknown",
+        "ir_sha256": sha256(path),
+        "record": str(record_path) if record else None,
+    }
+write_json(
+    root / "trace-provenance.json",
+    {
+        "schema": 1,
+        "active_backend": backend_snapshot,
+        "complete_current_backend": all(
+            value["status"] == "current" for value in provenance.values()
+        ),
+        "traces": provenance,
+    },
+)
+
+# Ensure a lifter/bitcode replacement during a batch cannot create a mixed claim.
+if (
+    sha256(lifter) != backend_snapshot["lifter_sha256"]
+    or sha256(runtime_bc) != backend_snapshot["runtime_bc_sha256"]
+):
+    raise SystemExit(
+        "Lifter or runtime bitcode changed during trace generation; relift this batch"
+    )
 
 definitions = set()
 references = set()
@@ -421,12 +582,14 @@ for directory in [
     backend / "remill/include",
 ]:
     for path in sorted(directory.rglob("*")):
-        if path.is_file() and path.suffix in (".cpp", ".h", ".mm", ".inc"):
+        if path.is_file() and path.suffix in (".h", ".inc"):
             compile_hash.update(path.read_bytes())
 compile_hash.update(subprocess.check_output(["xcrun", "clang++", "--version"]))
 platforms = [("mac", "arm64-apple-macos15", "macosx")]
 if args.ios:
     platforms.append(("ios", "arm64-apple-ios18", "iphoneos"))
+if args.simulator:
+    platforms.append(("simulator", "arm64-apple-ios18-simulator", "iphonesimulator"))
 for platform, target, sdk in platforms:
     directory = root / platform
     directory.mkdir(exist_ok=True)
@@ -434,10 +597,10 @@ for platform, target, sdk in platforms:
         ["xcrun", "--sdk", sdk, "--show-sdk-path"], text=True
     ).strip()
     objects = []
-    freetype = root.parent / "font-probe" / ("freetype-" + platform) / "libfreetype.a"
+    freetype = font_output / ("freetype-" + platform) / "libfreetype.a"
     font_includes = [
         source / "linux-port/src",
-        root.parent / "macos-rendered/_deps/freetype-src/include",
+        font_source / "include",
         freetype.parent / "include",
     ]
     for path in sorted(trace_dir.glob("*.ll")):
@@ -464,6 +627,7 @@ for platform, target, sdk in platforms:
         (source / "ios/cpu/runtime.cpp", "memory"),
         (source / "ios/game/runtime.cpp", "runtime"),
         (source / "ios/game/gnm-services.cpp", "gnm"),
+        (source / "linux-port/src/render/capture.cpp", "capture"),
         (source / "ios/game/thread-services.cpp", "threads"),
         (source / "ios/game/file-services.cpp", "files"),
         (source / "ios/game/offline-services.cpp", "offline"),
@@ -483,6 +647,8 @@ for platform, target, sdk in platforms:
             sdk_path,
             "-std=c++17",
             "-O2",
+            "-DDCP_AOT",
+            *(["-DDCP_MOBILE_PLATFORM"] if platform != "mac" else []),
             "-I" + str(backend / "remill/include"),
             "-I" + str(source / "ios/cpu"),
             "-I" + str(root),
@@ -513,9 +679,13 @@ for platform, target, sdk in platforms:
     import shutil
 
     shutil.copy2(freetype, directory / "libfreetype.a")
+    fp80_library = fp80_output / platform / "libdcp-fp80.a"
+    shutil.copy2(fp80_library, directory / "libdcp-fp80.a")
     archive = directory / "libcpu-fixtures.a"
-    archive.unlink(missing_ok=True)
-    run([llvm / "llvm-ar", "rcs", archive, *objects], platform + "-archive.log")
+    archive_temporary = archive.with_suffix(".a.partial")
+    archive_temporary.unlink(missing_ok=True)
+    run([llvm / "llvm-ar", "rcs", archive_temporary, *objects], platform + "-archive.log")
+    archive_temporary.replace(archive)
     if platform == "mac":
         (root / "cli.cpp").write_text(
             '#include <cstdio>\nextern "C" const char *dcp_cpu_report();\nint main(){puts(dcp_cpu_report());}\n'
@@ -529,9 +699,25 @@ for platform, target, sdk in platforms:
                 root / "cli.cpp",
                 archive,
                 freetype,
+                fp80_library,
                 "-o",
                 root / "game-boot",
             ],
             "mac-link.log",
         )
+licenses = root / "ThirdPartyNotices"
+licenses.mkdir(exist_ok=True)
+shutil.copy2(backend / "remill/LICENSE", licenses / "Remill-Apache-2.0.txt")
+shutil.copy2(fp80_output / "ThirdPartyNotices/SoftFloat-3e-LICENSE.txt", licenses / "SoftFloat-3e-LICENSE.txt")
+shutil.copy2(fp80_output / "manifest.json", root / "fp80-manifest.json")
+for name in ("FreeType-FTL.txt", "FreeType-LICENSE.txt"):
+    shutil.copy2(font_output / name, licenses / name)
+(licenses / "NOTICE.txt").write_text(
+    "Remill (Trail of Bits/lifting-bits), pin 66c488c9911fd9b368e4d0c9647d74239f8bba8b, "
+    "Apache License 2.0; locally modified for LLVM 23 and additional SIMD semantics.\n"
+    "FreeType 2.13.3, FreeType Project, used under the FreeType License.\n"
+    "This software uses the FreeType library: https://freetype.org/\n"
+    "Berkeley SoftFloat 3e, Regents of the University of California, used under its BSD license.\n"
+    "Game-specific generated code and original game assets are private build inputs.\n"
+)
 print("Built", len(definitions), "real module traces")

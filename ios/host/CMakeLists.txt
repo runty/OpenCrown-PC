@@ -1,0 +1,36 @@
+cmake_minimum_required(VERSION 4.3)
+project(OpenCrownAotHost LANGUAGES CXX OBJCXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_OBJCXX_STANDARD 20)
+set(DCP_GAME_CACHE "" CACHE PATH "Frozen real-module build output (contains mac/libcpu-fixtures.a)")
+set(DCP_RENDER_CACHE "" CACHE PATH "mac renderer build output (contains sdl/SDL3Config.cmake)")
+foreach(input "${DCP_GAME_CACHE}/mac/libcpu-fixtures.a" "${DCP_GAME_CACHE}/mac/libfreetype.a"
+              "${DCP_RENDER_CACHE}/libopencrown-mobile-replay.a" "${DCP_RENDER_CACHE}/libopencrown-mobile-metal.a")
+  if(NOT EXISTS "${input}")
+    message(FATAL_ERROR "Required frozen cache artifact is missing: ${input}")
+  endif()
+endforeach()
+find_package(SDL3 3.4.18 EXACT CONFIG REQUIRED PATHS "${DCP_RENDER_CACHE}/sdl" NO_DEFAULT_PATH)
+get_filename_component(DCP_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+add_executable(opencrown-aot-host main.mm)
+target_include_directories(opencrown-aot-host PRIVATE "${DCP_SOURCE}/ios" "${DCP_SOURCE}/linux-port/src")
+target_compile_definitions(opencrown-aot-host PRIVATE DCP_AOT)
+target_compile_options(opencrown-aot-host PRIVATE -fobjc-arc -Wall -Wextra -Werror)
+target_link_libraries(opencrown-aot-host PRIVATE
+  "${DCP_GAME_CACHE}/mac/libcpu-fixtures.a" "${DCP_GAME_CACHE}/mac/libfreetype.a"
+  "${DCP_RENDER_CACHE}/libopencrown-mobile-replay.a" "${DCP_RENDER_CACHE}/libopencrown-mobile-metal.a"
+  SDL3::SDL3-static "-framework Foundation")
+if(EXISTS "${DCP_GAME_CACHE}/mac/libdcp-fp80.a")
+  target_link_libraries(opencrown-aot-host PRIVATE "${DCP_GAME_CACHE}/mac/libdcp-fp80.a")
+endif()
+option(DCP_BUILD_HOST_FIXTURE "Build a separate synthetic lifecycle executable, never real-game evidence" OFF)
+if(DCP_BUILD_HOST_FIXTURE)
+  add_executable(opencrown-aot-host-fixture main.mm fixture-runtime.cpp)
+  target_include_directories(opencrown-aot-host-fixture PRIVATE "${DCP_SOURCE}/ios" "${DCP_SOURCE}/linux-port/src")
+  target_compile_definitions(opencrown-aot-host-fixture PRIVATE DCP_AOT)
+  target_compile_options(opencrown-aot-host-fixture PRIVATE -fobjc-arc -Wall -Wextra -Werror)
+  target_link_libraries(opencrown-aot-host-fixture PRIVATE
+    "${DCP_RENDER_CACHE}/libopencrown-mobile-replay.a" "${DCP_RENDER_CACHE}/libopencrown-mobile-metal.a"
+    "${DCP_GAME_CACHE}/mac/libfreetype.a" SDL3::SDL3-static "-framework Foundation")
+endif()

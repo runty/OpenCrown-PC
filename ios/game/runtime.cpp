@@ -1,13 +1,20 @@
 #include "../cpu/runtime.h"
 #include "file-services.h"
 #include "font-services.h"
+#include "game.h"
 #include "gnm-services.h"
 #include "modules.h"
 #include "offline-services.h"
+#include "render/capture.h"
 #include "thread-services.h"
 #include "traces.h"
+#ifdef DCP_MOBILE_PLATFORM
+#include "../platform/platform.h"
+#endif
 #include <algorithm>
+#include <cfenv>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
@@ -20,6 +27,18 @@
 #include <unistd.h>
 
 namespace {
+struct HostFloatingEnvironment {
+  std::fenv_t value;
+  bool enabled;
+  explicit HostFloatingEnvironment(bool preserve = true) : enabled(preserve) {
+    if (enabled)
+      std::fegetenv(&value);
+  }
+  ~HostFloatingEnvironment() {
+    if (enabled)
+      std::fesetenv(&value);
+  }
+};
 struct GuestThreadExit : std::exception {
   uint64_t value;
   explicit GuestThreadExit(uint64_t result) : value(result) {}
@@ -35,6 +54,7 @@ struct Mapping {
   ~Mapping() { munmap(data, size); }
 };
 struct Engine {
+  DcpGameHostHooks host{};
   std::vector<Module> modules;
   std::vector<std::unique_ptr<Mapping>> allocations;
   std::vector<std::unique_ptr<std::recursive_mutex>> mutexes;
@@ -42,15 +62,24 @@ struct Engine {
   std::map<std::string, uint64_t> eventCounts;
   std::atomic<unsigned> workersStarted{0};
   std::mutex metadata;
+  std::mutex diagnosticLock;
   std::mutex eventLock;
   std::atomic<bool> stop{false};
-  std::atomic<unsigned> steps{0};
+  std::atomic<bool> userStop{false};
+  std::atomic<bool> paused{false};
+  std::mutex pauseMutex;
+  std::condition_variable pauseChanged;
+  std::chrono::steady_clock::time_point pausedAt;
+  std::chrono::nanoseconds pausedTime{0};
+  std::atomic<bool> interactive{false};
+  std::atomic<uint64_t> steps{0};
   std::atomic<uint64_t> vblanks{0};
   uint64_t directCursor = 0;
   bool userLogged = false;
-  unsigned libcChecks = 0;
-  int64_t libcResult = -1;
-  bool enteredEboot = false;
+  std::atomic<uint64_t> libcChecks{0};
+  std::atomic<int64_t> libcResult{-1};
+  std::atomic<bool> enteredEboot{false};
+  std::atomic<bool> gnmReady{false};
   std::atomic<bool> titleSeen{false};
   std::atomic<bool> booted{false};
   std::atomic<uint64_t> titleVblank{0};
@@ -59,8 +88,14 @@ struct Engine {
   std::chrono::steady_clock::time_point epoch =
       std::chrono::steady_clock::now();
   std::string firstError;
+  std::string currentScene;
   Memory primary;
 };
+std::atomic<Engine *> activeEngine{nullptr};
+std::mutex engineLifetime;
+std::atomic<bool> requestedPause{false};
+DcpGameHostHooks configuredHost{};
+bool configuredWaiting = false, configuredCancelled = false;
 thread_local Engine *currentEngine = nullptr;
 thread_local Memory *currentMemory = nullptr;
 thread_local uint64_t rootStack = 0;
@@ -69,8 +104,33 @@ thread_local uint64_t errorSlot = 0;
 thread_local uint64_t mainThread = 0;
 thread_local std::vector<std::recursive_mutex *> heldMutexes;
 Engine &engine() { return *currentEngine; }
+bool pollRuntime() {
+  if (currentEngine && currentEngine->paused.load() &&
+      (!currentMemory || !currentMemory->atomicLock.owns_lock())) {
+    std::unique_lock<std::mutex> lock(currentEngine->pauseMutex);
+    currentEngine->pauseChanged.wait(lock, [] {
+      return !currentEngine->paused.load() || currentEngine->stop.load();
+    });
+  }
+  return (currentEngine && currentEngine->stop.load()) || dcp_thread_stopping();
+}
+void stopEngine(Engine &target) {
+  {
+    std::lock_guard<std::mutex> lock(target.pauseMutex);
+    target.stop = true;
+  }
+  target.pauseChanged.notify_all();
+}
+uint64_t elapsedNanoseconds() {
+  std::lock_guard<std::mutex> lock(engine().pauseMutex);
+  auto now = engine().paused.load() ? engine().pausedAt
+                                    : std::chrono::steady_clock::now();
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             now - engine().epoch - engine().pausedTime)
+      .count();
+}
 void recordFailure(const std::string &value) {
-  std::lock_guard<std::mutex> lock(engine().metadata);
+  std::lock_guard<std::mutex> lock(engine().diagnosticLock);
   if (!engine().booted.load() && engine().firstError.empty() &&
       value.find("bootstrap stopped") == std::string::npos)
     engine().firstError = value;
@@ -156,8 +216,8 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   std::string name = imports[index];
   recordEvent(name);
   auto &r = state.gpr;
-  const uint64_t arguments[6] = {r.rdi.qword, r.rsi.qword, r.rdx.qword,
-                                 r.rcx.qword, r.r8.qword,  r.r9.qword};
+  uint64_t arguments[9] = {r.rdi.qword, r.rsi.qword, r.rdx.qword,
+                           r.rcx.qword, r.r8.qword,  r.r9.qword};
   uint64_t gnmResult;
   if (name == "scePthreadExit")
     throw GuestThreadExit(r.rdi.qword);
@@ -168,6 +228,10 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   }
   const float floating[2] = {state.vec[0].xmm.floats.elems[0],
                              state.vec[1].xmm.floats.elems[0]};
+  if (name == "sceGnmSubmitAndFlipCommandBuffers" ||
+      name == "sceGnmSubmitAndFlipCommandBuffersForWorkload")
+    for (size_t i = 6; i < 9; ++i)
+      arguments[i] = read64(*memory, r.rsp.qword + 8 + (i - 6) * 8);
   uint64_t fontResult;
   if (dcp_font_service(name.c_str(), arguments, floating, &fontResult)) {
     returnToGuest(state, *memory, fontResult);
@@ -193,19 +257,43 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     returnToGuest(state, *memory, 1000000000);
   } else if (name == "sceKernelGetProcessTimeCounter" ||
              name == "sceKernelGetProcessTime") {
-    uint64_t elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                           std::chrono::steady_clock::now() - engine().epoch)
-                           .count();
+    uint64_t elapsed = elapsedNanoseconds();
     returnToGuest(state, *memory,
                   name == "sceKernelGetProcessTime" ? elapsed / 1000 : elapsed);
   } else if (name == "sceKernelUsleep") {
     auto end = std::chrono::steady_clock::now() +
                std::chrono::microseconds(uint32_t(r.rdi.qword));
     while (std::chrono::steady_clock::now() < end) {
-      if (dcp_thread_stopping())
+      if (pollRuntime())
         throw std::runtime_error("bootstrap stopped while sleeping");
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    returnToGuest(state, *memory, 0);
+  } else if (name == "sceNetCtlGetState" || name == "sceNpGetState") {
+    // Offline mobile release: no address, no PSN sign-in, no network callbacks.
+    uint64_t output = name == "sceNetCtlGetState" ? r.rdi.qword : r.rsi.qword;
+    uint32_t status = name == "sceNetCtlGetState" ? 0 : 1;
+    guestWrite(*memory, output, &status, sizeof(status));
+    returnToGuest(state, *memory, 0);
+  } else if (name == "sceNetCtlGetInfo") {
+    uint8_t information[16]{};
+    const uint8_t address[6] = {0x02, 0xdc, 0x50, 0, 0, 1};
+    if (r.rdi.qword == 2)
+      std::memcpy(information, address, 6);
+    guestWrite(*memory, r.rsi.qword, information, r.rdi.qword == 2 ? 6 : 16);
+    returnToGuest(state, *memory, 0);
+  } else if (name == "sceNetCtlRegisterCallback") {
+    uint32_t id = 1;
+    if (r.rdx.qword)
+      guestWrite(*memory, r.rdx.qword, &id, 4);
+    returnToGuest(state, *memory, 0);
+  } else if (name == "sceNpRegisterStateCallbackA" ||
+             name == "sceNpRegisterPlusEventCallback") {
+    returnToGuest(state, *memory, 1);
+  } else if (name == "sceNpCheckCallback" || name == "sceNetCtlCheckCallback" ||
+             name == "sceNetCtlUnregisterCallback" ||
+             name == "sceNpUnregisterStateCallbackA" ||
+             name == "sceNpUnregisterPlusEventCallback") {
     returnToGuest(state, *memory, 0);
   } else if (name == "sceUserServiceInitialize" ||
              name == "sceUserServiceTerminate" || name == "scePadInit" ||
@@ -272,13 +360,13 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   } else if (name == "sceVideoOutWaitVblank") {
     std::this_thread::sleep_for(std::chrono::microseconds(16667));
     const uint64_t frame = ++engine().vblanks;
-    if (engine().titleSeen.load() &&
+    if (!engine().interactive && engine().titleSeen.load() &&
         frame >= engine().titleVblank.load() + 120 &&
         dcp_gnm_stats().flips >= engine().titleFlip.load() + 120) {
       engine().booted = true;
       throw std::runtime_error("boot checkpoint complete");
     }
-    if (frame > 1800)
+    if (!engine().interactive && frame > 1800)
       throw std::runtime_error("vblank checkpoint budget reached");
     returnToGuest(state, *memory, 0);
   } else if (name == "sceVideoOutSetBufferAttribute") {
@@ -290,9 +378,16 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     std::memset(output, 0, 40);
     std::memcpy(output, values, sizeof(values));
     returnToGuest(state, *memory, 0);
-  } else if (name == "sceVideoOutClose" ||
-             name == "sceVideoOutRegisterBuffers" ||
-             name == "sceVideoOutAddFlipEvent" ||
+  } else if (name == "sceVideoOutRegisterBuffers") {
+    const int32_t start = int32_t(r.rsi.qword), count = int32_t(r.rcx.qword);
+    if (start < 0 || count < 0 || start > 16 || count > 16 - start)
+      throw std::runtime_error("invalid display buffer range");
+    std::vector<void *> buffers(size_t(count), nullptr);
+    guestRead(*memory, r.rdx.qword, buffers.data(),
+              buffers.size() * sizeof(void *));
+    dcp::render::set_display_buffers(buffers.data(), start, count);
+    returnToGuest(state, *memory, 0);
+  } else if (name == "sceVideoOutClose" || name == "sceVideoOutAddFlipEvent" ||
              name == "sceVideoOutAddVblankEvent" ||
              name == "sceVideoOutSetFlipRate") {
     returnToGuest(state, *memory, 0);
@@ -486,6 +581,9 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
 uint64_t invoke(uint64_t pc, Memory &memory, uint64_t a = 0, uint64_t b = 0,
                 uint64_t c = 0) {
   State state{};
+  const uint32_t rounding = __remill_fpu_get_rounding();
+  state.x87.fxsave.cwd.flat = uint16_t(0x037f | (rounding << 10));
+  state.x87.fxsave.mxcsr.flat = 0x1f80 | (rounding << 13);
   state.gpr.rdi.qword = a;
   state.gpr.rsi.qword = b;
   state.gpr.rdx.qword = c;
@@ -516,10 +614,11 @@ void releaseHeldMutexes() {
 uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
   auto &target = *static_cast<Engine *>(context);
   const bool nested = currentEngine == &target && currentMemory;
+  HostFloatingEnvironment floatingEnvironment(!nested);
   Memory local;
   local.regions = target.primary.regions;
   local.stopping = &target.stop;
-  local.cancelled = dcp_thread_stopping;
+  local.cancelled = pollRuntime;
   local.stopOnFault = true;
   auto *previousEngine = currentEngine;
   auto *previousMemory = currentMemory;
@@ -559,7 +658,7 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
     } catch (...) {
       recordFailure("guest worker failed");
     }
-    target.stop = true;
+    stopEngine(target);
     releaseHeldMutexes();
     currentEngine = previousEngine;
     currentMemory = previousMemory;
@@ -569,7 +668,7 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
 }
 } // namespace
 Memory *dispatch(State &state, uint64_t pc, Memory *memory) {
-  if (engine().stop.load() || dcp_thread_stopping())
+  if (pollRuntime())
     throw std::runtime_error("bootstrap stopped");
   uint64_t key = canonical(pc);
   if (key == exitPC)
@@ -587,12 +686,29 @@ Memory *dispatch(State &state, uint64_t pc, Memory *memory) {
   throw std::runtime_error("missing trace: " + hex(key));
 }
 extern "C" const char *dcp_cpu_report() {
+  HostFloatingEnvironment floatingEnvironment;
   static std::string report;
   static std::unique_ptr<Engine> retained;
-  if (retained)
-    return "{\"error\":\"previous guest workers are still stopping\"}";
   auto owner = std::make_unique<Engine>();
-  currentEngine = owner.get();
+  {
+    std::lock_guard<std::mutex> lock(engineLifetime);
+    if (activeEngine.load())
+      return "{\"error\":\"a game session is already running or stopping\"}";
+    if (retained)
+      return "{\"error\":\"previous guest workers are still stopping\"}";
+    currentEngine = owner.get();
+    activeEngine = owner.get();
+    if (configuredWaiting && configuredCancelled) {
+      engine().userStop = true;
+      engine().stop = true;
+    }
+    configuredWaiting = false;
+    engine().host = configuredHost;
+    engine().paused = requestedPause.load();
+    engine().pausedAt = engine().epoch;
+  }
+  engine().interactive = std::getenv("DCP_GAME_MODE") &&
+                         std::string(std::getenv("DCP_GAME_MODE")) == "play";
   engine().modules.clear();
   engine().allocations.clear();
   engine().events.clear();
@@ -608,7 +724,7 @@ extern "C" const char *dcp_cpu_report() {
   Memory &memory = engine().primary;
   memory.stopping = &engine().stop;
   memory.stopOnFault = true;
-  memory.cancelled = dcp_thread_stopping;
+  memory.cancelled = pollRuntime;
   currentMemory = &memory;
   dcp_thread_init(
       {owner.get(), runWorker,
@@ -632,7 +748,18 @@ extern "C" const char *dcp_cpu_report() {
        [](void *context, uint64_t address, const void *input, size_t bytes) {
          guestWrite(*static_cast<Memory *>(context), address, input, bytes);
          return true;
-       }});
+       }},
+      {owner.get(),
+       [](void *, uint64_t command, uint32_t words, uint32_t count,
+          uint64_t indices, bool indexed) {
+         dcp::render::on_draw(reinterpret_cast<uint32_t *>(command), words,
+                              count, indices, indexed);
+       },
+       [](void *, const uint32_t *payload, uint32_t words) {
+         dcp::render::on_marker(payload, words);
+       },
+       [](void *, uint32_t index) { dcp::render::on_flip(index); }});
+  engine().gnmReady = true;
   std::string stage = "load", error;
   try {
     DcpFileHooks files;
@@ -663,7 +790,36 @@ extern "C" const char *dcp_cpu_report() {
       return static_cast<Engine *>(context)->stop.load();
     };
     offline.save_root = files.save_root;
-    offline.scripted_input = true;
+    offline.scripted_input = !engine().interactive;
+#ifdef DCP_MOBILE_PLATFORM
+    if (engine().interactive) {
+      offline.input_read = [](void *, unsigned slot, DcpPlatformPad *pad) {
+        dcp_platform_input_read(slot, pad);
+      };
+      offline.audio_start = [](void *) { return dcp_platform_audio_start(); };
+      offline.audio_stop = [](void *) { dcp_platform_audio_stop(); };
+      offline.audio_submit = [](void *, const float *samples, size_t frames,
+                                uint32_t timeout) {
+        return dcp_platform_audio_submit(samples, frames, timeout);
+      };
+    }
+#endif
+    if (engine().host.save_transaction) {
+      offline.savedata_transaction = [](void *context, bool begin) {
+        auto *target = static_cast<Engine *>(context);
+        struct Operation {
+          Engine *target;
+          bool begin;
+        } operation{target, begin};
+        return dcp_file_with_savedata_quiescent(
+            [](void *opaque) {
+              auto &work = *static_cast<Operation *>(opaque);
+              return work.target->host.save_transaction(
+                         work.target->host.context, work.begin) != 0;
+            },
+            &operation);
+      };
+    }
     dcp_offline_init(offline);
     files.savedata_access = [](void *, bool writing) {
       return dcp_offline_savedata_access(writing);
@@ -685,6 +841,28 @@ extern "C" const char *dcp_cpu_report() {
       auto &data = engine().modules.back().data;
       addRegion(memory, data.data(), data.size());
     }
+    if (!dcp::render::initialize_aot_capture(
+            engine().modules[0].data.data(), engine().modules[0].data.size(),
+            {owner.get(),
+             [](void *context, uint64_t address, size_t bytes, bool) {
+               try {
+                 return guestPointer(static_cast<Engine *>(context)->primary,
+                                     address, bytes) != nullptr;
+               } catch (const std::exception &) {
+                 return false;
+               }
+             },
+             [](void *context, uint64_t address, void *destination,
+                size_t bytes) {
+               try {
+                 guestRead(static_cast<Engine *>(context)->primary, address,
+                           destination, bytes);
+                 return true;
+               } catch (const std::exception &) {
+                 return false;
+               }
+             }}))
+      throw std::runtime_error("AOT capture initialization failed");
     auto guard = allocate(memory, 8);
     write64(memory, guard, 0x517a6b2f);
     for (unsigned index = 0; index < std::size(moduleData); ++index) {
@@ -729,17 +907,29 @@ extern "C" const char *dcp_cpu_report() {
       memory.atomicLock.unlock();
     recordFailure(error);
   }
-  engine().stop = true;
+  stopEngine(engine());
   if (memory.atomicLock.owns_lock())
     memory.atomicLock.unlock();
   releaseHeldMutexes();
   const bool joined = dcp_thread_stop_and_join(5000);
-  if (!engine().firstError.empty())
-    error = engine().firstError;
+  if (engine().host.will_unload)
+    engine().host.will_unload(engine().host.context);
+  std::string firstError, currentScene;
+  {
+    std::lock_guard<std::mutex> lock(engine().diagnosticLock);
+    firstError = engine().firstError;
+    currentScene = engine().currentScene;
+  }
+  if (!firstError.empty())
+    error = firstError;
   else if (*dcp_thread_error())
     error = dcp_thread_error();
-  if (engine().booted.load() && engine().firstError.empty()) {
+  if (engine().booted.load() && firstError.empty()) {
     stage = "title";
+    error.clear();
+  }
+  if (engine().userStop.load() && joined) {
+    stage = "stopped";
     error.clear();
   }
   if (!joined)
@@ -747,6 +937,7 @@ extern "C" const char *dcp_cpu_report() {
   else {
     dcp_file_reset();
     dcp_font_reset();
+    dcp::render::shutdown_aot_capture();
   }
   std::ostringstream out;
   out << "{\"backend\":\"Remill AOT real modules\",\"stage\":\"" << stage
@@ -757,6 +948,11 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"guest_workers\":" << engine().workersStarted
       << ",\"libc_strlen_checks\":" << engine().libcChecks
       << ",\"libc_start_result\":" << engine().libcResult
+      << ",\"title_seen\":" << (engine().titleSeen.load() ? "true" : "false")
+      << ",\"checkpoint_complete\":"
+      << (engine().booted.load() ? "true" : "false")
+      << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
+      << ",\"current_scene\":" << jsonString(currentScene)
       << ",\"trace_hash\":\"" << traceHash << "\""
       << ",\"error\":" << jsonString(error) << ",\"events\":[";
   bool first = true;
@@ -772,6 +968,10 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"label_writes\":" << gnm.label_writes
       << ",\"vblanks\":" << engine().vblanks << "}";
   report = out.str();
+  if (joined) {
+    std::lock_guard<std::mutex> lock(engineLifetime);
+    activeEngine = nullptr;
+  }
   currentEngine = nullptr;
   currentMemory = nullptr;
   if (!joined)
@@ -791,11 +991,18 @@ extern "C" Memory *__remill_sync_hyper_call(State &state, Memory *,
 }
 
 extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
-  if (engine().stop.load() || dcp_thread_stopping())
+  if (pollRuntime())
     throw std::runtime_error("bootstrap stopped");
-  if (++engine().steps > 10000000)
+  if (++engine().steps > 10000000 && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
-  if (canonical(pc) == 0x20068840) {
+  const uint64_t observedPC = canonical(pc);
+  if (observedPC >= 0x20000000 && observedPC < 0x30000000) {
+    const auto &r = state.gpr;
+    const uint64_t args[6] = {r.rdi.qword, r.rsi.qword, r.rdx.qword,
+                              r.rcx.qword, r.r8.qword,  r.r9.qword};
+    dcp::render::observe_aot_entry(observedPC - 0x20000000, args);
+  }
+  if (observedPC == 0x20068840) {
     char name[16]{};
     try {
       for (size_t i = 0; i < 15; ++i) {
@@ -806,10 +1013,107 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     } catch (const std::runtime_error &) {
       return;
     }
+    bool ascii = name[0] != 0;
+    for (size_t i = 0; name[i] && i < sizeof(name) - 1; ++i)
+      if (static_cast<unsigned char>(name[i]) < 32 ||
+          static_cast<unsigned char>(name[i]) > 126)
+        ascii = false;
+    if (ascii) {
+      bool changed;
+      {
+        std::lock_guard<std::mutex> lock(engine().diagnosticLock);
+        changed = engine().currentScene != name;
+        engine().currentScene = name;
+      }
+      if (changed)
+        recordEvent(std::string("scene ") + name);
+    }
     if (!std::strcmp(name, "TITLE") && !engine().titleSeen.exchange(true)) {
       engine().titleVblank = engine().vblanks.load();
       engine().titleFlip = dcp_gnm_stats().flips;
-      recordEvent("scene TITLE");
     }
   }
+}
+
+namespace dcp::hle {
+uint64_t vblank_count_public() {
+  std::lock_guard<std::mutex> lifetime(engineLifetime);
+  auto *owner = activeEngine.load();
+  return owner ? owner->vblanks.load() : 0;
+}
+} // namespace dcp::hle
+
+extern "C" void dcp_game_set_paused(int paused) {
+  requestedPause = paused != 0;
+  std::lock_guard<std::mutex> lifetime(engineLifetime);
+  auto *target = activeEngine.load();
+  if (!target)
+    return;
+  std::lock_guard<std::mutex> lock(target->pauseMutex);
+  const auto now = std::chrono::steady_clock::now();
+  if (paused && !target->paused.exchange(true))
+    target->pausedAt = now;
+  else if (!paused && target->paused.exchange(false))
+    target->pausedTime += now - target->pausedAt;
+  target->pauseChanged.notify_all();
+}
+extern "C" void dcp_game_request_stop() {
+  std::lock_guard<std::mutex> lifetime(engineLifetime);
+  auto *target = activeEngine.load();
+  if (!target) {
+    if (configuredWaiting)
+      configuredCancelled = true;
+    return;
+  }
+  target->userStop = true;
+  stopEngine(*target);
+}
+
+extern "C" int dcp_game_configure(DcpGameHostHooks hooks) {
+  std::lock_guard<std::mutex> lock(engineLifetime);
+  if (activeEngine.load())
+    return 0;
+  configuredHost = hooks;
+  configuredWaiting = true;
+  configuredCancelled = false;
+  return 1;
+}
+
+extern "C" int dcp_game_is_running() { return activeEngine.load() != nullptr; }
+
+extern "C" int dcp_game_snapshot(DcpGameStats *output) {
+  if (!output)
+    return 0;
+  *output = DcpGameStats{};
+  output->libc_result = -1;
+  std::lock_guard<std::mutex> lifetime(engineLifetime);
+  auto *target = activeEngine.load();
+  if (!target)
+    return 0;
+  output->running = 1;
+  output->steps = target->steps.load();
+  output->vblanks = target->vblanks.load();
+  output->workers = target->workersStarted.load();
+  output->libc_checks = target->libcChecks.load();
+  output->libc_result = target->libcResult.load();
+  output->paused = target->paused.load();
+  output->stopping = target->stop.load();
+  output->interactive = target->interactive.load();
+  output->entered_game = target->enteredEboot.load();
+  output->title_seen = target->titleSeen.load();
+  output->checkpoint_complete = target->booted.load();
+  if (target->gnmReady.load()) {
+    const auto gnm = dcp_gnm_stats();
+    output->submits = gnm.submits;
+    output->flips = gnm.flips;
+    output->label_writes = gnm.label_writes;
+  }
+  {
+    std::lock_guard<std::mutex> metadata(target->diagnosticLock);
+    std::snprintf(output->current_scene, sizeof(output->current_scene), "%s",
+                  target->currentScene.c_str());
+    std::snprintf(output->first_error, sizeof(output->first_error), "%s",
+                  target->firstError.c_str());
+  }
+  return 1;
 }

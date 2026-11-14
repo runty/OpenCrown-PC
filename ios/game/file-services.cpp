@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 #include <strings.h>
 #include <sys/stat.h>
@@ -64,7 +65,7 @@ struct Descriptor {
 };
 struct File {
   Descriptor descriptor;
-  bool writable = false, append = false;
+  bool writable = false, append = false, savedata = false;
   std::mutex lock;
 };
 struct Root {
@@ -74,12 +75,13 @@ struct Root {
 struct Path {
   Descriptor parent;
   std::string leaf;
-  bool writable = false;
+  bool writable = false, savedata = false;
   int failure = kNoEntry;
 };
 DcpFileHooks hooks;
 Root game, save, temporary;
 std::mutex table_lock;
+std::shared_mutex service_gate;
 std::map<int32_t, std::shared_ptr<File>> files;
 int32_t next_fd = 3;
 
@@ -143,6 +145,7 @@ Path resolve(const std::string &guest) {
                : mount == "/savedata0" ? &save
                : mount == "/temp0"     ? &temporary
                                        : nullptr;
+  result.savedata = root == &save;
   if (!root || guest.empty() || guest[0] != '/' ||
       guest.find('\\') != std::string::npos ||
       guest.find(':') != std::string::npos)
@@ -249,7 +252,8 @@ uint64_t open(const uint64_t *a) {
   auto value = std::make_shared<File>();
   value->descriptor = Descriptor(native);
   value->append = (flags & 8) != 0;
-  value->writable = path.writable;
+  value->writable = writing && path.writable;
+  value->savedata = path.savedata;
   std::lock_guard<std::mutex> lock(table_lock);
   if (next_fd == INT32_MAX)
     return error(24);
@@ -342,6 +346,7 @@ void dcp_file_init(DcpFileHooks callbacks) {
   hooks = std::move(callbacks);
 }
 bool dcp_file_service(const char *name, const uint64_t a[6], uint64_t *result) {
+  std::shared_lock<std::shared_mutex> admission(service_gate);
   if (!name || !a || !result)
     return false;
   bool posix = false;
@@ -463,4 +468,27 @@ bool dcp_file_service(const char *name, const uint64_t a[6], uint64_t *result) {
     *result = UINT64_MAX;
   }
   return true;
+}
+
+size_t dcp_file_savedata_writers() {
+  std::lock_guard<std::mutex> lock(table_lock);
+  size_t count = 0;
+  for (const auto &entry : files)
+    if (entry.second->savedata && entry.second->writable)
+      ++count;
+  return count;
+}
+
+bool dcp_file_with_savedata_quiescent(bool (*operation)(void *),
+                                      void *context) {
+  if (!operation)
+    return false;
+  std::unique_lock<std::shared_mutex> exclusive(service_gate);
+  if (dcp_file_savedata_writers() != 0)
+    return false;
+  try {
+    return operation(context);
+  } catch (...) {
+    return false;
+  }
 }

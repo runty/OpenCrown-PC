@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -14,10 +15,12 @@
 namespace {
 using Clock = std::chrono::steady_clock;
 DcpOfflineHooks hooks;
-std::mutex state_lock, pace_lock;
+std::mutex state_lock, pace_lock, save_lock;
 std::string mounted;
-bool mount_writable = false, audio_initialized = false;
+bool mount_writable = false, mount_transition = false,
+     audio_initialized = false;
 uint64_t mount_blocks = 0x8000;
+uint8_t mount_metadata_failures = 0;
 std::array<bool, 4> pads{};
 struct Port {
   bool used = false, is_float = false;
@@ -139,8 +142,27 @@ bool matches(const std::string &pattern, const std::string &name) {
 bool active(uint64_t address) {
   return !mounted.empty() && string(address) == "/savedata0";
 }
+bool transaction(std::unique_lock<std::mutex> &lock, bool begin) {
+  if (!hooks.savedata_transaction)
+    return true;
+  mount_transition = true;
+  lock.unlock();
+  bool okay = false;
+  try {
+    okay = hooks.savedata_transaction(hooks.context, begin);
+  } catch (...) {
+    okay = false;
+  }
+  lock.lock();
+  // Caller retains the transition until admission/commit or failure restoration
+  // is complete under this same state_lock acquisition.
+  return okay;
+}
 uint32_t save_service(const char *name, const uint64_t *a) {
-  std::lock_guard<std::mutex> lock(state_lock);
+  // Retain save-operation ordering while releasing state_lock for host
+  // snapshots.
+  std::lock_guard<std::mutex> operation(save_lock);
+  std::unique_lock<std::mutex> lock(state_lock);
   if (named(name, "sceSaveDataInitialize3"))
     return 0;
   if (named(name, "sceSaveDataTerminate")) {
@@ -168,11 +190,20 @@ uint32_t save_service(const char *name, const uint64_t *a) {
       return sd_exists;
     if (!mounted.empty())
       return sd_full;
-    if (!exists && !mkdirs(directory(dir) / "sce_sys"))
+    bool writable = (mode & 1) == 0 && (mode & (2 | 4 | 0x20));
+    if (writable && !transaction(lock, true)) {
+      mount_transition = false;
       return sd_internal;
+    }
+    if (!exists && !mkdirs(directory(dir) / "sce_sys")) {
+      mount_transition = false;
+      return sd_internal;
+    }
     mounted = dir;
-    mount_writable = (mode & 1) == 0 && (mode & (2 | 4 | 0x20));
+    mount_writable = writable;
     mount_blocks = std::max(blocks, default_blocks);
+    mount_metadata_failures = 0;
+    mount_transition = false;
     auto *out = static_cast<uint8_t *>(pointer(a[1], 0x20, true));
     std::memset(out, 0, 0x20);
     std::memcpy(out, "/savedata0", 11);
@@ -182,8 +213,17 @@ uint32_t save_service(const char *name, const uint64_t *a) {
   if (named(name, "sceSaveDataUmount")) {
     if (!active(a[0]))
       return sd_unmounted;
+    if (mount_writable && mount_metadata_failures)
+      return sd_internal;
+    if (mount_writable && !transaction(lock, false)) {
+      // Restore the existing mount for a guest retry; publish this together
+      // with the transition ending, after the host gate/callback has returned.
+      mount_transition = false;
+      return sd_internal;
+    }
     mounted.clear();
     mount_writable = false;
+    mount_transition = false;
     return 0;
   }
   if (named(name, "sceSaveDataDelete")) {
@@ -274,10 +314,14 @@ uint32_t save_service(const char *name, const uint64_t *a) {
       return sd_parameter;
     if (a[1] == 0)
       std::memcpy(data.data(), in, size);
-    return mkdirs(host / "sce_sys") && write_file(host / "sce_sys/param.bin",
-                                                  data.data(), data.size())
-               ? 0
-               : sd_internal;
+    bool okay =
+        mkdirs(host / "sce_sys") &&
+        write_file(host / "sce_sys/param.bin", data.data(), data.size());
+    if (okay)
+      mount_metadata_failures &= uint8_t(~1u);
+    else
+      mount_metadata_failures |= 1;
+    return okay ? 0 : sd_internal;
   }
   if (named(name, "sceSaveDataGetParam")) {
     std::array<uint8_t, param_size> data{};
@@ -303,10 +347,13 @@ uint32_t save_service(const char *name, const uint64_t *a) {
     void *p = pointer(buffer, size, false);
     if (!p)
       return sd_parameter;
-    return mkdirs(host / "sce_sys") &&
-                   write_file(host / "sce_sys/icon0.png", p, size)
-               ? 0
-               : sd_internal;
+    bool okay = mkdirs(host / "sce_sys") &&
+                write_file(host / "sce_sys/icon0.png", p, size);
+    if (okay)
+      mount_metadata_failures &= uint8_t(~2u);
+    else
+      mount_metadata_failures |= 2;
+    return okay ? 0 : sd_internal;
   }
   if (named(name, "sceSaveDataLoadIcon")) {
     if (!a[1])
@@ -326,7 +373,7 @@ uint32_t save_service(const char *name, const uint64_t *a) {
   return sd_parameter;
 }
 uint32_t pad_service(const char *name, const uint64_t *a) {
-  std::lock_guard<std::mutex> lock(state_lock);
+  std::unique_lock<std::mutex> lock(state_lock);
   if (named(name, "scePadInit"))
     return 0;
   if (named(name, "scePadOpen") || named(name, "scePadGetHandle")) {
@@ -343,43 +390,71 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
     pads[size_t(a[0] - 1)] = false;
     return 0;
   }
-  if (named(name, "scePadReadState")) {
+  if (named(name, "scePadReadState") ||
+      named(name, "scePadGetControllerInformation")) {
+    const unsigned slot = unsigned(a[0] - 1);
+    lock.unlock();
+    DcpPlatformPad pad{};
+    pad.connected = 1;
+    pad.lx = pad.ly = pad.rx = pad.ry = 128;
+    if (hooks.input_read) {
+      hooks.input_read(hooks.context, slot, &pad);
+      pad.touch_count = std::min<uint8_t>(pad.touch_count, 2);
+      if (!pad.connected) {
+        pad = {};
+        pad.lx = pad.ly = pad.rx = pad.ry = 128;
+      }
+    } else if (hooks.scripted_input && slot == 0) {
+      uint64_t frame =
+          hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
+      if (frame >= 300 && frame < 310)
+        pad.buttons = 8;
+      else if (frame >= 600 && frame <= 3488 && (frame - 600) % 180 < 8)
+        pad.buttons = 0x4000;
+    }
+    if (named(name, "scePadGetControllerInformation")) {
+      auto *out = static_cast<uint8_t *>(pointer(a[1], 0x1c, true));
+      if (!out)
+        return 0x80920003;
+      std::memset(out, 0, 0x1c);
+      float density = 44.86f;
+      uint16_t x = 1920, y = 943;
+      std::memcpy(out, &density, 4);
+      std::memcpy(out + 4, &x, 2);
+      std::memcpy(out + 6, &y, 2);
+      out[8] = out[9] = 0x0d;
+      out[0xb] = 1;
+      out[0xc] = bool(pad.connected);
+      return 0;
+    }
     auto *out = static_cast<uint8_t *>(pointer(a[1], 0x78, true));
     if (!out)
       return 0x80920003;
     std::memset(out, 0, 0x78);
-    out[4] = out[5] = out[6] = out[7] = 0x80;
+    std::memcpy(out, &pad.buttons, 4);
+    out[4] = pad.lx;
+    out[5] = pad.ly;
+    out[6] = pad.rx;
+    out[7] = pad.ry;
+    out[8] = pad.l2;
+    out[9] = pad.r2;
     float orientation = 1;
     std::memcpy(out + 0x18, &orientation, 4);
-    out[0x4c] = out[0x68] = 1;
+    out[0x34] = pad.touch_count;
+    for (unsigned i = 0; i < pad.touch_count; ++i) {
+      uint16_t x = std::min<uint16_t>(pad.tx[i], 1919);
+      uint16_t y = std::min<uint16_t>(pad.ty[i], 942);
+      std::memcpy(out + 0x3c + i * 8, &x, 2);
+      std::memcpy(out + 0x3e + i * 8, &y, 2);
+      out[0x40 + i * 8] = pad.tid[i] & 127;
+    }
+    out[0x4c] = bool(pad.connected);
+    out[0x68] = 1;
     uint64_t now =
         uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
                      Clock::now().time_since_epoch())
                      .count());
     std::memcpy(out + 0x50, &now, 8);
-    uint32_t buttons = 0;
-    uint64_t frame = hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
-    if (hooks.scripted_input && a[0] == 1) {
-      if (frame >= 300 && frame < 310)
-        buttons = 8;
-      else if (frame >= 600 && frame <= 3488 && (frame - 600) % 180 < 8)
-        buttons = 0x4000;
-    }
-    std::memcpy(out, &buttons, 4);
-    return 0;
-  }
-  if (named(name, "scePadGetControllerInformation")) {
-    auto *out = static_cast<uint8_t *>(pointer(a[1], 0x1c, true));
-    if (!out)
-      return 0x80920003;
-    std::memset(out, 0, 0x1c);
-    float density = 44.86f;
-    uint16_t x = 1920, y = 943;
-    std::memcpy(out, &density, 4);
-    std::memcpy(out + 4, &x, 2);
-    std::memcpy(out + 6, &y, 2);
-    out[8] = out[9] = 0x0d;
-    out[0xb] = out[0xc] = 1;
     return 0;
   }
   if (named(name, "scePadSetVibration"))
@@ -388,8 +463,33 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
     return pointer(a[1], 3, false) ? 0 : 0x80920003;
   return 0;
 }
+// The null sink also provides a bounded fallback when a real sink is inactive.
+// pace_lock serializes audio operations, never the shared save/pad state lock.
+void pace_audio(uint32_t frames) {
+  if (!frames)
+    return;
+  auto now = Clock::now();
+  if (next_audio == Clock::time_point{} ||
+      now - next_audio > std::chrono::milliseconds(100))
+    next_audio = now;
+  next_audio += std::chrono::nanoseconds(uint64_t(frames) * 1000000000 / 48000);
+  while (Clock::now() < next_audio &&
+         !(hooks.stopping && hooks.stopping(hooks.context)))
+    std::this_thread::sleep_until(
+        std::min(next_audio, Clock::now() + std::chrono::milliseconds(10)));
+}
 uint32_t audio_service(const char *name, const uint64_t *a) {
+  constexpr uint32_t max_frames = 4096;
+  std::lock_guard<std::mutex> pace(pace_lock);
   uint32_t frames = 0;
+  struct Source {
+    Port port;
+    const uint8_t *bytes = nullptr;
+  };
+  std::array<Source, 8> sources{};
+  uint32_t count = 0;
+  bool start = false, stop = false;
+  uint32_t opened = 0;
   {
     std::lock_guard<std::mutex> lock(state_lock);
     if (named(name, "sceAudioOutInit")) {
@@ -400,60 +500,141 @@ uint32_t audio_service(const char *name, const uint64_t *a) {
       if (!audio_initialized)
         return 0x80260001;
       uint32_t format = uint32_t(a[5]) & 0xff;
-      if (format > 7 || !uint32_t(a[3]) || uint32_t(a[4]) != 48000)
+      if (format > 7 || !a[3] || a[3] > max_frames || a[4] != 48000)
         return 0x80260002;
       const unsigned channels[] = {1, 2, 8, 1, 2, 8, 8, 8};
+      start = std::none_of(ports.begin(), ports.end(),
+                           [](const Port &p) { return p.used; });
       for (size_t i = 0; i < ports.size(); ++i)
         if (!ports[i].used) {
           ports[i] = {true, format >= 3 && format != 6, uint32_t(a[3]),
                       channels[format]};
-          return uint32_t(i + 1);
+          opened = uint32_t(i + 1);
+          break;
         }
-      return 0x8026000a;
-    }
-    if (named(name, "sceAudioOutClose")) {
+      if (!opened)
+        return 0x8026000a;
+    } else if (named(name, "sceAudioOutClose")) {
       if (a[0] < 1 || a[0] > 8 || !ports[size_t(a[0] - 1)].used)
         return 0x80260004;
       ports[size_t(a[0] - 1)] = {};
-      return 0;
-    }
-    const bool batch = named(name, "sceAudioOutOutputs");
-    if (!batch && !a[1])
-      return 0;
-    uint32_t count = batch ? uint32_t(a[1]) : 1;
-    if (!count || count > 8 || (batch && !a[0]))
-      return 0x80260002;
-    for (uint32_t i = 0; i < count; ++i) {
-      uint64_t handle = batch ? uint32_t(load<int32_t>(a[0] + uint64_t(i) * 16))
-                              : a[0],
-               buffer =
-                   batch ? load<uint64_t>(a[0] + uint64_t(i) * 16 + 8) : a[1];
-      if (handle < 1 || handle > 8 || !ports[size_t(handle - 1)].used)
-        return 0x80260004;
-      auto &port = ports[size_t(handle - 1)];
-      frames = port.frames;
-      if (buffer && !pointer(buffer,
-                             size_t(port.frames) * port.channels *
-                                 (port.is_float ? 4 : 2),
-                             false))
+      stop = std::none_of(ports.begin(), ports.end(),
+                          [](const Port &p) { return p.used; });
+    } else {
+      const bool batch = named(name, "sceAudioOutOutputs");
+      // The guest uses single null Output as a flush before Close.
+      if (!batch && !a[1])
+        return 0;
+      if (batch && (!a[0] || !a[1] || a[1] > 8))
         return 0x80260002;
+      count = batch ? uint32_t(a[1]) : 1;
+      const auto *table = batch ? static_cast<const uint8_t *>(
+                                      pointer(a[0], size_t(count) * 16, false))
+                                : nullptr;
+      if (batch && !table)
+        return 0x80260002;
+      std::array<bool, 8> seen{};
+      for (uint32_t i = 0; i < count; ++i) {
+        uint64_t handle = a[0], buffer = a[1];
+        if (batch) {
+          int32_t guest_handle;
+          std::memcpy(&guest_handle, table + i * 16, 4);
+          handle = uint32_t(guest_handle);
+          std::memcpy(&buffer, table + i * 16 + 8, 8);
+        }
+        if (handle < 1 || handle > 8 || !ports[size_t(handle - 1)].used)
+          return 0x80260004;
+        if (seen[size_t(handle - 1)])
+          return 0x80260002;
+        seen[size_t(handle - 1)] = true;
+        const Port port = ports[size_t(handle - 1)];
+        // Mixing different frame counts would overrun a shorter input buffer.
+        if (i && frames != port.frames)
+          return 0x80260002;
+        frames = port.frames;
+        size_t bytes =
+            size_t(port.frames) * port.channels * (port.is_float ? 4 : 2);
+        const auto *data =
+            buffer ? static_cast<const uint8_t *>(pointer(buffer, bytes, false))
+                   : nullptr;
+        if (buffer && !data)
+          return 0x80260002;
+        sources[i] = {port, data};
+      }
     }
   }
-  std::lock_guard<std::mutex> pace(pace_lock);
-  auto now = Clock::now();
-  if (next_audio == Clock::time_point{} ||
-      now - next_audio > std::chrono::milliseconds(100))
-    next_audio = now;
-  next_audio += std::chrono::nanoseconds(uint64_t(frames) * 1000000000 / 48000);
-  while (Clock::now() < next_audio &&
-         !(hooks.stopping && hooks.stopping(hooks.context)))
-    std::this_thread::sleep_until(
-        std::min(next_audio, Clock::now() + std::chrono::milliseconds(10)));
+  // Host callbacks may take time or query another service: no state_lock here.
+  if (opened) {
+    if (start && hooks.audio_start)
+      hooks.audio_start(hooks.context);
+    return opened;
+  }
+  if (named(name, "sceAudioOutClose")) {
+    if (stop && hooks.audio_stop)
+      hooks.audio_stop(hooks.context);
+    return 0;
+  }
+  if (!hooks.audio_submit) {
+    pace_audio(frames);
+    return 0;
+  }
+  // Double accumulation keeps even adversarial finite float inputs from
+  // overflowing before the final clip. Guest buffers need not be aligned.
+  std::vector<double> mix(size_t(frames) * 2, 0);
+  for (uint32_t i = 0; i < count; ++i) {
+    const auto &source = sources[i];
+    if (!source.bytes)
+      continue;
+    auto sample = [&](size_t at) -> double {
+      if (source.port.is_float) {
+        float value;
+        std::memcpy(&value, source.bytes + at * 4, 4);
+        return std::isfinite(value) ? value : 0;
+      }
+      int16_t value;
+      std::memcpy(&value, source.bytes + at * 2, 2);
+      return double(value) / 32768;
+    };
+    for (uint32_t f = 0; f < frames; ++f) {
+      size_t at = size_t(f) * source.port.channels;
+      double left = sample(at);
+      double right = source.port.channels >= 2 ? sample(at + 1) : left;
+      if (source.port.channels == 8) {
+        // Same policy as the Mac sink: FL FR C LFE SL SR BL BR; omit LFE.
+        left +=
+            .707 * sample(at + 2) + .707 * sample(at + 4) + .5 * sample(at + 6);
+        right +=
+            .707 * sample(at + 2) + .707 * sample(at + 5) + .5 * sample(at + 7);
+      }
+      mix[size_t(f) * 2] += left;
+      mix[size_t(f) * 2 + 1] += right;
+    }
+  }
+  std::vector<float> stereo(mix.size());
+  for (size_t i = 0; i < mix.size(); ++i)
+    stereo[i] = float(std::clamp(mix[i], -1.0, 1.0));
+  size_t accepted =
+      hooks.audio_submit(hooks.context, stereo.data(), frames, 100);
+  accepted = std::min<size_t>(accepted, frames);
+  if (accepted < frames) {
+    // A paused sink can return immediately. Drop stale sound and pace the
+    // remainder once instead of retrying in a tight loop.
+    next_audio = Clock::now();
+    pace_audio(frames - uint32_t(accepted));
+  } else {
+    next_audio = {};
+  }
   return 0;
 }
+
 } // namespace
 
 void dcp_offline_init(DcpOfflineHooks callbacks) {
+  std::lock_guard<std::mutex> pace(pace_lock);
+  if (hooks.audio_stop && std::any_of(ports.begin(), ports.end(),
+                                      [](const Port &p) { return p.used; }))
+    hooks.audio_stop(hooks.context);
+  std::lock_guard<std::mutex> operation(save_lock);
   std::lock_guard<std::mutex> lock(state_lock);
   hooks = std::move(callbacks);
   if (hooks.save_root.empty())
@@ -461,7 +642,9 @@ void dcp_offline_init(DcpOfflineHooks callbacks) {
   std::filesystem::create_directories(hooks.save_root);
   mounted.clear();
   mount_writable = false;
+  mount_transition = false;
   mount_blocks = default_blocks;
+  mount_metadata_failures = 0;
   pads = {};
   ports = {};
   audio_initialized = false;
@@ -469,11 +652,11 @@ void dcp_offline_init(DcpOfflineHooks callbacks) {
 }
 bool dcp_offline_savedata_access(bool writing) {
   std::lock_guard<std::mutex> lock(state_lock);
-  return !mounted.empty() && (!writing || mount_writable);
+  return !mount_transition && !mounted.empty() && (!writing || mount_writable);
 }
 std::string dcp_offline_savedata_directory() {
   std::lock_guard<std::mutex> lock(state_lock);
-  return mounted;
+  return mount_transition ? std::string{} : mounted;
 }
 bool dcp_offline_service(const char *name, const uint64_t a[6],
                          uint64_t *result) {

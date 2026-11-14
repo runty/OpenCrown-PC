@@ -1,5 +1,95 @@
 # Device port progress
 
+## 2026-11-13 — Real modules and mobile host integration in progress
+
+The active goal is to complete the iOS port as far as possible while the physical
+devices are away. The last hardware-installed build remains the earlier CPU
+probe. All new verification in this section uses the arm64 Mac or iOS Simulator;
+it does not establish playable performance or acceptance on either physical device.
+
+The real-module AOT runtime executes the supported libc and eboot, applies
+relocations, handles independent guest stacks/TLS and starts the game's workers.
+Real libc startup returns zero and its actual strlen passes 64 cases against a
+native x86 reference. Execution is progressing through game initialization with
+explicit missing-target diagnostics. TITLE/INN boot and live game frames have
+not yet passed. The two complete CPK archives were previously copied into each
+device's probe sandbox, but the new game runtime has not been verified there.
+
+The expanded CPU corpus now passes 1,840 checks across 82 routines and two workers
+on the arm64 host; 81 routines use a native Rosetta x86 oracle. This includes
+concurrent 32/64-bit CAS, exact/bounded 80-bit memory bridges, string comparisons/masks, packed saturation, lane insertion,
+blending, shuffles, reciprocal/rsqrt corner cases and MXCSR rounding-mode
+round-trips. An independent 35-form full-YMM review passes 6,720 checks, including
+legacy upper-lane preservation, VEX clearing, memory operands and 256-bit lane
+locality. It found and fixed legacy BLENDPD selector names and the RCPPS signed-zero
+boundary at magnitude 2^126. Complete x86 and floating-point-environment coverage
+is still outside these tests.
+
+The packed-shift/VPBLENDVB differential suite passes 46,720 full-YMM checks
+across 73 routines and 80 vectors. VEXTRACTF128 fixtures cover register/memory
+forms, immediate lane selection and upper-register clearing. Software x87
+uses SoftFloat 3e and an LLVM pass that replaces executable FP80 values with
+exact i80 storage. Direct and lowered-IR suites each pass 153,228 native-oracle
+checks; the real libc FSCALE routine passes 19,800 vectors. Unknown extended
+operations fail explicitly. The eight Remill patches and full-corpus refresh
+now cover 2,246 initial real traces; discovery continues beyond that count.
+See [FP80 boundaries and evidence](cpu/fp80/README.md).
+
+`game/build.py` produces Mac, iPhoneOS and simulator libraries. `advance.py`
+discovers executed targets in batches, stops explicitly on other errors and
+supports graceful stopping. Generated traces now carry input/slice/backend/IR
+SHA provenance. A full relift replaced the earlier unknown-provenance host
+corpus; later generated entries use the same checked backend. All private images,
+IR, code archives and game assets remain in the external build tree.
+
+The new UIKit game launcher links the CPU runtime, in-process SDL Metal replay,
+touch/GameController input, AVAudioEngine output, Files import and local save
+transactions. Its iPhoneOS Release build and signature verify; the simulator
+build links and launches. This is a development app, with a separate bundle ID
+`com.wadscorp.opencrown.mobile`. No new physical install is claimed. The earlier
+probe remains available through `build-probe.sh`.
+
+Rendering reuses the existing draw-capture and Backend interfaces with signed
+trace-entry observers instead of executable x86 patches. Guest memory snapshots
+are synchronized before hashing/detiling. Renderer fixtures pass 32,768 RGBA
+checks, 36,864 saved-image channel checks and 1,504 native/CPU-decoded BC checks.
+The concurrent snapshot fixture passes 200 frames under ThreadSanitizer. Mac GPU
+and texwatch tests pass after the guarded shared-source changes. These are
+synthetic rendering results, not live game scenes.
+
+Simulator integration exposed two distinct startup problems. Its reported GPU
+families are Apple1/Common1, so a narrowly marked simulator-only SDL patch permits
+the renderer's basic draw subset; physical iOS keeps SDL's original hardware
+check. CMake's SDK selection also misidentified normalized iPhoneSimulator paths
+and embedded device shaders. Case-insensitive selection plus explicit AIR
+targets now pass all 24 Mac/device/simulator artifact checks. The assembled
+simulator app initializes Metal and presents while the guest starts; no captured
+game frames have yet been observed. Presentation counts alone do not prove that
+the game has rendered.
+
+Host input/audio tests cover four pad slots, multitouch serialization, disconnect
+state, clipping/downmix and 400,000 concurrent ring-buffer frames. The sink requests
+48 kHz stereo and 256-frame I/O periods, and records observed periods/underruns.
+Actual device sound, touch ergonomics, physical controller reconnect and audio
+interruption recovery remain unverified. Real-runtime lifecycle tests pass 27
+sessions, including parked stop, repeated pause/resume, concurrent-entry rejection,
+pre-start cancellation and ordered renderer teardown; maximum measured stop
+latency is 3.85 ms in that run.
+
+Storage passes 137 core/retention checks and 108 integrated savedata/file-service
+checks across four simulated relaunches. Writable mounts take a validated
+pre-write checkpoint; completed unmounts checkpoint the new tree. Interrupted
+writes roll back on relaunch while retaining the partial tree. An exclusive file
+I/O gate prevents snapshots racing open/write/close. The latest ten validated
+completed checkpoints are retained; interrupted copies remain. Import validates
+the exact executables, archive sizes and TOC bounds before atomic promotion.
+These results do not establish physical-device Files-provider behavior or cloud
+handoff. Live iCloud saves remain untouched.
+
+See [bootstrap](BOOTSTRAP.md), [real-module harness](game/README.md),
+[renderer](render/README.md), [platform adapters](platform/README.md),
+[storage](storage/README.md), and the [acceptance plan](../docs/ios-ipados-port-plan.md).
+
 ## 2026-11-13 — Translated routines execute on both devices
 
 Implementation 31ffb1e adds the checked guest runtime and eight Remill AOT

@@ -142,9 +142,11 @@ public:
         pvs_ = shader(kPresentVertSpv, sizeof kPresentVertSpv, SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
         pfs_ = shader(kPresentFragSpv, sizeof kPresentFragSpv, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
         if (!vs_ || !fs_ || !pvs_ || !pfs_) return fail(err, std::string("shader: ") + SDL_GetError());
+#ifndef DCP_AOT
         for (TexFormat f : {TexFormat::RGBA8, TexFormat::BC1, TexFormat::BC2, TexFormat::BC3, TexFormat::BC7})
             if (!SDL_GPUTextureSupportsFormat(dev_, sdl_format(f), SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_SAMPLER))
                 return fail(err, "texture format " + std::to_string(int(sdl_format(f))) + " not supported");
+#endif
         if (!SDL_GPUTextureSupportsFormat(dev_, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, SDL_GPU_TEXTURETYPE_2D,
                                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER))
             return fail(err, "RGBA8 render targets not supported");

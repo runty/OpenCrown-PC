@@ -1,5 +1,5 @@
 // Headless CPU-side GNM behavior from linux-port/src/hle/gnm.cpp.
-// Capture hooks remain inactive here. PM4 labels still release guest CPU waits.
+// Optional capture callbacks preserve real draw/submission ordering.
 #include "gnm-services.h"
 #include <atomic>
 #include <cstring>
@@ -7,6 +7,7 @@
 
 namespace {
 DcpGnmMemory memory;
+DcpGnmCapture capture;
 std::atomic<uint64_t> submits{0}, flips{0}, labels{0}, rejected{0};
 
 bool read(uint64_t address, void *destination, size_t bytes) {
@@ -59,6 +60,12 @@ void run_labels(uint64_t base, uint64_t count) {
     if (length > count - index)
       return;
     const uint32_t opcode = (header >> 8) & 0xff;
+    if (type == 3 && opcode == 0x10 && length >= 4 && capture.marker) {
+      uint32_t payload[3];
+      if (!read(base + (index + 1) * 4, payload, sizeof(payload)))
+        return;
+      capture.marker(capture.context, payload, 3);
+    }
     if (type == 3 &&
         ((opcode == 0x47 && length >= 6) || (opcode == 0x49 && length >= 7))) {
       uint32_t packet[7]{};
@@ -127,14 +134,15 @@ bool named(const char *name, const char *expected) {
 }
 } // namespace
 
-void dcp_gnm_init(DcpGnmMemory callbacks) {
+void dcp_gnm_init(DcpGnmMemory callbacks, DcpGnmCapture observers) {
   memory = callbacks;
+  capture = observers;
   submits = flips = labels = rejected = 0;
 }
 DcpGnmStats dcp_gnm_stats() {
   return {submits.load(), flips.load(), labels.load(), rejected.load()};
 }
-bool dcp_gnm_service(const char *name, const uint64_t args[6],
+bool dcp_gnm_service(const char *name, const uint64_t args[9],
                      uint64_t *result) {
   if (!name || !args || !result)
     return false;
@@ -148,6 +156,12 @@ bool dcp_gnm_service(const char *name, const uint64_t args[6],
   for (const char *packet : packet_calls) {
     if (named(name, packet)) {
       fill_nop(args[0], uint32_t(args[1]));
+      if (capture.draw && (named(name, "sceGnmDrawIndex") ||
+                           named(name, "sceGnmDrawIndexAuto")))
+        capture.draw(capture.context, args[0], uint32_t(args[1]),
+                     uint32_t(args[2]),
+                     named(name, "sceGnmDrawIndex") ? args[3] : 0,
+                     named(name, "sceGnmDrawIndex"));
       *result = 0;
       return true;
     }
@@ -162,8 +176,11 @@ bool dcp_gnm_service(const char *name, const uint64_t args[6],
     const unsigned offset = workload ? 1 : 0;
     run_submit(uint32_t(args[offset]), args[offset + 1], args[offset + 2]);
     if (named(name, "sceGnmSubmitAndFlipCommandBuffers") ||
-        named(name, "sceGnmSubmitAndFlipCommandBuffersForWorkload"))
+        named(name, "sceGnmSubmitAndFlipCommandBuffersForWorkload")) {
       ++flips;
+      if (capture.flip)
+        capture.flip(capture.context, uint32_t(args[offset + 6]));
+    }
     *result = 0;
     return true;
   }

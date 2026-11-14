@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $# -ne 3 ]]; then
+    echo 'Usage: ios/build-app.sh EXTERNAL_APP_OUTPUT DEVELOPMENT_TEAM REAL_GAME_OUTPUT' >&2
+    exit 2
+fi
+source_root=$(cd "$(dirname "$0")/.." && pwd)
+output=$1
+team=$2
+game_output=$3
+build_root=$(cd "$game_output/.." && pwd)
+sdl_source=${DCP_SDL_SOURCE:-$build_root/macos-rendered/_deps/sdl3-src}
+platform=${DCP_BUILD_PLATFORM:-ios}
+case "$platform" in
+    ios) sdk=iphoneos; library_platform=ios; platform_library=iphoneos; destination='generic/platform=iOS' ;;
+    simulator) sdk=iphonesimulator; library_platform=simulator; platform_library=iphonesimulator; destination='generic/platform=iOS Simulator' ;;
+    *) echo 'DCP_BUILD_PLATFORM must be ios or simulator' >&2; exit 2 ;;
+esac
+python3 - "$output" <<'PY'
+from pathlib import Path
+import sys
+path=Path(sys.argv[1]).resolve()
+if len(path.parts)<3 or path.parts[1]!='Volumes' or not Path('/Volumes',path.parts[2]).is_mount():
+    raise SystemExit('App output must be on a mounted external disk')
+PY
+mkdir -p "$output/Source/ThirdPartyNotices"
+cp "$source_root/ios/app.mm" "$output/Source/main.mm"
+cp "$game_output/$library_platform/libcpu-fixtures.a" "$output/Source/"
+cp "$game_output/$library_platform/libfreetype.a" "$output/Source/"
+cp "$game_output/$library_platform/libdcp-fp80.a" "$output/Source/"
+renderer="$build_root/ios-render/$platform_library"
+if [[ $platform == simulator ]]; then renderer="$build_root/ios-render/simulator"; fi
+cp "$renderer/libopencrown-mobile-replay.a" "$renderer/libopencrown-mobile-metal.a" "$renderer/sdl/libSDL3.a" "$output/Source/"
+cp "$build_root/platform-probe/$platform_library/libdcp-platform.a" "$output/Source/"
+cp "$build_root/storage-probe/$library_platform/libstorage.a" "$output/Source/"
+for notices in "$game_output/ThirdPartyNotices" "$renderer/ThirdPartyNotices"; do
+    if [[ -d $notices ]]; then cp "$notices/"* "$output/Source/ThirdPartyNotices/"; fi
+done
+app_icon_name=""
+if [[ -n ${DCP_APP_ICON:-} ]]; then
+    icon_options=()
+    if [[ ${DCP_APP_ICON_ALLOW_UPSCALE:-0} == 1 ]]; then icon_options+=(--allow-upscale); fi
+    python3 "$source_root/ios/make-app-icon.py" "$DCP_APP_ICON" "$output/Source/Assets.xcassets" "${icon_options[@]}"
+    app_icon_name=AppIcon
+fi
+revision=$(git -C "$source_root" rev-parse HEAD)
+if [[ -n $(git -C "$source_root" status --porcelain) ]]; then revision="$revision-dirty"; fi
+cat > "$output/project.yml" <<YAML
+name: OpenCrownMobile
+options:
+  deploymentTarget:
+    iOS: '18.0'
+targets:
+  OpenCrown:
+    type: application
+    platform: iOS
+    sources:
+      - path: Source
+        excludes: ['*.a']
+    dependencies:
+      - framework: Source/libcpu-fixtures.a
+        embed: false
+      - framework: Source/libopencrown-mobile-replay.a
+        embed: false
+      - framework: Source/libopencrown-mobile-metal.a
+        embed: false
+      - framework: Source/libSDL3.a
+        embed: false
+      - framework: Source/libfreetype.a
+        embed: false
+      - framework: Source/libdcp-fp80.a
+        embed: false
+      - framework: Source/libdcp-platform.a
+        embed: false
+      - framework: Source/libstorage.a
+        embed: false
+      - sdk: UIKit.framework
+      - sdk: Metal.framework
+      - sdk: QuartzCore.framework
+      - sdk: GameController.framework
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: AudioToolbox.framework
+      - sdk: CoreAudio.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework
+      - sdk: CoreBluetooth.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreMotion.framework
+      - sdk: OpenGLES.framework
+      - sdk: UniformTypeIdentifiers.framework
+      - sdk: CoreHaptics.framework
+        weak: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.opencrown.mobile
+        DEVELOPMENT_TEAM: '$team'
+        CODE_SIGN_STYLE: Automatic
+        ARCHS: arm64
+        CLANG_CXX_LANGUAGE_STANDARD: c++20
+        CLANG_ENABLE_OBJC_ARC: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: "$app_icon_name"
+        TARGETED_DEVICE_FAMILY: '1,2'
+        HEADER_SEARCH_PATHS: '"$source_root/ios" "$source_root/linux-port/src" "$sdl_source/include"'
+        LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: '0.2'
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: OpenCrown
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
+        DCPBuildID: '$revision'
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+YAML
+xcodegen generate --spec "$output/project.yml" --project "$output"
+options=()
+if [[ $platform == simulator ]]; then options+=(CODE_SIGNING_ALLOWED=NO)
+else options+=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration); fi
+xcodebuild -project "$output/OpenCrownMobile.xcodeproj" -scheme OpenCrown -configuration Release -destination "$destination" -derivedDataPath "$output/DerivedData" "${options[@]}" build
+if [[ $platform == ios ]]; then codesign --verify --deep --strict "$output/DerivedData/Build/Products/Release-$sdk/OpenCrown.app"; fi

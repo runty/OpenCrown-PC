@@ -17,5 +17,12 @@ struct DcpFileHooks {
 // roots.
 void dcp_file_init(DcpFileHooks hooks);
 void dcp_file_reset();
+// Diagnostic count only; use the quiescent callback for snapshot boundaries.
+size_t dcp_file_savedata_writers();
+// Acquires exclusive admission against every in-flight file service call, then
+// rejects open writable savedata descriptors before running operation. The
+// callback must not reenter file/offline services. Init/reset require idle
+// users.
+bool dcp_file_with_savedata_quiescent(bool (*operation)(void *), void *context);
 bool dcp_file_service(const char *name, const uint64_t arguments[6],
                       uint64_t *result);

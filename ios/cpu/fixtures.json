@@ -167,5 +167,439 @@
     "name": "pack_unsigned",
     "flags": false,
     "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvpackusdw xmm0,xmm0,xmm1\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_16",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,16\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_32",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,32\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_48",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,48\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_64",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,64\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_128",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,128\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_192",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,192\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_255",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,255\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_85",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,85\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vinsertps_170",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvinsertps xmm0,xmm0,xmm1,170\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendps_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendps xmm0,xmm0,xmm1,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendps_4",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendps xmm0,xmm0,xmm1,4\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendps_5",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendps xmm0,xmm0,xmm1,5\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendps_10",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendps xmm0,xmm0,xmm1,10\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendps_15",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendps xmm0,xmm0,xmm1,15\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "rcpps",
+    "flags": false,
+    "approximate": true,
+    "vectors": [
+      [
+        0,
+        0
+      ],
+      [
+        9223372036854775808,
+        0
+      ],
+      [
+        4575657222482165760,
+        0
+      ],
+      [
+        13799029261492813824,
+        0
+      ],
+      [
+        4632251126050892459,
+        0
+      ],
+      [
+        9187343244122390528,
+        0
+      ],
+      [
+        9205357640484388865,
+        0
+      ],
+      [
+        6442450945,
+        0
+      ],
+      [
+        9187343239827423231,
+        0
+      ],
+      [
+        36028799174836224,
+        0
+      ],
+      [
+        9115285650067685376,
+        0
+      ],
+      [
+        9115285645772718079,
+        0
+      ]
+    ],
+    "assembly": "vmovq xmm0,rdi\nrcpps xmm0,xmm0\nvmovq rax,xmm0\nvzeroupper\nret"
+  },
+  {
+    "name": "vrcpps",
+    "flags": false,
+    "approximate": true,
+    "vectors": [
+      [
+        0,
+        0
+      ],
+      [
+        9223372036854775808,
+        0
+      ],
+      [
+        4575657222482165760,
+        0
+      ],
+      [
+        13799029261492813824,
+        0
+      ],
+      [
+        4632251126050892459,
+        0
+      ],
+      [
+        9187343244122390528,
+        0
+      ],
+      [
+        9205357640484388865,
+        0
+      ],
+      [
+        6442450945,
+        0
+      ],
+      [
+        9187343239827423231,
+        0
+      ],
+      [
+        36028799174836224,
+        0
+      ],
+      [
+        9115285650067685376,
+        0
+      ],
+      [
+        9115285645772718079,
+        0
+      ]
+    ],
+    "assembly": "vmovq xmm0,rdi\nvrcpps xmm0,xmm0\nvmovq rax,xmm0\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilps_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilps xmm0,xmm0,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilps_85",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilps xmm0,xmm0,85\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilps_170",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilps xmm0,xmm0,170\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilps_255",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilps xmm0,xmm0,255\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilps_27",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilps xmm0,xmm0,27\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_255",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,255\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_85",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,85\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_170",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,170\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_27",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,27\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_17",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,17\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vshufps_187",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvshufps xmm0,xmm0,xmm1,187\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilpd_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilpd xmm0,xmm0,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilpd_1",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilpd xmm0,xmm0,1\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilpd_2",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilpd xmm0,xmm0,2\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vpermilpd_3",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpermilpd xmm0,xmm0,3\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendpd_0",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendpd xmm0,xmm0,xmm1,0\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendpd_1",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendpd xmm0,xmm0,xmm1,1\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendpd_2",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendpd xmm0,xmm0,xmm1,2\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vblendpd_3",
+    "flags": false,
+    "assembly": "vmovq xmm2,rdi\nvmovq xmm3,rsi\nvpunpcklqdq xmm0,xmm2,xmm3\nvpunpcklqdq xmm1,xmm3,xmm2\nvblendpd xmm0,xmm0,xmm1,3\nvmovq rax,xmm0\nvpextrq rcx,xmm0,1\nrol rcx,17\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "rsqrtps",
+    "flags": false,
+    "approximate": true,
+    "vectors": [
+      [
+        0,
+        0
+      ],
+      [
+        9223372036854775808,
+        0
+      ],
+      [
+        4575657222482165760,
+        0
+      ],
+      [
+        13799029261492813824,
+        0
+      ],
+      [
+        4632251126050892459,
+        0
+      ],
+      [
+        9187343244122390528,
+        0
+      ],
+      [
+        9205357640484388865,
+        0
+      ],
+      [
+        6442450945,
+        0
+      ],
+      [
+        9187343239827423231,
+        0
+      ],
+      [
+        36028799174836224,
+        0
+      ]
+    ],
+    "assembly": "vmovq xmm0,rdi\nrsqrtps xmm0,xmm0\nvmovq rax,xmm0\nvzeroupper\nret"
+  },
+  {
+    "name": "vrsqrtps",
+    "flags": false,
+    "approximate": true,
+    "vectors": [
+      [
+        0,
+        0
+      ],
+      [
+        9223372036854775808,
+        0
+      ],
+      [
+        4575657222482165760,
+        0
+      ],
+      [
+        13799029261492813824,
+        0
+      ],
+      [
+        4632251126050892459,
+        0
+      ],
+      [
+        9187343244122390528,
+        0
+      ],
+      [
+        9205357640484388865,
+        0
+      ],
+      [
+        6442450945,
+        0
+      ],
+      [
+        9187343239827423231,
+        0
+      ],
+      [
+        36028799174836224,
+        0
+      ]
+    ],
+    "assembly": "vmovq xmm0,rdi\nvrsqrtps xmm0,xmm0\nvmovq rax,xmm0\nvzeroupper\nret"
+  },
+  {
+    "name": "rounding_mode",
+    "flags": false,
+    "assembly": "stmxcsr [rsp-16]\nmov eax,[rsp-16]\nand eax,0xffff9fff\nmov ecx,edi\nand ecx,3\nshl ecx,13\nor eax,ecx\nmov [rsp-12],eax\nldmxcsr [rsp-12]\nstmxcsr [rsp-8]\nmov eax,[rsp-8]\nand eax,0x6000\nldmxcsr [rsp-16]\nret"
+  },
+  {
+    "name": "vextract_reg_0",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nvpcmpeqd ymm2,ymm2,ymm2\nvextractf128 xmm2,ymm0,0\nvmovq rax,xmm2\nvpextrq rcx,xmm2,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-64],ymm2\nmov rcx,[rsp-48]\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_mem_0",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nmov [rsp-72],rdi\nmov [rsp-48],rsi\nvextractf128 xmmword ptr [rsp-64],ymm0,0\nmov rax,[rsp-64]\nmov rcx,[rsp-56]\nrol rcx,17\nxor rax,rcx\nxor rax,[rsp-72]\nmov rcx,[rsp-48]\nrol rcx,29\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_reg_1",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nvpcmpeqd ymm2,ymm2,ymm2\nvextractf128 xmm2,ymm0,1\nvmovq rax,xmm2\nvpextrq rcx,xmm2,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-64],ymm2\nmov rcx,[rsp-48]\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_mem_1",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nmov [rsp-72],rdi\nmov [rsp-48],rsi\nvextractf128 xmmword ptr [rsp-64],ymm0,1\nmov rax,[rsp-64]\nmov rcx,[rsp-56]\nrol rcx,17\nxor rax,rcx\nxor rax,[rsp-72]\nmov rcx,[rsp-48]\nrol rcx,29\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_reg_254",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nvpcmpeqd ymm2,ymm2,ymm2\nvextractf128 xmm2,ymm0,254\nvmovq rax,xmm2\nvpextrq rcx,xmm2,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-64],ymm2\nmov rcx,[rsp-48]\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_mem_254",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nmov [rsp-72],rdi\nmov [rsp-48],rsi\nvextractf128 xmmword ptr [rsp-64],ymm0,254\nmov rax,[rsp-64]\nmov rcx,[rsp-56]\nrol rcx,17\nxor rax,rcx\nxor rax,[rsp-72]\nmov rcx,[rsp-48]\nrol rcx,29\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_reg_255",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nvpcmpeqd ymm2,ymm2,ymm2\nvextractf128 xmm2,ymm0,255\nvmovq rax,xmm2\nvpextrq rcx,xmm2,1\nrol rcx,17\nxor rax,rcx\nvmovdqu ymmword ptr [rsp-64],ymm2\nmov rcx,[rsp-48]\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "vextract_mem_255",
+    "flags": false,
+    "assembly": "vmovq xmm0,rdi\nvmovq xmm1,rsi\nvpunpcklqdq xmm0,xmm0,xmm1\nvpunpcklqdq xmm1,xmm1,xmm0\nvinsertf128 ymm0,ymm0,xmm1,1\nmov [rsp-72],rdi\nmov [rsp-48],rsi\nvextractf128 xmmword ptr [rsp-64],ymm0,255\nmov rax,[rsp-64]\nmov rcx,[rsp-56]\nrol rcx,17\nxor rax,rcx\nxor rax,[rsp-72]\nmov rcx,[rsp-48]\nrol rcx,29\nxor rax,rcx\nvzeroupper\nret"
+  },
+  {
+    "name": "atomic64",
+    "flags": false,
+    "memory": true,
+    "assembly": "mov rax,[rdi]\nretry: lea rcx,[rax+1]\nlock cmpxchg qword ptr [rdi],rcx\njne retry\nmov rax,rcx\nmov [rdi+8],rax\nret"
   }
 ]

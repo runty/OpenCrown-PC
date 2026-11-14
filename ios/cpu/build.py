@@ -139,7 +139,7 @@ code = (
 for fixture in fixtures:
     if fixture.get("tls"):
         continue
-    for a, b in vectors:
+    for a, b in fixture.get("vectors", vectors):
         arg_a = "(uint64_t)memory" if fixture.get("memory") else f"{a}ULL"
         arg_b = (
             "(uint64_t)&native_indirect+16" if fixture.get("indirect") else f"{b}ULL"
@@ -188,7 +188,7 @@ for fixture in fixtures:
         re.M,
     )
     entries.extend((int(s, 16), "sub_" + s) for s in symbols)
-    for a, b in vectors:
+    for a, b in fixture.get("vectors", vectors):
         value, flags = (a + b) % 2**64, 0
         if not fixture.get("tls"):
             name, value, flags = next(results).split()
@@ -197,6 +197,7 @@ for fixture in fixtures:
             fixture.get(k, False) for k in ("memory", "indirect", "tls", "flags")
         ]
         booleans.append(fixture["name"] == "indirect")
+        booleans.append(fixture.get("approximate", False))
         cases.append(
             '{"'
             + fixture["name"]
@@ -239,7 +240,7 @@ header += (
     + "};\n"
 )
 header += (
-    "struct Case { const char *name; uint64_t pc,a,b,result,flags; bool memory,indirect,tls,checkFlags,calls; };\nstatic const Case cases[] = {"
+    "struct Case { const char *name; uint64_t pc,a,b,result,flags; bool memory,indirect,tls,checkFlags,calls,approximate; };\nstatic const Case cases[] = {"
     + ",".join(cases)
     + "};\n"
 )
@@ -247,6 +248,7 @@ header += (
 for platform, target, sdk in [
     ("mac", "arm64-apple-macos15", "macosx"),
     ("ios", "arm64-apple-ios18", "iphoneos"),
+    ("simulator", "arm64-apple-ios18-simulator", "iphonesimulator"),
 ]:
     directory = output / platform
     directory.mkdir(exist_ok=True)

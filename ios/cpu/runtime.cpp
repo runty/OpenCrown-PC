@@ -1,4 +1,5 @@
 #include "runtime.h"
+#include <cfenv>
 #include <cstring>
 
 namespace {
@@ -159,6 +160,36 @@ SCALAR_MEMORY(32, uint32_t)
 SCALAR_MEMORY(f32, float)
 SCALAR_MEMORY(f64, double)
 #undef SCALAR_MEMORY
+// Remill passes the packed 10-byte representation by reference. Never route
+// this bridge through the arm64 native floating-point ABI.
+static_assert(sizeof(float80_t) == 10, "unexpected Remill extended storage");
+extern "C" Memory *__remill_read_memory_f80(Memory *memory, uint64_t address,
+                                           float80_t &value) {
+  checkCancelled(*memory);
+  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  try {
+    std::memcpy(value.data, guestPointer(*memory, address, 10), 10);
+  } catch (const std::runtime_error &error) {
+    memory->fault = error.what();
+    if (memory->stopOnFault)
+      throw;
+    std::memset(value.data, 0, 10);
+  }
+  return memory;
+}
+extern "C" Memory *__remill_write_memory_f80(Memory *memory, uint64_t address,
+                                            const float80_t &value) {
+  checkCancelled(*memory);
+  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  try {
+    std::memcpy(guestPointer(*memory, address, 10), value.data, 10);
+  } catch (const std::runtime_error &error) {
+    memory->fault = error.what();
+    if (memory->stopOnFault)
+      throw;
+  }
+  return memory;
+}
 extern "C" bool __remill_compare_ule(bool value) { return value; }
 extern "C" bool __remill_compare_slt(bool value) { return value; }
 extern "C" bool __remill_compare_sle(bool value) { return value; }
@@ -195,20 +226,33 @@ extern "C" Memory *__remill_atomic_end(Memory *memory) {
   if (!memory->atomicLock.owns_lock())
     throw std::runtime_error("unbalanced guest atomic region");
   memory->atomicLock.unlock();
+  checkCancelled(*memory);
+  return memory;
+}
+template <typename T>
+static Memory *compareExchange(Memory *memory, uint64_t address, T &expected,
+                               T desired) {
+  checkCancelled(*memory);
+  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  auto pointer = guestPointer(*memory, address, sizeof(T));
+  T current;
+  std::memcpy(&current, pointer, sizeof(T));
+  if (current == expected)
+    std::memcpy(pointer, &desired, sizeof(T));
+  expected = current;
   return memory;
 }
 extern "C" Memory *__remill_compare_exchange_memory_32(Memory *memory,
                                                        uint64_t address,
                                                        uint32_t &expected,
                                                        uint32_t desired) {
-  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
-  auto pointer = guestPointer(*memory, address, 4);
-  uint32_t current;
-  std::memcpy(&current, pointer, 4);
-  if (current == expected)
-    std::memcpy(pointer, &desired, 4);
-  expected = current;
-  return memory;
+  return compareExchange(memory, address, expected, desired);
+}
+extern "C" Memory *__remill_compare_exchange_memory_64(Memory *memory,
+                                                       uint64_t address,
+                                                       uint64_t &expected,
+                                                       uint64_t desired) {
+  return compareExchange(memory, address, expected, desired);
 }
 
 void guestRead(Memory &memory, uint64_t address, void *output, size_t size) {
@@ -219,4 +263,25 @@ void guestWrite(Memory &memory, uint64_t address, const void *input,
                 size_t size) {
   std::lock_guard<std::recursive_mutex> lock(guestAtomics);
   std::memcpy(guestPointer(memory, address, size), input, size);
+}
+
+// Remill's x86 rounding enum differs from Darwin arm64 FE_* constants.
+extern "C" int32_t __remill_fpu_get_rounding() {
+  switch (std::fegetround()) {
+  case FE_TONEAREST:
+    return 0;
+  case FE_DOWNWARD:
+    return 1;
+  case FE_UPWARD:
+    return 2;
+  case FE_TOWARDZERO:
+    return 3;
+  default:
+    throw std::runtime_error("unsupported host floating-point rounding mode");
+  }
+}
+extern "C" void __remill_fpu_set_rounding(int32_t mode) {
+  const int native[] = {FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO};
+  if (mode < 0 || mode > 3 || std::fesetround(native[mode]))
+    throw std::runtime_error("invalid guest floating-point rounding mode");
 }

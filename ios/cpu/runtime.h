@@ -35,3 +35,8 @@ void guestWrite(Memory &, uint64_t, const void *, size_t);
 uint64_t read64(Memory &, uint64_t);
 void write64(Memory &, uint64_t, uint64_t);
 extern "C" const char *dcp_cpu_report();
+
+extern "C" int32_t __remill_fpu_get_rounding();
+extern "C" void __remill_fpu_set_rounding(int32_t mode);
+extern "C" Memory *__remill_read_memory_f80(Memory *, uint64_t, float80_t &);
+extern "C" Memory *__remill_write_memory_f80(Memory *, uint64_t, const float80_t &);

@@ -1,4 +1,15 @@
-# iPhone and iPad device probe
+# iPhone and iPad port
+
+Start with the [reproducible bootstrap](BOOTSTRAP.md) to build the dependency
+stack, CPU/rendering checks, real-module libraries and mobile apps. The script
+does not install or launch apps. The [game runtime](game/README.md),
+[renderer](render/README.md), [platform](platform/README.md) and
+[storage](storage/README.md) documents describe individual components.
+
+The following records the original diagnostics probe and initial CPU harness;
+current fixture counts and port status are in [progress.md](progress.md).
+
+## Original device probe
 
 P0 builds a small UIKit arm64 app, with a Metal device capability query and an
 exportable diagnostics file. It reports OS build, device model, host page size,

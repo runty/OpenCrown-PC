@@ -1,0 +1,64 @@
+--- a/lib/Arch/X86/Semantics/X87.cpp
++++ b/lib/Arch/X86/Semantics/X87.cpp
+@@ -1327,9 +1327,7 @@
+ 
+ DEF_SEM(FNSTCW, M16W dst) {
+   auto &cw = state.x87.fxsave.cwd;
+-  cw.pc = kPrecisionSingle;
+-
+-  cw.rc = (FPURoundingControl) __remill_fpu_get_rounding();
++
+   Write(dst, cw.flat);
+   return memory;
+ }
+@@ -1337,8 +1335,7 @@
+ DEF_SEM(FLDCW, M16 cwd) {
+   auto &cw = state.x87.fxsave.cwd;
+   cw.flat = Read(cwd);
+-  cw.pc = kPrecisionSingle;
+-  __remill_fpu_set_rounding(cw.rc);
++  // OpenCrown AOT: FP80 helpers read guest CW; host rounding belongs to SSE.
+   return memory;
+ }
+ 
+@@ -1489,28 +1486,19 @@
+ namespace {
+ 
+ DEF_SEM(DoFNINIT) {
+-
+-  // Initialize the FPU state without checking error conditions.
+-  // "Word" and opcode fields are always 16-bit. Pointer fields are either
+-  // 32-bit or 64-bit, but regardless, they are set to 0.
+-  state.x87.fsave.cwd.flat = 0x037F;  // FPUControlWord
+-  state.x87.fsave.swd.flat = 0x0000;  // FPUStatusWord
+-  state.x87.fsave.ftw.flat =
+-      0x0000;  // FPUTagWord (0xFFFF in the manual, 0x0000 in testing)
+-  state.x87.fsave.dp = 0x0;  // FPUDataPointer
+-  state.x87.fsave.ip = 0x0;  // FPUInstructionPointer
+-  state.x87.fsave.fop = 0x0;  // FPULastInstructionOpcode
+-  state.x87.fsave.ds.flat = 0x0000;  // FPU code segment selector
+-  state.x87.fsave.cs.flat = 0x0000;  // FPU data operand segment selector
+-
+-  // Mask all floating-point exceptions:
++  // OpenCrown AOT: the live state uses FXSAVE layout. Writing FSAVE fields
++  // through this union aliases and corrupts MXCSR; FNINIT affects x87 only.
++  state.x87.fxsave.cwd.flat = 0x037F;
++  state.x87.fxsave.swd.flat = 0;
++  state.x87.fxsave.ftw.flat = 0;  // FXSAVE abridged tags: all empty.
++  state.x87.fxsave.dp = 0;
++  state.x87.fxsave.ip = 0;
++  state.x87.fxsave.fop = 0;
++  IF_32BIT(state.x87.fxsave32.ds.flat = 0;)
++  IF_32BIT(state.x87.fxsave32.cs.flat = 0;)
++  state.sw = {};
+   __remill_fpu_exception_clear(kFPUExceptionAll);
+-
+-  // Set FPU rounding mode to nearest:
+-  __remill_fpu_set_rounding(kFPURoundToNearestEven);
+-
+-  // TODO: Set the FPU precision to 64 bits
+-
++  // Virtual CW resets x87 rounding/precision; host FPCR continues to serve SSE.
+   return memory;
+ }
+ 
