@@ -26,7 +26,7 @@ parser.add_argument(
 parser.add_argument("--ios", action="store_true")
 parser.add_argument("--simulator", action="store_true")
 parser.add_argument(
-    "--jobs", type=int, default=8, help="Maximum independent trace compilations"
+    "--jobs", type=int, default=8, help="Maximum independent trace lifts/compilations"
 )
 parser.add_argument(
     "--translated-libc-bulk",
@@ -470,12 +470,32 @@ if args.translated_libc_bulk:
             == "native-libc-bulk"
         ):
             requested.add(text)
+requested = {f"{int(value, 16):x}" for value in requested}
 requested.difference_update(native_bulk)
 new_records = {}
 module_hashes = {
     module["name"]: hashlib.sha256(module["image"]).hexdigest() for module in modules
 }
-for text in sorted(requested, key=lambda value: int(value, 16)):
+
+
+def instrument(ir, name):
+    if "@dcp_trace_enter" not in ir:
+        ir, count = re.subn(
+            r"^(define ptr @sub_[^\n]+\{\n)([A-Za-z0-9_.]+:[^\n]*\n)?",
+            lambda m: (
+                m.group(0)
+                + "  call void @dcp_trace_enter(ptr %state, i64 %program_counter)\n"
+            ),
+            ir,
+            flags=re.M,
+        )
+        if not count:
+            raise SystemExit("Cannot instrument " + name)
+        ir += "\ndeclare void @dcp_trace_enter(ptr, i64)\n"
+    return ir
+
+
+def lift_trace(text):
     pc = int(text, 16)
     module = next(
         m for m in modules if m["canonical"] <= pc < m["canonical"] + len(m["image"])
@@ -530,8 +550,9 @@ for text in sorted(requested, key=lambda value: int(value, 16)):
                 "FP80 lowering left unsupported storage or operations in " + out.name
             )
         lowered.replace(temporary)
+    temporary.write_text(instrument(temporary.read_text(), out.name))
     temporary.replace(out)
-    new_records[out.stem] = {
+    record = {
         "schema": 1,
         "pc": out.stem,
         "module": module["name"],
@@ -551,6 +572,17 @@ for text in sorted(requested, key=lambda value: int(value, 16)):
         },
         "generated_utc": datetime.now(timezone.utc).isoformat(),
     }
+
+    record["ir_sha256"] = sha256(out)
+    record["entry_instrumentation"] = 1
+    write_json(out.with_suffix(".provenance.json"), record)
+    return out.stem, record
+
+
+with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+    new_records.update(
+        pool.map(lift_trace, sorted(requested, key=lambda value: int(value, 16)))
+    )
 
 for text, entry in native_bulk.items():
     out = trace_dir / (text + ".ll")
@@ -589,23 +621,12 @@ for text, entry in native_bulk.items():
         "generated_utc": datetime.now(timezone.utc).isoformat(),
     }
 
-# Observe every signed trace entry, including direct calls resolved by the linker.
+# Observe older cached traces too, without assigning them new provenance.
 for path in sorted(trace_dir.glob("*.ll")):
     ir = path.read_text()
-    if "@dcp_trace_enter" not in ir:
-        ir, count = re.subn(
-            r"^(define ptr @sub_[^\n]+\{\n)([A-Za-z0-9_.]+:[^\n]*\n)?",
-            lambda m: (
-                m.group(0)
-                + "  call void @dcp_trace_enter(ptr %state, i64 %program_counter)\n"
-            ),
-            ir,
-            flags=re.M,
-        )
-        if not count:
-            raise SystemExit("Cannot instrument " + path.name)
-        ir += "\ndeclare void @dcp_trace_enter(ptr, i64)\n"
-        path.write_text(ir)
+    updated = instrument(ir, path.name)
+    if updated != ir:
+        path.write_text(updated)
 
 # Preserve unknown/stale provenance explicitly. Existing IR is never attributed
 # retrospectively to the currently installed semantics.

@@ -71,7 +71,13 @@ bound; integer and bit-permutation fixtures compare exactly. This does not imply
 complete x86 instruction, floating-point exception or MXCSR coverage.
 
 Native [UIKit name entry](ime.md) is connected to the checked IME adapter.
-`--jobs 8` bounds independent trace compilers; archive inputs use an LLVM
+`--jobs 8` bounds independent trace lifters and compilers; archive inputs use an LLVM
 response file so large trace sets do not exceed macOS's process argument limit.
 Objects are published only after successful compilation and archived in stable
 trace order. Run a single builder per output tree.
+
+Successful lifted traces publish entry instrumentation and matching provenance
+individually before aggregate compilation. A failed batch leaves completed peer
+traces reusable, while invalid entry points remain unpublished. Address spellings
+are normalized before parallel scheduling. Re-running a failed batch remains
+explicit; unsupported instructions are never replaced with successful stubs.
