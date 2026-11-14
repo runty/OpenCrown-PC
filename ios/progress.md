@@ -1,5 +1,35 @@
 # Device port progress
 
+## 2026-11-14 — Physical Town gate and clean live touch movement
+
+The clean `1d0adf7`/50,327-entry app passes the physical iPad Town component gate
+from the retained working save, without reseeding:6,131 rendered frames /
+168,965,536 entries /218.88seconds, no guest/frontend error. Its57 ordered maps
+use2,190,737,408bytes of4GiB, sampled peak dirty memory is1,974,112,016bytes,
+and thermal state is fair. All26 retained files survive the install unchanged;
+the ten prior working-save files also remain unchanged after the run. Normal
+launcher mode is restored. The final PNG shows Town/Felix beneath an unexpected
+large logo overlay. Clean physical Town rendering remains open; this capture
+alone does not distinguish a transition from retained composition.
+
+An independent interactive iPhone Simulator run with clean `e5b266d` and the
+50,334-entry core reaches a clean live Town view with full quest dialogue.
+Holding the real MOVE overlay right for fourseconds visibly walks Felix and
+scrolls the camera. Continuing right exposes executed target203d54a0; a bounded
+six-entry table batch now brings all SDK archives to50,340 entries. This is
+a movement result, not combat or sustained gameplay acceptance. The fixed-time
+native exploratory route instead selects Inn Options and is stopped with no
+runtime error; its input intent does not prove an adventure was reached.
+
+`DCP_CHECKPOINT_SETTLE_FRAMES` can extend neutral post-marker advancement from
+the unchanged120-frame default up to3600, with minimum120. Existing trace,
+vblank and wall-clock budgets remain. Reports include observation anchors and
+the requested interval. All37 configuration checks,32 actual-runtime negative
+checks/eightcases,95 input checks native/ASan+UBSan, all SDK builds and27 runtime
+lifecycle sessions pass (maximum stop69.73ms). A600-frame Town capture is in
+progress to inspect the later scene. No rendering change is inferred yet.
+
+
 ## 2026-11-14 — Simulator Town and interactive navigation
 
 Clean `1d0adf7` with the frozen 50,327-entry ordered core also passes visible

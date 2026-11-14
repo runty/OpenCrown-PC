@@ -11,7 +11,7 @@ int main() {
   };
   const auto standard = dcp::game::headless_config(nullptr, nullptr, nullptr);
   require(standard.scene == "TITLE" && standard.trace_budget == 100000000 &&
-          standard.vblank_budget == 7200);
+          standard.vblank_budget == 7200 && standard.settle_frames == 120);
   const auto inn = dcp::game::headless_config("INN", "10000000000", "216000");
   require(inn.scene == "INN" && inn.trace_budget == 10000000000 &&
           inn.vblank_budget == 216000);
@@ -36,5 +36,16 @@ int main() {
   }
   const auto tiny = dcp::game::headless_config("A_1", "1", "1");
   require(tiny.scene == "A_1" && tiny.trace_budget == 1 && tiny.vblank_budget == 1);
+  for (const char *valid : {"120", "1800", "3600"}) {
+    const auto config = dcp::game::headless_config("TOWN", nullptr, nullptr, valid);
+    require(config.settle_frames == std::stoull(valid));
+  }
+  for (const char *bad : {"", "0", "1", "119", "3601", "-120", "+120", "120 ",
+                          "120x", "999999999999999999999"}) {
+    bool rejected = false;
+    try { dcp::game::headless_config(nullptr, nullptr, nullptr, bad); }
+    catch (const std::invalid_argument &) { rejected = true; }
+    require(rejected);
+  }
   std::cout << "{\"checks\":" << checks << ",\"failed\":0}\n";
 }

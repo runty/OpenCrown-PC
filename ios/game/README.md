@@ -131,3 +131,12 @@ input and requires120 advancing flips and vblanks. This proves component/frame
 advancement only. Inspect rendered enemies and test attack/damage/adventure
 results independently before calling combat playable. Constructors, asset opens,
 music requests and tutorial-mode Goblins do not satisfy this marker.
+
+For transition inspection, `DCP_CHECKPOINT_SETTLE_FRAMES=600` keeps input neutral
+for at least600 advancing flips and vblanks after the requested marker. The
+default remains120; accepted values are120–3600. Existing trace, vblank and
+frontend wall-clock budgets still apply. Reports include the requested count
+and observation flip/vblank anchors. This
+diagnostic option does not affect interactive Play or certify the resulting
+pixels. Compare later settled images before treating a transition capture as
+a persistent rendering defect.

@@ -45,7 +45,7 @@ scripts={'valid':b'10 CROSS\n20 0\n','empty':b'','invalid':b'10 UNKNOWN_BUTTON\n
 for name,data in scripts.items():(root/(name+'.txt')).write_bytes(data)
 def run(name, settings):
     global checks
-    env={k:v for k,v in os.environ.items() if k not in ['DCP_CHECKPOINT_SCENE','DCP_MAX_TRACE_ENTRIES','DCP_MAX_VBLANKS','DCP_INPUT_SCRIPT']}
+    env={k:v for k,v in os.environ.items() if k not in ['DCP_CHECKPOINT_SCENE','DCP_MAX_TRACE_ENTRIES','DCP_MAX_VBLANKS','DCP_CHECKPOINT_SETTLE_FRAMES','DCP_INPUT_SCRIPT']}
     env.update(DCP_GAME_MODE='checkpoint',DCP_SAVE_ROOT=str(root/('runtime-saves-'+name)),**settings)
     result=subprocess.run([str(game/'game-boot')],env=env,capture_output=True,text=True,timeout=30,check=True)
     report=json.loads(result.stdout);(root/(name+'-runtime.json')).write_text(json.dumps(report,indent=2)+'\n')
@@ -63,7 +63,11 @@ for name in ['valid','empty']:
 for name,reason in [('invalid','Invalid input script line 1'),('oversize','exceeds 1 MiB')]:
     a=run(name,{'DCP_INPUT_SCRIPT':str(root/(name+'.txt'))})
     assert reason in a['error'] and a['steps']==0;checks+=2
-(root/'runtime-results.json').write_text(json.dumps({'checks':checks,'failed':0,'cases':6,'boot_acceptance':False},indent=2)+'\n')
+a=run('long-settle',{'DCP_CHECKPOINT_SETTLE_FRAMES':'600','DCP_MAX_TRACE_ENTRIES':'1'})
+assert a['checkpoint_settle_frames']==600 and 'trace budget' in a['error'];checks+=2
+a=run('short-settle',{'DCP_CHECKPOINT_SETTLE_FRAMES':'119'})
+assert 'Invalid DCP_CHECKPOINT_SETTLE_FRAMES' in a['error'] and a['steps']==0;checks+=2
+(root/'runtime-results.json').write_text(json.dumps({'checks':checks,'failed':0,'cases':8,'boot_acceptance':False},indent=2)+'\n')
 print((root/'runtime-results.json').read_text())
 PY
 fi

@@ -443,8 +443,8 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     waitVblank();
     const uint64_t frame = ++engine().vblanks;
     if (!engine().interactive && engine().checkpointSeen.load() &&
-        frame >= engine().checkpointVblank.load() + 120 &&
-        dcp_gnm_stats().flips >= engine().checkpointFlip.load() + 120) {
+        frame >= engine().checkpointVblank.load() + engine().headless.settle_frames &&
+        dcp_gnm_stats().flips >= engine().checkpointFlip.load() + engine().headless.settle_frames) {
       engine().booted = true;
       throw std::runtime_error("boot checkpoint complete");
     }
@@ -926,7 +926,7 @@ extern "C" const char *dcp_cpu_report() {
     if (!engine().interactive)
       engine().headless = dcp::game::headless_config(
           std::getenv("DCP_CHECKPOINT_SCENE"), std::getenv("DCP_MAX_TRACE_ENTRIES"),
-          std::getenv("DCP_MAX_VBLANKS"));
+          std::getenv("DCP_MAX_VBLANKS"), std::getenv("DCP_CHECKPOINT_SETTLE_FRAMES"));
     DcpFileHooks files;
     files.context = owner.get();
     files.pointer = [](void *context, uint64_t address, size_t size,
@@ -1161,6 +1161,9 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"title_seen\":" << (engine().titleSeen.load() ? "true" : "false")
       << ",\"checkpoint_scene\":" << jsonString(engine().headless.scene)
       << ",\"checkpoint_seen\":" << (engine().checkpointSeen ? "true" : "false")
+      << ",\"checkpoint_settle_frames\":" << engine().headless.settle_frames
+      << ",\"checkpoint_observed_vblank\":" << engine().checkpointVblank.load()
+      << ",\"checkpoint_observed_flip\":" << engine().checkpointFlip.load()
       << ",\"input_script_sha256\":" << jsonString(engine().inputScriptHash)
       << ",\"checkpoint_complete\":"
       << (checkpointComplete ? "true" : "false")

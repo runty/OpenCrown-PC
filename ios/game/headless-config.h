@@ -8,6 +8,7 @@ namespace dcp::game {
 struct HeadlessConfig {
   std::string scene = "TITLE";
   uint64_t trace_budget = 100000000, vblank_budget = 7200;
+  uint64_t settle_frames = 120;
 };
 inline uint64_t bounded_count(const char *text, uint64_t fallback,
                               uint64_t maximum, const char *name) {
@@ -22,7 +23,8 @@ inline uint64_t bounded_count(const char *text, uint64_t fallback,
   return count;
 }
 inline HeadlessConfig headless_config(const char *scene, const char *traces,
-                                      const char *vblanks) {
+                                      const char *vblanks,
+                                      const char *settle = nullptr) {
   HeadlessConfig result;
   if (scene) {
     result.scene = scene;
@@ -35,6 +37,10 @@ inline HeadlessConfig headless_config(const char *scene, const char *traces,
                                       "DCP_MAX_TRACE_ENTRIES");
   result.vblank_budget = bounded_count(vblanks, result.vblank_budget, 216000,
                                        "DCP_MAX_VBLANKS");
+  result.settle_frames = bounded_count(settle, result.settle_frames, 3600,
+                                       "DCP_CHECKPOINT_SETTLE_FRAMES");
+  if (result.settle_frames < 120)
+    throw std::invalid_argument("Invalid DCP_CHECKPOINT_SETTLE_FRAMES (minimum 120)");
   return result;
 }
 } // namespace dcp::game
