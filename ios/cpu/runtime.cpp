@@ -155,8 +155,8 @@ extern "C" uint8_t __remill_undefined_8() { return 0; }
 #define SCALAR_MEMORY(BITS, TYPE)                                              \
   extern "C" TYPE __remill_read_memory_##BITS(Memory *memory,                  \
                                               uint64_t address) {              \
-    std::lock_guard<std::recursive_mutex> lock(guestAtomics);                  \
     checkCancelled(*memory);                                                   \
+    std::lock_guard<std::recursive_mutex> lock(guestAtomics);                  \
     TYPE value = 0;                                                            \
     try {                                                                      \
       std::memcpy(&value, checkedPointerLocked(*memory, address, sizeof(value)),       \
@@ -295,6 +295,24 @@ void guestWrite(Memory &memory, uint64_t address, const void *input,
   auto pointer = checkedPointerLocked(memory, address, size);
   if (size)
     std::memcpy(pointer, input, size);
+}
+void guestMove(Memory &memory, uint64_t destination, uint64_t source,
+               size_t size) {
+  checkCancelled(memory);
+  if (!size)
+    return;
+  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  auto output = checkedPointerLocked(memory, destination, size);
+  auto input = checkedPointerLocked(memory, source, size);
+  std::memmove(output, input, size);
+}
+void guestFill(Memory &memory, uint64_t destination, uint8_t value, size_t size) {
+  checkCancelled(memory);
+  if (!size)
+    return;
+  std::lock_guard<std::recursive_mutex> lock(guestAtomics);
+  auto output = checkedPointerLocked(memory, destination, size);
+  std::memset(output, value, size);
 }
 
 // Remill's x86 rounding enum differs from Darwin arm64 FE_* constants.

@@ -39,7 +39,7 @@ python3 ios/cpu/review/memory-cache.py \
   --backend-root /Volumes/office/Build/OpenCrown/cpu-backends
 ```
 
-The same fixture passed **251,052 checks** in each configuration:
+The same fixture passed **251,055 checks** in each configuration:
 
 | Configuration | Exit | Failures | Sanitizer diagnostics |
 | --- | --- | --- | --- |
@@ -54,6 +54,14 @@ backing deallocation; all scalar and exact ten-byte FP80 bridges; eight workers
 sharing a registry while another worker appends mappings; simultaneous CAS32
 and CAS64 counters with exact final totals; valid shared-context cache access;
 fault recording; cancellation callbacks/flags and atomic-region cleanup.
+The blocking-callback regression parks a scalar-read cancellation callback,
+then requires another thread's checked read to finish before releasing it.
+This verifies a paused guest cannot hold the registry lock while waiting.
+The test always releases and joins its workers after bounded waits, so the old
+lock ordering reports failure instead of hanging the sanitizer process.
+The negative control compiled this same callback subset against committed
+`cab3d2b` with `MEMORY_CACHE_BLOCKING_ONLY`: it failed the expected lock-progress
+assertion after the bounded wait, then released/joined both workers normally.
 
 Reports and complete build/stdout/stderr logs are in the selected external
 output. `results.json` records the reviewed runtime/header/fixture hashes.

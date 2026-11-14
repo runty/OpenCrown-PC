@@ -3,6 +3,9 @@
 #include "font-services.h"
 #include "game.h"
 #include "gnm-services.h"
+#ifdef DCP_NATIVE_LIBC_BULK
+#include "libc-bulk.h"
+#endif
 #include "modules.h"
 #include "offline-services.h"
 #include "render/capture.h"
@@ -719,6 +722,9 @@ extern "C" const char *dcp_cpu_report() {
   rootStack = 0;
   engine().libcChecks = 0;
   engine().libcResult = -1;
+#ifdef DCP_NATIVE_LIBC_BULK
+  dcp_libc_bulk_reset();
+#endif
   engine().enteredEboot = false;
   tlsBlocks[0] = tlsBlocks[1] = errorSlot = engine().heapTrace = mainThread = 0;
   Memory &memory = engine().primary;
@@ -953,8 +959,17 @@ extern "C" const char *dcp_cpu_report() {
       << (engine().booted.load() ? "true" : "false")
       << ",\"interactive\":" << (engine().interactive.load() ? "true" : "false")
       << ",\"current_scene\":" << jsonString(currentScene)
-      << ",\"trace_hash\":\"" << traceHash << "\""
-      << ",\"error\":" << jsonString(error) << ",\"events\":[";
+      << ",\"trace_hash\":\"" << traceHash << "\"";
+#ifdef DCP_NATIVE_LIBC_BULK
+  const auto bulk = dcp_libc_bulk_stats();
+  out << ",\"native_libc_bulk\":{\"enabled\":"
+      << (DCP_NATIVE_LIBC_BULK ? "true" : "false")
+      << ",\"copy_calls\":" << bulk.copy_calls
+      << ",\"move_calls\":" << bulk.move_calls
+      << ",\"fill_calls\":" << bulk.fill_calls
+      << ",\"bytes\":" << bulk.bytes << "}";
+#endif
+  out << ",\"error\":" << jsonString(error) << ",\"events\":[";
   bool first = true;
   std::lock_guard<std::mutex> eventsLock(engine().eventLock);
   for (const auto &event : engine().events) {

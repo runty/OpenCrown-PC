@@ -17,6 +17,7 @@ parser.add_argument("--root", type=Path, required=True)
 parser.add_argument("--dump", type=Path, required=True)
 parser.add_argument("--rounds", type=int, default=128)
 parser.add_argument("--timeout", type=float, default=120)
+parser.add_argument("--translated-libc-bulk", action="store_true")
 parser.add_argument(
     "--prefetch",
     type=int,
@@ -67,6 +68,8 @@ def stopping():
 
 builder = Path(__file__).with_name("build.py")
 base = [sys.executable, str(builder), "--root", str(root), "--dump", str(args.dump)]
+if args.translated_libc_bulk:
+    base.append("--translated-libc-bulk")
 
 
 def candidates(missing):
@@ -132,7 +135,7 @@ for iteration in range(args.rounds):
     try:
         result = subprocess.run(
             [str(root / "game-boot")],
-            env=dict(os.environ, DCP_SAVE_ROOT=save_root),
+            env=dict(os.environ, DCP_SAVE_ROOT=save_root, DCP_GAME_MODE="checkpoint"),
             capture_output=True,
             text=True,
             timeout=args.timeout,

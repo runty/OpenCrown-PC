@@ -97,7 +97,9 @@ def main():
         "--font-source", type=Path, help="Reuse FreeType 2.13.3 source cache"
     )
     parser.add_argument("--font-output", type=Path, help="Reuse font-build.sh output")
-    parser.add_argument("--fp80-output", type=Path, help="Reuse SoftFloat/lowering build output")
+    parser.add_argument(
+        "--fp80-output", type=Path, help="Reuse SoftFloat/lowering build output"
+    )
     parser.add_argument(
         "--llvm-prefix", type=Path, default=Path("/opt/homebrew/opt/llvm")
     )
@@ -109,6 +111,11 @@ def main():
     )
     parser.add_argument("--prefetch", type=int, default=12)
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument(
+        "--translated-libc-bulk",
+        action="store_true",
+        help="Use original translated memcpy/memmove/memset for comparison",
+    )
     parser.add_argument(
         "--prepare-only",
         action="store_true",
@@ -197,6 +204,7 @@ def main():
         "remill_revision": REMILL,
         "archives": ARCHIVES,
         "prepare_only": args.prepare_only,
+        "native_libc_bulk": not args.translated_libc_bulk,
         "patches": {name: digest(SOURCE / "ios" / name) for name in PATCHES},
         "sdl_patch": digest(SOURCE / "ios/render/sdl-simulator-metal.patch"),
     }
@@ -353,8 +361,15 @@ def main():
         raise SystemExit(
             f"Remill cache is not pinned to {REMILL}; refusing to reset it"
         )
-    run("patch-remill", [sys.executable, SOURCE / "ios/patch-set.py", remill,
-                         *[SOURCE / "ios" / name for name in PATCHES]])
+    run(
+        "patch-remill",
+        [
+            sys.executable,
+            SOURCE / "ios/patch-set.py",
+            remill,
+            *[SOURCE / "ios" / name for name in PATCHES],
+        ],
+    )
     archive_source("sdl", sdl)
     archive_source("freetype", font)
     # Explicitly reused sources must at least match the release ABI/version.
@@ -409,10 +424,45 @@ def main():
         "remill-build",
         ["cmake", "--build", backend / "remill-build", "--parallel", args.jobs],
     )
-    run("fp80", [sys.executable, SOURCE / "ios/cpu/fp80/build.py", "--output", fp80_output, "--llvm", llvm, "--jobs", args.jobs])
-    run("fp80-oracle", [sys.executable, SOURCE / "ios/cpu/fp80/test.py", "--build", fp80_output])
-    run("fp80-lowered", [sys.executable, SOURCE / "ios/cpu/fp80/lowered-test.py", "--build", fp80_output])
-    run("fp80-control", [sys.executable, SOURCE / "ios/cpu/fp80/control-test.py", "--build", fp80_output, "--backend-root", backend, "--llvm", llvm])
+    run(
+        "fp80",
+        [
+            sys.executable,
+            SOURCE / "ios/cpu/fp80/build.py",
+            "--output",
+            fp80_output,
+            "--llvm",
+            llvm,
+            "--jobs",
+            args.jobs,
+        ],
+    )
+    run(
+        "fp80-oracle",
+        [sys.executable, SOURCE / "ios/cpu/fp80/test.py", "--build", fp80_output],
+    )
+    run(
+        "fp80-lowered",
+        [
+            sys.executable,
+            SOURCE / "ios/cpu/fp80/lowered-test.py",
+            "--build",
+            fp80_output,
+        ],
+    )
+    run(
+        "fp80-control",
+        [
+            sys.executable,
+            SOURCE / "ios/cpu/fp80/control-test.py",
+            "--build",
+            fp80_output,
+            "--backend-root",
+            backend,
+            "--llvm",
+            llvm,
+        ],
+    )
     run("font", ["bash", SOURCE / "ios/game/font-build.sh", font, font_output])
     run(
         "platform",
@@ -470,6 +520,30 @@ def main():
             root / "cpu-harness",
         ],
     )
+    run(
+        "memory-cache",
+        [
+            sys.executable,
+            SOURCE / "ios/cpu/review/memory-cache.py",
+            "--output",
+            root / "memory-cache-review",
+            "--backend-root",
+            backend,
+        ],
+    )
+    run(
+        "libc-bulk",
+        [
+            sys.executable,
+            SOURCE / "ios/game/libc-bulk-test.py",
+            "--output",
+            root / "libc-bulk-probe",
+            "--backend-root",
+            backend,
+            "--llvm",
+            llvm,
+        ],
+    )
     builder = [
         sys.executable,
         SOURCE / "ios/game/build.py",
@@ -478,6 +552,8 @@ def main():
         "--dump",
         dump,
     ]
+    if args.translated_libc_bulk:
+        builder.append("--translated-libc-bulk")
     if not list((game / "traces").glob("*.ll")):
         run(
             "game-seed",
@@ -510,6 +586,7 @@ def main():
                 args.rounds,
                 "--prefetch",
                 args.prefetch,
+                *(["--translated-libc-bulk"] if args.translated_libc_bulk else []),
             ],
             round_limit=True,
         )

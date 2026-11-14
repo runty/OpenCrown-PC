@@ -144,6 +144,11 @@ Individual provenance records contain input-image/slice hashes, raw/final IR
 hashes and the FP80 lowerer/helper manifest hashes. No old trace is retrospectively assigned a new semantics version.
 
 Host CPU fixtures compare translated routines with a Rosetta x86 oracle.
+Memory-cache and bulk-libc suites exercise bounds, ABI, cancellation and
+concurrency under native execution and sanitizers. Three pinned bulk libc
+exports use checked native byte operations by default; `--translated-libc-bulk`
+restores original translated entries for comparisons. Their explicit provenance
+and counters distinguish them from AOT routines. See [bulk libc](game/libc-bulk.md).
 Host renderer fixtures verify saved image pixels, BC fallbacks and capture
 consumption. Platform/storage checks compile the device and simulator adapters.
 The script cross compiles arm64 libraries for macOS 15+, iOS 18+ and its

@@ -3,6 +3,8 @@
 #include "runtime.h"
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -50,6 +52,59 @@ uint64_t address(const void *pointer) {
 }
 std::atomic<bool> callbackStop{false};
 bool cancelled() { return callbackStop.load(); }
+std::mutex callbackMutex;
+std::condition_variable callbackChanged;
+bool callbackEntered = false, callbackReleased = false;
+bool blockingCancelled() {
+  std::unique_lock lock(callbackMutex);
+  callbackEntered = true;
+  callbackChanged.notify_all();
+  callbackChanged.wait(lock, [] { return callbackReleased; });
+  return false;
+}
+void callbackDoesNotHoldRegistryLock() {
+  Memory memory;
+  memory.bytes[32] = 0x5a;
+  memory.cancelled = blockingCancelled;
+  {
+    std::lock_guard lock(callbackMutex);
+    callbackEntered = callbackReleased = false;
+  }
+  std::atomic<bool> observerDone{false};
+  uint8_t workerByte = 0, observerByte = 0;
+  std::thread worker(
+      [&] { workerByte = __remill_read_memory_8(&memory, Memory::base + 32); });
+  bool entered;
+  {
+    std::unique_lock lock(callbackMutex);
+    entered = callbackChanged.wait_for(lock, std::chrono::seconds(2),
+                                       [] { return callbackEntered; });
+  }
+  std::thread observer([&] {
+    guestRead(memory, Memory::base + 32, &observerByte, 1);
+    {
+      std::lock_guard lock(callbackMutex);
+      observerDone = true;
+    }
+    callbackChanged.notify_all();
+  });
+  bool progressed;
+  {
+    std::unique_lock lock(callbackMutex);
+    progressed = callbackChanged.wait_for(lock, std::chrono::seconds(1),
+                                          [&] { return observerDone.load(); });
+    // Always release/join, even with the old deadlocking lock order. A failure
+    // becomes a bounded assertion instead of hanging the sanitizer process.
+    callbackReleased = true;
+  }
+  callbackChanged.notify_all();
+  worker.join();
+  observer.join();
+  check(entered, "scalar cancellation callback entered");
+  check(progressed, "paused cancellation callback does not hold registry lock");
+  check(workerByte == 0x5a && observerByte == 0x5a,
+        "callback and concurrent native read complete");
+}
 
 void boundaries() {
   Memory memory;
@@ -321,10 +376,15 @@ void concurrent() {
 } // namespace
 int main() {
   try {
+#ifdef MEMORY_CACHE_BLOCKING_ONLY
+    callbackDoesNotHoldRegistryLock();
+#else
     boundaries();
     replacement();
     bridges();
     concurrent();
+    callbackDoesNotHoldRegistryLock();
+#endif
   } catch (const std::exception &error) {
     std::fprintf(stderr, "Unexpected fixture exception: %s\n", error.what());
     return 2;

@@ -43,6 +43,14 @@ continuing. Static presence is separate from execution. These are simulated mode
 physical iPad mini A20 Pro.
 See [FP80 boundaries and evidence](cpu/fp80/README.md).
 
+Startup has reached one vblank and over four million trace entries. It now
+stops at VROUNDSS at `20639719`, with zero flips and no actual game frames.
+Three verified bulk libc exports use checked native copy/fill adapters, marked
+explicitly in provenance; a comparison flag restores original translated code.
+Both modes reach the same rounding gap with actual strlen/startup still passing.
+The production-wrapper ABI suite passes 822,659 checks in native, ASan/UBSan and
+TSAN runs, plus all three SDK compilations. See [bulk libc](game/libc-bulk.md).
+
 `game/build.py` produces Mac, iPhoneOS and simulator libraries. `advance.py`
 discovers executed targets in batches, stops explicitly on other errors and
 supports graceful stopping. Prefetch includes aligned possible callbacks from
@@ -55,7 +63,7 @@ IR, code archives and game assets remain in the external build tree.
 A sampled startup showed range scanning and nested lock acquisition dominating
 CPU use. A bounded eight-range cache retains the existing synchronization and
 removes redundant recursive locking. Independent native, ASan/UBSan and TSAN
-runs each pass 251,052 checks, including concurrent append, registry replacement,
+runs each pass 251,055 checks, including concurrent append, registry replacement,
 bounds, cancellation and CAS32/64. A controlled lookup benchmark shows strong
 hot-set gains but a 59% deliberate cache-thrash regression; neither is a measured
 game-frame result. See [memory review and limits](cpu/review/memory-cache.md).

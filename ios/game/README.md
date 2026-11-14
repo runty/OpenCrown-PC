@@ -59,6 +59,11 @@ entry followed by 120 advancing vblanks and flips. A returned startup report or
 acceptance additionally requires INN/town, visible frames, real controls/audio,
 lifecycle and save/reload on both physical devices, as defined in the port plan.
 
+The three pinned bulk libc exports use [checked native adapters](libc-bulk.md)
+by default. Builder provenance marks these replacements explicitly; actual
+strlen and libc startup remain translated. `--translated-libc-bulk` on the
+builder, discovery or bootstrap restores original entry IR for comparisons.
+
 The SSE reciprocal implementation returns full-precision reciprocals within the
 x86 estimate's permitted error bound, with explicit signed-zero, infinity, NaN
 and denormal behavior. Tests compare native reciprocal estimates within that

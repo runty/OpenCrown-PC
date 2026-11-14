@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import struct
 import subprocess
+from native_libc_ir import native_libc_ir
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--root", type=Path, required=True)
@@ -22,6 +23,11 @@ parser.add_argument(
 )
 parser.add_argument("--ios", action="store_true")
 parser.add_argument("--simulator", action="store_true")
+parser.add_argument(
+    "--translated-libc-bulk",
+    action="store_true",
+    help="Execute original memcpy/memmove/memset instead of checked native adapters",
+)
 parser.add_argument(
     "--backend-root",
     type=Path,
@@ -41,7 +47,9 @@ parser.add_argument(
     help="font-build.sh output directory",
 )
 parser.add_argument(
-    "--fp80-output", type=Path, default=os.environ.get("DCP_FP80_OUTPUT"),
+    "--fp80-output",
+    type=Path,
+    default=os.environ.get("DCP_FP80_OUTPUT"),
     help="SoftFloat helpers/lowering output (default ROOT/../fp80-probe)",
 )
 parser.add_argument(
@@ -70,7 +78,10 @@ runtime_bc = backend / "remill-build/lib/Arch/X86/Runtime/amd64_avx.bc"
 fp80_output = (args.fp80_output or root.parent / "fp80-probe").resolve()
 fp80_lower = fp80_output / "fp80-lower"
 if not fp80_lower.is_file() or not (fp80_output / "manifest.json").is_file():
-    raise SystemExit("Build FP80 support first: python3 ios/cpu/fp80/build.py --output " + str(fp80_output))
+    raise SystemExit(
+        "Build FP80 support first: python3 ios/cpu/fp80/build.py --output "
+        + str(fp80_output)
+    )
 
 
 def sha256(path):
@@ -98,7 +109,9 @@ backend_snapshot = {
     "sse_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/SSE.cpp"),
     "avx_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/AVX.cpp"),
     "x87_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/X87.cpp"),
-    "dataxfer_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/DATAXFER.cpp"),
+    "dataxfer_source_sha256": sha256(
+        backend / "remill/lib/Arch/X86/Semantics/DATAXFER.cpp"
+    ),
     "mmx_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/MMX.cpp"),
     "fp80_lower_sha256": sha256(fp80_lower),
     "fp80_manifest_sha256": sha256(fp80_output / "manifest.json"),
@@ -116,6 +129,7 @@ def run(command, log):
 
 
 cache_hash = hashlib.sha256(Path(__file__).read_bytes())
+cache_hash.update(Path(__file__).with_name("native_libc_ir.py").read_bytes())
 cache_hash.update((source / "ios/game/module-tool.cpp").read_bytes())
 cache_hash.update((source / "ios/game/offline-stubs.json").read_bytes())
 for path in [args.dump / "eboot.bin", args.dump / "sce_module/libc.prx"]:
@@ -152,6 +166,7 @@ if cached.get("key") == cache_hash.hexdigest() and all(
 ):
     modules = cached["modules"]
     strlen = cached["strlen"]
+    native_bulk_exports = cached["native_bulk_exports"]
     for module in modules:
         module["image"] = (root / (module["name"] + ".image")).read_bytes()
 else:
@@ -298,6 +313,21 @@ else:
         + "};\n"
     )
     strlen = next(s["value"] for s in modules[1]["symbols"] if s["name"] == "strlen")
+    native_bulk_exports = {}
+    for name, kind in [("memcpy", 0), ("memmove", 1), ("memset", 2)]:
+        matches = [
+            s for s in modules[1]["symbols"] if s["name"] == name and s["defined"]
+        ]
+        if len(matches) != 1:
+            raise SystemExit("Expected one verified libc export: " + name)
+        if not any(
+            s["flags"] & 1
+            and s["vaddr"] <= matches[0]["value"] < s["vaddr"] + s["filesz"]
+            for s in modules[1]["segments"]
+        ):
+            raise SystemExit("Libc bulk export is outside executable bytes: " + name)
+        pc = modules[1]["canonical"] + matches[0]["value"]
+        native_bulk_exports[f"{pc:x}"] = {"name": name, "kind": kind}
     header += (
         "static constexpr uint64_t libcStrlen="
         + str(0x30000000 + strlen)
@@ -354,6 +384,7 @@ else:
         },
         "key": cache_hash.hexdigest(),
         "strlen": strlen,
+        "native_bulk_exports": native_bulk_exports,
         "modules": [
             {
                 key: value
@@ -364,6 +395,13 @@ else:
         ],
     }
     cache_path.write_text(json.dumps(state, indent=2) + "\n")
+
+if native_bulk_exports != {
+    "30054a60": {"name": "memcpy", "kind": 0},
+    "30054a20": {"name": "memmove", "kind": 1},
+    "300552e0": {"name": "memset", "kind": 2},
+}:
+    raise SystemExit("Libc bulk exports differ from the pinned executable mapping")
 
 oracle = root / "strlen-reference"
 reference = source / "ios/game/strlen-reference.cpp"
@@ -403,6 +441,17 @@ trace_dir.mkdir(exist_ok=True)
 requested = set(args.lift)
 if args.relift_all:
     requested.update(path.stem for path in trace_dir.glob("*.ll"))
+native_bulk = {} if args.translated_libc_bulk else native_bulk_exports
+if args.translated_libc_bulk:
+    for text in native_bulk_exports:
+        record = trace_dir / (text + ".provenance.json")
+        if (
+            record.exists()
+            and json.loads(record.read_text()).get("implementation")
+            == "native-libc-bulk"
+        ):
+            requested.add(text)
+requested.difference_update(native_bulk)
 new_records = {}
 module_hashes = {
     module["name"]: hashlib.sha256(module["image"]).hexdigest() for module in modules
@@ -453,9 +502,14 @@ for text in sorted(requested, key=lambda value: int(value, 16)):
     fp80_lowered = "x86_fp80" in ir
     if fp80_lowered:
         lowered = out.with_suffix(".ll.lowered.partial")
-        run([fp80_lower, temporary, lowered, "--remill-control"], out.stem + "-fp80-lower.log")
+        run(
+            [fp80_lower, temporary, lowered, "--remill-control"],
+            out.stem + "-fp80-lower.log",
+        )
         if "x86_fp80" in lowered.read_text():
-            raise SystemExit("FP80 lowering left unsupported storage or operations in " + out.name)
+            raise SystemExit(
+                "FP80 lowering left unsupported storage or operations in " + out.name
+            )
         lowered.replace(temporary)
     temporary.replace(out)
     new_records[out.stem] = {
@@ -475,6 +529,43 @@ for text in sorted(requested, key=lambda value: int(value, 16)):
             "arch": "amd64_avx",
             "address": module["canonical"] + begin,
             "entry_address": pc,
+        },
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+for text, entry in native_bulk.items():
+    out = trace_dir / (text + ".ll")
+    ir = native_libc_ir(int(text, 16), entry["kind"])
+    old_record = out.with_suffix(".provenance.json")
+    previous = json.loads(old_record.read_text()) if old_record.exists() else {}
+    if out.exists() and previous.get("implementation") != "native-libc-bulk":
+        backup = root / "translated-libc-bulk"
+        backup.mkdir(exist_ok=True)
+        import shutil
+
+        shutil.copy2(out, backup / out.name)
+        if old_record.exists():
+            shutil.copy2(old_record, backup / old_record.name)
+    if not out.exists() or out.read_text() != ir:
+        out.write_text(ir)
+    new_records[text] = {
+        "schema": 1,
+        "pc": text,
+        "module": "libc",
+        "implementation": "native-libc-bulk",
+        "export": entry,
+        "module_image_sha256": module_hashes["libc"],
+        "backend": backend_snapshot,
+        "builder_sha256": sha256(Path(__file__)),
+        "wrapper_source_sha256": sha256(Path(__file__).with_name("native_libc_ir.py")),
+        "helper_sources_sha256": {
+            name: sha256(source / name)
+            for name in [
+                "ios/game/libc-bulk.cpp",
+                "ios/game/libc-bulk.h",
+                "ios/cpu/runtime.cpp",
+                "ios/cpu/runtime.h",
+            ]
         },
         "generated_utc": datetime.now(timezone.utc).isoformat(),
     }
@@ -517,6 +608,9 @@ for path in sorted(trace_dir.glob("*.ll")):
     )
     provenance[path.stem] = {
         "status": "current" if current else "stale" if record else "unknown",
+        "implementation": record.get("implementation", "remill-aot")
+        if record
+        else "unknown",
         "ir_sha256": sha256(path),
         "record": str(record_path) if record else None,
     }
@@ -552,6 +646,11 @@ for path in sorted(trace_dir.glob("*.ll")):
     trace_hash.update(path.read_bytes())
 traces = (
     '#pragma once\nstatic const char *traceHash="' + trace_hash.hexdigest() + '";\n'
+)
+traces += (
+    "static constexpr bool nativeLibcBulkEnabled="
+    + ("true" if native_bulk else "false")
+    + ";\n"
 )
 traces += "\n".join(
     'extern "C" Memory *' + s + "(State &,uint64_t,Memory *);"
@@ -634,6 +733,7 @@ for platform, target, sdk in platforms:
         (source / "ios/game/file-services.cpp", "files"),
         (source / "ios/game/offline-services.cpp", "offline"),
         (source / "ios/game/font-services.cpp", "font"),
+        (source / "ios/game/libc-bulk.cpp", "libc-bulk"),
         (root / "stubs.cpp", "stubs"),
         (root / "modules.s", "modules"),
     ]:
@@ -650,6 +750,7 @@ for platform, target, sdk in platforms:
             "-std=c++17",
             "-O2",
             "-DDCP_AOT",
+            f"-DDCP_NATIVE_LIBC_BULK={int(bool(native_bulk))}",
             *(["-DDCP_MOBILE_PLATFORM"] if platform != "mac" else []),
             "-I" + str(backend / "remill/include"),
             "-I" + str(source / "ios/cpu"),
@@ -686,7 +787,10 @@ for platform, target, sdk in platforms:
     archive = directory / "libcpu-fixtures.a"
     archive_temporary = archive.with_suffix(".a.partial")
     archive_temporary.unlink(missing_ok=True)
-    run([llvm / "llvm-ar", "rcs", archive_temporary, *objects], platform + "-archive.log")
+    run(
+        [llvm / "llvm-ar", "rcs", archive_temporary, *objects],
+        platform + "-archive.log",
+    )
     archive_temporary.replace(archive)
     if platform == "mac":
         (root / "cli.cpp").write_text(
@@ -710,7 +814,10 @@ for platform, target, sdk in platforms:
 licenses = root / "ThirdPartyNotices"
 licenses.mkdir(exist_ok=True)
 shutil.copy2(backend / "remill/LICENSE", licenses / "Remill-Apache-2.0.txt")
-shutil.copy2(fp80_output / "ThirdPartyNotices/SoftFloat-3e-LICENSE.txt", licenses / "SoftFloat-3e-LICENSE.txt")
+shutil.copy2(
+    fp80_output / "ThirdPartyNotices/SoftFloat-3e-LICENSE.txt",
+    licenses / "SoftFloat-3e-LICENSE.txt",
+)
 shutil.copy2(fp80_output / "manifest.json", root / "fp80-manifest.json")
 for name in ("FreeType-FTL.txt", "FreeType-LICENSE.txt"):
     shutil.copy2(font_output / name, licenses / name)
@@ -722,4 +829,10 @@ for name in ("FreeType-FTL.txt", "FreeType-LICENSE.txt"):
     "Berkeley SoftFloat 3e, Regents of the University of California, used under its BSD license.\n"
     "Game-specific generated code and original game assets are private build inputs.\n"
 )
-print("Built", len(definitions), "real module traces")
+print(
+    "Built",
+    len(definitions),
+    "module entrypoints;",
+    len(native_bulk),
+    "native bulk libc adapters",
+)

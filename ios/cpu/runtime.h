@@ -37,6 +37,8 @@ void addRegion(Memory &, uint8_t *, size_t);
 uint8_t *guestPointer(Memory &, uint64_t, size_t);
 void guestRead(Memory &, uint64_t, void *, size_t);
 void guestWrite(Memory &, uint64_t, const void *, size_t);
+void guestMove(Memory &, uint64_t destination, uint64_t source, size_t);
+void guestFill(Memory &, uint64_t destination, uint8_t value, size_t);
 uint64_t read64(Memory &, uint64_t);
 void write64(Memory &, uint64_t, uint64_t);
 extern "C" const char *dcp_cpu_report();
