@@ -28,7 +28,7 @@ struct Runtime {
   SaveTransactions transactions;
   fs::path root;
   unsigned begins = 0, commits = 0;
-  Runtime(fs::path path)
+  Runtime(fs::path path, bool copying)
       : transactions(path / "ProbeSaves", path / "SaveCheckpoints"),
         root(std::move(path)) {
     fs::create_directories(root / "Game");
@@ -58,6 +58,28 @@ struct Runtime {
     DcpFileHooks files;
     files.context = this;
     files.pointer = pointer;
+    if (copying) {
+      files.validate_memory = [](void *context, uint64_t address, size_t size,
+                                 bool writing) {
+        return pointer(context, address, size, writing) != nullptr;
+      };
+      files.read_memory = [](void *context, uint64_t address, void *output,
+                             size_t size) {
+        auto *input = pointer(context, address, size, false);
+        if (!input)
+          return false;
+        std::memcpy(output, input, size);
+        return true;
+      };
+      files.write_memory = [](void *context, uint64_t address,
+                              const void *input, size_t size) {
+        auto *output = pointer(context, address, size, true);
+        if (!output)
+          return false;
+        std::memcpy(output, input, size);
+        return true;
+      };
+    }
     files.game_root = (root / "Game").string();
     files.save_root = (root / "ProbeSaves").string();
     files.savedata_access = [](void *, bool writing) {
@@ -140,66 +162,71 @@ int main(int argc, char **argv) {
     if (argc != 2)
       throw std::runtime_error(
           "Usage: save-service-integration EXTERNAL_OUTPUT");
-    const auto root =
-        fs::path(argv[1]) / ("services-" + std::to_string(getpid()));
-    {
-      Runtime runtime(root);
-      runtime.mount(2 | 0x20);
-      expect(runtime.transactions.active() && runtime.begins == 1,
-             "writable mount did not begin transaction");
-      auto fd = runtime.open(true);
-      runtime.write(fd, "complete-v1");
-      expect(uint32_t(runtime.unmount()) == 0x809f000b && runtime.commits == 0,
-             "unmount committed with an open writer");
-      expect(dcp_offline_savedata_access(true) && runtime.transactions.active(),
-             "rejected unmount lost the writable transaction");
-      runtime.close(fd);
-      expect(runtime.unmount() == 0 && runtime.commits == 1 &&
-                 !runtime.transactions.active(),
-             "closed save did not commit");
+    for (bool copying : {false, true}) {
+      const auto root =
+          fs::path(argv[1]) / ("services-" + std::to_string(getpid()) +
+                               (copying ? "-copies" : "-legacy"));
+      {
+        Runtime runtime(root, copying);
+        runtime.mount(2 | 0x20);
+        expect(runtime.transactions.active() && runtime.begins == 1,
+               "writable mount did not begin transaction");
+        auto fd = runtime.open(true);
+        runtime.write(fd, "complete-v1");
+        expect(uint32_t(runtime.unmount()) == 0x809f000b &&
+                   runtime.commits == 0,
+               "unmount committed with an open writer");
+        expect(dcp_offline_savedata_access(true) &&
+                   runtime.transactions.active(),
+               "rejected unmount lost the writable transaction");
+        runtime.close(fd);
+        expect(runtime.unmount() == 0 && runtime.commits == 1 &&
+                   !runtime.transactions.active(),
+               "closed save did not commit");
+      }
+      {
+        Runtime runtime(root, copying);
+        runtime.verify("complete-v1");
+        runtime.mount(2);
+        auto fd = runtime.open(true);
+        runtime.write(fd, "complete-v2");
+        runtime.close(fd);
+        expect(runtime.unmount() == 0 && !runtime.transactions.active(),
+               "second committed save failed");
+      }
+      {
+        Runtime runtime(root, copying);
+        runtime.verify("complete-v2");
+        runtime.mount(2);
+        auto fd = runtime.open(true);
+        runtime.write(fd, "interrupted-v3");
+        expect(runtime.transactions.active(),
+               "interrupted session journal missing");
+        // Destruction closes descriptors without Umount, like a process
+        // terminating.
+      }
+      {
+        Runtime runtime(root, copying);
+        expect(!runtime.transactions.active() &&
+                   !runtime.transactions.last_recovery_path().empty(),
+               "relaunch did not recover interrupted session");
+        expect(read(fs::path(runtime.transactions.last_recovery_path()) /
+                    "SAVEDATA00/data.bin") == "interrupted-v3",
+               "partial write not preserved");
+        runtime.verify("complete-v2");
+        expect(!dcp_offline_savedata_access(true),
+               "readonly unmount left writable access");
+      }
+      {
+        Runtime runtime(root, copying);
+        expect(runtime.transactions.last_recovery_path().empty(),
+               "recovery repeated on a clean relaunch");
+        runtime.verify("complete-v2");
+      }
+      fs::remove_all(root);
     }
-    {
-      Runtime runtime(root);
-      runtime.verify("complete-v1");
-      runtime.mount(2);
-      auto fd = runtime.open(true);
-      runtime.write(fd, "complete-v2");
-      runtime.close(fd);
-      expect(runtime.unmount() == 0 && !runtime.transactions.active(),
-             "second committed save failed");
-    }
-    {
-      Runtime runtime(root);
-      runtime.verify("complete-v2");
-      runtime.mount(2);
-      auto fd = runtime.open(true);
-      runtime.write(fd, "interrupted-v3");
-      expect(runtime.transactions.active(),
-             "interrupted session journal missing");
-      // Destruction closes descriptors without Umount, like a process
-      // terminating.
-    }
-    {
-      Runtime runtime(root);
-      expect(!runtime.transactions.active() &&
-                 !runtime.transactions.last_recovery_path().empty(),
-             "relaunch did not recover interrupted session");
-      expect(read(fs::path(runtime.transactions.last_recovery_path()) /
-                  "SAVEDATA00/data.bin") == "interrupted-v3",
-             "partial write not preserved");
-      runtime.verify("complete-v2");
-      expect(!dcp_offline_savedata_access(true),
-             "readonly unmount left writable access");
-    }
-    {
-      Runtime runtime(root);
-      expect(runtime.transactions.last_recovery_path().empty(),
-             "recovery repeated on a clean relaunch");
-      runtime.verify("complete-v2");
-    }
-    fs::remove_all(root);
     std::cout << "{\"passed\":" << passed
-              << ",\"failed\":0,\"relaunches\":4,\"interrupted_write_"
+              << ",\"failed\":0,\"relaunches\":8,\"interrupted_write_"
                  "recovered\":true}\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

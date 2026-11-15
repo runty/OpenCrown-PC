@@ -1,6 +1,8 @@
 // Guest kernel file semantics adapted from linux-port/src/hle/kernel/file.cpp.
 #include "file-services.h"
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -84,10 +86,38 @@ std::mutex table_lock;
 std::shared_mutex service_gate;
 std::map<int32_t, std::shared_ptr<File>> files;
 int32_t next_fd = 3;
+std::atomic<bool> synchronized_copies{false};
+std::atomic<uint64_t> read_bytes{0}, write_bytes{0};
 
 void *pointer(uint64_t address, size_t bytes, bool writing) {
   return hooks.pointer ? hooks.pointer(hooks.context, address, bytes, writing)
                        : nullptr;
+}
+bool read_memory(uint64_t address, void *output, size_t bytes) {
+  if (hooks.read_memory) {
+    if (!hooks.read_memory(hooks.context, address, output, bytes))
+      return false;
+    read_bytes.fetch_add(bytes, std::memory_order_relaxed);
+    return true;
+  }
+  const auto *p = pointer(address, bytes, false);
+  if (!p)
+    return false;
+  std::memcpy(output, p, bytes);
+  return true;
+}
+bool write_memory(uint64_t address, const void *input, size_t bytes) {
+  if (hooks.write_memory) {
+    if (!hooks.write_memory(hooks.context, address, input, bytes))
+      return false;
+    write_bytes.fetch_add(bytes, std::memory_order_relaxed);
+    return true;
+  }
+  auto *p = pointer(address, bytes, true);
+  if (!p)
+    return false;
+  std::memcpy(p, input, bytes);
+  return true;
 }
 bool string(uint64_t address, std::string &text) {
   if (!address)
@@ -96,11 +126,9 @@ bool string(uint64_t address, std::string &text) {
   for (size_t i = 0; i < 4096; ++i) {
     if (address > UINT64_MAX - i)
       return false;
-    void *p = pointer(address + i, 1, false);
-    if (!p)
-      return false;
     char value;
-    std::memcpy(&value, p, 1);
+    if (!read_memory(address + i, &value, 1))
+      return false;
     if (!value)
       return true;
     text.push_back(value);
@@ -279,12 +307,29 @@ uint64_t transfer(const uint64_t *a, bool writing, bool positioned) {
         ::lseek(value->descriptor.value, 0, SEEK_END) < 0)
       return error(host_error());
   }
+  const bool copying = hooks.validate_memory != nullptr;
+  // Preserve 64 MiB validation windows while bounding staging memory and
+  // keeping potentially blocking file I/O outside guest access locks.
+  std::vector<uint8_t> staging(
+      copying ? size_t(std::min<uint64_t>(remaining, 256u << 10)) : 0);
+  size_t validated = 0;
   while (remaining) {
-    const size_t bytes = size_t(std::min<uint64_t>(remaining, 64u << 20));
     if (a[1] > UINT64_MAX - done)
       return error(kFault);
-    void *buffer = pointer(a[1] + done, bytes, !writing);
+    const uint64_t address = a[1] + done;
+    if (copying && !validated) {
+      validated = size_t(std::min<uint64_t>(remaining, 64u << 20));
+      if (address > UINT64_MAX - validated ||
+          !hooks.validate_memory(hooks.context, address, validated, !writing))
+        return error(kFault);
+    }
+    const size_t bytes = copying
+                             ? std::min(validated, staging.size())
+                             : size_t(std::min<uint64_t>(remaining, 64u << 20));
+    void *buffer = copying ? staging.data() : pointer(address, bytes, !writing);
     if (!buffer)
+      return error(kFault);
+    if (copying && writing && !read_memory(address, buffer, bytes))
       return error(kFault);
     ssize_t count;
     if (standard)
@@ -306,6 +351,11 @@ uint64_t transfer(const uint64_t *a, bool writing, bool positioned) {
         return error(5);
       break;
     }
+    if (copying) {
+      if (!writing && !write_memory(address, buffer, size_t(count)))
+        return error(kFault);
+      validated -= size_t(count);
+    }
     done += uint64_t(count);
     remaining -= uint64_t(count);
   }
@@ -322,9 +372,21 @@ void dcp_file_reset() {
   temporary.descriptor = Descriptor{};
   next_fd = 3;
   hooks = {};
+  synchronized_copies = false;
+  read_bytes = write_bytes = 0;
+}
+DcpFileMemoryStats dcp_file_memory_stats() {
+  return {synchronized_copies.load(std::memory_order_relaxed),
+          read_bytes.load(std::memory_order_relaxed),
+          write_bytes.load(std::memory_order_relaxed)};
 }
 void dcp_file_init(DcpFileHooks callbacks) {
   dcp_file_reset();
+  const unsigned copies = unsigned(callbacks.validate_memory != nullptr) +
+                          unsigned(callbacks.read_memory != nullptr) +
+                          unsigned(callbacks.write_memory != nullptr);
+  if (copies && copies != 3)
+    throw std::runtime_error("file memory callbacks must be supplied together");
   if (callbacks.game_root.empty() || callbacks.save_root.empty())
     throw std::runtime_error(
         "file adapter requires game and disposable save roots");
@@ -344,6 +406,7 @@ void dcp_file_init(DcpFileHooks callbacks) {
   save.writable = temporary.writable = true;
   save.case_fallback = temporary.case_fallback = false;
   hooks = std::move(callbacks);
+  synchronized_copies = copies == 3;
 }
 bool dcp_file_service(const char *name, const uint64_t a[6], uint64_t *result) {
   std::shared_lock<std::shared_mutex> admission(service_gate);
@@ -401,15 +464,14 @@ bool dcp_file_service(const char *name, const uint64_t a[6], uint64_t *result) {
                              ? error(host_error())
                              : 0);
       else {
-        void *out = pointer(a[1], 0x78, true);
+        std::array<uint8_t, 0x78> out{};
         struct stat status;
-        if (!out)
-          *result = error(kFault);
-        else if (::fstat(value->descriptor.value, &status) != 0)
+        if (::fstat(value->descriptor.value, &status) != 0)
           *result = error(kBadFd);
         else {
-          fill_stat(out, status, value->writable);
-          *result = 0;
+          fill_stat(out.data(), status, value->writable);
+          *result =
+              write_memory(a[1], out.data(), out.size()) ? 0 : error(kFault);
         }
       }
     }
@@ -429,13 +491,10 @@ bool dcp_file_service(const char *name, const uint64_t a[6], uint64_t *result) {
       else if (S_ISLNK(status.st_mode))
         *result = error(kAccess);
       else if (named(name, "sceKernelStat")) {
-        void *out = pointer(a[1], 0x78, true);
-        if (!out)
-          *result = error(kFault);
-        else {
-          fill_stat(out, status, path.writable);
-          *result = 0;
-        }
+        std::array<uint8_t, 0x78> out{};
+        fill_stat(out.data(), status, path.writable);
+        *result =
+            write_memory(a[1], out.data(), out.size()) ? 0 : error(kFault);
       } else
         *result = 0;
     } else if (!path.writable)

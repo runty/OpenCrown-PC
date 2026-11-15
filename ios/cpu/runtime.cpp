@@ -230,6 +230,10 @@ uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
   AccessLock lock(pointer, size);
   return pointer;
 }
+void guestValidate(Memory &memory, uint64_t address, size_t size) {
+  auto pointer = checkedPointer(memory, address, size);
+  AccessLock lock(pointer, size);
+}
 // The bound thread already has the registry proof for a whole native page.
 // Keep that common case inside the bridge; unusual spans still go through
 // the same synthetic, registry and boundary checks used by host hooks.

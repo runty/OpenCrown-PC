@@ -1011,6 +1011,21 @@ extern "C" const char *dcp_cpu_report() {
       return guestPointer(static_cast<Engine *>(context)->primary, address,
                           size);
     };
+    files.validate_memory = [](void *context, uint64_t address, size_t size,
+                               bool) {
+      guestValidate(static_cast<Engine *>(context)->primary, address, size);
+      return true;
+    };
+    files.read_memory = [](void *context, uint64_t address, void *output,
+                           size_t size) {
+      guestRead(static_cast<Engine *>(context)->primary, address, output, size);
+      return true;
+    };
+    files.write_memory = [](void *context, uint64_t address, const void *input,
+                            size_t size) {
+      guestWrite(static_cast<Engine *>(context)->primary, address, input, size);
+      return true;
+    };
     files.set_errno = [](void *, int32_t error) {
       if (!errorSlot)
         errorSlot = allocate(*currentMemory, 8);
@@ -1241,6 +1256,7 @@ extern "C" const char *dcp_cpu_report() {
     stage = "stopped";
     error.clear();
   }
+  const auto fileMemory = dcp_file_memory_stats();
   if (!joined)
     error = "guest workers failed to stop within timeout";
   else {
@@ -1303,6 +1319,10 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"fault_context\":" << jsonString(faultContext)
       << ",\"trace_hash\":\"" << traceHash << "\"";
   const auto cursor = engine().cursor.read();
+  out << ",\"file_memory\":{\"synchronized_copies\":"
+      << (fileMemory.synchronized_copies ? "true" : "false")
+      << ",\"read_bytes\":" << fileMemory.read_bytes
+      << ",\"write_bytes\":" << fileMemory.write_bytes << '}';
   out << ",\"cursor_readback\":{\"sequence\":" << cursor.sequence
       << ",\"x\":" << cursor.x << ",\"y\":" << cursor.y
       << ",\"read_errors\":" << engine().cursorReadErrors << '}';

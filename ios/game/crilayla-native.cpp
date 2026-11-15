@@ -87,8 +87,8 @@ bool tryDecode(State &state, uint64_t pc, Memory &memory) {
     guestRead(memory, sp, &ret, 8);
     if (ret != pc - 0x121)
       return false;
-    (void)guestPointer(memory, stack.address, stack.size);
-    (void)guestPointer(memory, destination, size_t(count));
+    guestValidate(memory, stack.address, stack.size);
+    guestValidate(memory, destination, size_t(count));
     std::array<uint8_t, 16> header{};
     // Either the whole record or its byte16 stream can be passed to the raw
     // original leaf. In both cases the checked encoded stream ends at S+C.
@@ -114,7 +114,7 @@ bool tryDecode(State &state, uint64_t pc, Memory &memory) {
     if (!valid(input) || (overlaps(input, output) && !inplace) ||
         overlaps(input, stack) || overlaps(cpu, input))
       return false;
-    (void)guestPointer(memory, input.address, size_t(input.size));
+    guestValidate(memory, input.address, size_t(input.size));
     raw.resize(size_t(input.size));
     // One synchronized input snapshot; decoding thereafter owns private bytes.
     // This has the same coarser publication policy as native bulk adapters.
@@ -148,8 +148,8 @@ bool tryDecode(State &state, uint64_t pc, Memory &memory) {
   dcp_trace_enter(state, pc);
   // Recheck all publication spans before any write. Mapping lifetimes are
   // stable until joined unload; return stack is disjoint from source/output.
-  (void)guestPointer(memory, stack.address, stack.size);
-  (void)guestPointer(memory, destination, size_t(count));
+  guestValidate(memory, stack.address, stack.size);
+  guestValidate(memory, destination, size_t(count));
   const uint64_t pushed[] = {state.gpr.rbx.qword, state.gpr.r12.qword,
                              state.gpr.r13.qword, state.gpr.r14.qword,
                              state.gpr.r15.qword, state.gpr.rbp.qword};

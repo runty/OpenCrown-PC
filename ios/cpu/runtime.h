@@ -54,6 +54,8 @@ Memory *dispatch(State &, uint64_t, Memory *);
 void bindScalarThread(Memory &);
 void addRegion(Memory &, uint8_t *, size_t);
 uint8_t *guestPointer(Memory &, uint64_t, size_t);
+// Check a range without returning a mutable pointer that can escape its lock.
+void guestValidate(Memory &, uint64_t, size_t);
 void guestRead(Memory &, uint64_t, void *, size_t);
 // Compare a guest span with a private, immutable host snapshot.
 bool guestMatches(Memory &, uint64_t, const void *, size_t);
