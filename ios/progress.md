@@ -1,5 +1,21 @@
 # Device port progress
 
+## 2026-11-14 — iPhone Town, existing-save reload and Simulator lifecycle
+
+On iPhone 17 Pro Max, the 3,000-frame Felix Town walk with platform audio
+reached 57.87 fps. Median and p95 replay intervals were 16.68 and 18.45 ms.
+The replay covered all 2,999 guest flip intervals. Two separate cold launches
+reopened the same working save at the Inn. The Felix slot retained its original
+save hash. The simulator touch overlay loaded that slot, exited the Inn and
+walked along the street. Pressing Home paused guest execution and audio;
+reactivating resumed both in the same session. The on-screen Pause, Resume
+and Stop Game controls returned to the launcher with no guest or save error.
+
+The arm64 host reached the adventure spoils screen with 123 gold. Exit from
+that screen called a missing routine at `2063b950`. The bootstrap includes
+that observed target and the Town movement target `203d54a0`. Qualification
+of the resulting save requires an on-device return and cold reload.
+
 ## 2026-11-14 — First Ancient Temple Ruins fight on both physical devices
 
 The same Felix slot and scripted pad route reached TITLE, INN, Town, the

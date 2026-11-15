@@ -423,9 +423,9 @@ UIButton *button(NSString *title, id target, SEL action) {
       char *end = nullptr;
       double value = std::strtod(duration, &end);
       if (end == duration || *end || !std::isfinite(value) || value < 1 ||
-          value > 600) {
+          value > 2100) {
         _running = NO;
-        self.status.text = @"Invalid diagnostic duration (use 1–600 seconds).";
+        self.status.text = @"Invalid diagnostic duration (use 1–2100 seconds).";
         [self recordStartupFailure:self.status.text stage:@"configuration"];
         [self updateButtons];
         return;

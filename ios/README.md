@@ -66,7 +66,7 @@ intrinsics. These fixtures precede the real-module and broader P1 CPU tests.
 `--diagnostic-interactive-startup` starts timed normal game execution with real
 platform audio/input, but keeps saves/checkpoints and captured PNGs in a fresh
 `Documents/DiagnosticSessions/<UUID>` folder. It supplies no automatic controller
-input. `DCP_DIAGNOSTIC_SECONDS` must be finite and in1..600 (default120). Unlike
+input. `DCP_DIAGNOSTIC_SECONDS` must be between 1 and 2,100 seconds inclusive and finite (default 120). Unlike
 `--diagnostic-startup`, it does not use the scripted checkpoint driver or null
 audio. Normal Home Screen launch still waits for Play and uses local player saves.
 

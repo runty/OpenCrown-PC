@@ -76,8 +76,8 @@ input script. Each run creates an independent
 `Documents/DiagnosticSessions/<session UUID>/ProbeSaves` and checkpoint folder;
 ordinary player saves are never selected by this mode. It exports first
 nonuniform and last rendered game PNGs in that same session folder and requests stop after 120 wall-clock
-seconds by default (`DCP_DIAGNOSTIC_SECONDS` accepts only finite 1–600-second
-values, and invalid values reject before guest startup). The timer belongs to that session and cannot stop a later session.
+seconds by default (`DCP_DIAGNOSTIC_SECONDS` accepts only finite 1–2,100-second
+values, and invalid values reject before guest startup). The upper bound allows a 30-minute gameplay run plus five minutes for startup. The timer belongs to that session and cannot stop a later session.
 Reports label the disposable save scope and diagnostic mode. Normal Home Screen
 launch requires Play and retains its ordinary local saves. Missing inputs,
 guest errors and incomplete checkpoints remain explicit failures. This option
