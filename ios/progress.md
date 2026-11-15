@@ -1,5 +1,55 @@
 # Device port progress
 
+## 2026-11-15 — Full-screen pointing survives touchpad edges and rotation
+
+Runtime `7bc7603362bbf4ae75cee96689dd1385a1265442`, packaged from clean
+`280b856a08eb7447102c8ace8285ff03fbbd2baf`, fixes a tablet follow-up failure:
+small screen moves worked, but distant targets repeatedly re-contacted without
+moving. The original pad parser calls ReadState, then GetControllerInformation.
+Both previously consumed the pointer loop; the metadata call could discard the
+edge step before the next real read. Actual guest records alternated contact /
+no-contact at pad centre with zero delta. An independent model reproduces the
+exact `(211,-293)` → `(211,380)` stall. Metadata now uses a separate connection
+peek; hosts without it use the last valid read. Invalid output buffers reject
+before consuming input. No guest scene/cursor/save fields are patched.
+
+Normal/ASan/UBSan offline-service tests cover read/query counts, connection
+changes, bounds, fallback and existing audio/save behavior. The headless script
+now includes those fixtures, with 42 configuration checks and 141 scripted-input
+checks in each normal/sanitized run. The cursor probe passes repeated metadata
+queries, long moves/re-contacts, four gains and normal/cancellation cases; its
+TSan run also passes. Both SDK adapters compile/link. All three frozen cores
+retain 50,464 entries, complete current/generation backend provenance and native
+CRILAYLA/libc paths. Both app bundles include compiled icons; device signature
+verifies without memory entitlements. The icon packer also avoids an empty-array
+expansion rejected by macOS system Bash when no upscale flag is needed.
+
+Actual UIKit input in the iPad mini (A17 Pro) Simulator reaches three portrait
+targets and, after rotation back to landscape, the opposite corner. Each held
+read-only snapshot is within 0.4 pixels of its target. The same run loads the
+existing Darrel LV2 save, uses Town Map/Gate, enters Ancient Temple Ruins,
+clears the first encounter/crates and opens the first chest with a short
+screen tap. Rannie unlocks it and Treasure ranks appears; Cross dismisses the
+tutorial. Public Pause → Stop Game returns to launcher after 41,403 captured
+frames / 40,198 cursor samples with zero read errors and empty runtime/frontend/
+save errors. The working save retains exact `728f0ec…` bytes. Mac-forwarded
+controllers are suppressed only in the private UI test. A synthetic multi-event
+combo is not counted as simultaneous-control qualification. The input body
+acknowledges and terminates the owned game; XCTest teardown stalls separately
+and is interrupted, without an official suite-pass claim.
+
+A separate native cold process reaches visible Town at 303 HP, renders 1,915
+frames through 2,525 vblanks and unloads with empty errors and exact save bytes.
+The first attempt reaches Town but exhausts the default trace budget; a
+five-billion-entry harness limit allows the 900-vblank settle to finish on the
+same working save, without reseeding. These guided/offscreen runs do not qualify
+physical performance or sustained play. Simulator audio counts zero underruns /
+clipping, without an audibility or physical-audio claim. Touch-only door/full
+fresh tutorial, physical controls/audio, sustained thermal and remote-provider
+gates remain open. Both physical devices and normal/live-cloud saves stay
+untouched. Private proof is `cursor-investigation/input-peek-verification.json`
+and `input-peek-target-verification.json`.
+
 ## 2026-11-15 — Screen pointing and actual touch-only chest opening
 
 Runtime `ce065bbb9e58337d64eedc3e580becf94fb26ba0` connects the mobile

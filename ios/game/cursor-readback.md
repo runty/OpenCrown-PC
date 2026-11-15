@@ -45,6 +45,29 @@ changes, bounds and fallback; the cursor model includes repeated metadata
 queries between real samples. The headless test script runs the offline
 fixture normally and under ASan/UBSan.
 
+Runtime `7bc7603`, packaged cleanly as `280b856`, fixes that regression in the
+actual iPad mini (A17 Pro) Simulator. UIKit pointing reaches three portrait
+targets, including the previously stalled long vertical move and a distant
+corner, then reaches the opposite corner after rotation back to landscape.
+All four read-only host snapshots are within 0.4 pixels of the requested
+target. Neither virtual-finger lifts nor orientation changes require guest
+field writes. Normal/sanitizer offline-service tests and both SDK adapters
+pass. A native cold process reaches visible Town, renders 1,915 frames through
+2,525 vblanks, unloads cleanly and preserves the exact earned save. An initial
+attempt reaches Town but exhausts the default trace budget; the passing retry
+uses a five-billion-entry harness budget on that same working save without
+reseeding. These guided and offscreen checks are not physical performance
+or sustained-play qualification.
+
+The same repaired tablet run also opens the first Ruins chest with a short
+screen tap, displaying the original Treasure ranks tutorial. It stops through
+public Pause → Stop Game after 41,403 captured frames / 40,198 cursor samples,
+with zero read errors, empty runtime/frontend/save errors and unchanged earned
+save bytes. Private proof is `cursor-investigation/input-peek-verification.json`.
+XCTest teardown is interrupted separately; the input result is not a suite-pass
+claim. Physical input/audio, touch-only door/full fresh tutorial and sustained
+thermal/performance remain open.
+
 `ios/platform/build-check.sh` compiles/runs the independent relative-cursor
 model and snapshot probe, then compiles/links both mobile SDK adapters.
 The model includes first contact, id changes, lifts, the observation delay and

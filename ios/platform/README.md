@@ -59,6 +59,12 @@ read-only pad-zero cursor feedback with `dcp_platform_input_cursor`; sequence
 zero means no sample. Map/raw touchpad input, pause, cancellation and controller
 layout changes cancel a queued screen interaction. Physical controller touchpad
 points remain native unless a screen pointer gesture is active.
+
+Controller-information queries use `dcp_platform_input_connected`, which never
+advances that loop. Only a valid pad-state read consumes a virtual finger or
+interaction step. Using another consuming read for metadata can discard an
+edge step and strand distant targets; the offline-service and cursor probes
+cover this regression.
 If presentation crops or uses another viewport, replace that transform or
 supply your own raw pad via `dcp_platform_input_set_touch`. The custom setter
 replaces the same virtual pad as the overlay; use one frontend at a time.
