@@ -622,10 +622,13 @@ def main():
     ]
     if args.translated_libc_bulk:
         builder.append("--translated-libc-bulk")
-    # These indirect entries were requested by the supported game at runtime.
-    # Keep later gameplay reachable on fresh builds and on existing caches.
+    # Include the observed startup and gameplay entries and every distinct case
+    # of the supported dump’s 11-slot character selection switch.
     traces = game / "traces"
-    required = ("300717e0", "30000000", "2054c690", "203d54a0", "2063b950", "203a1b56")
+    required = (
+        "300717e0", "30000000", "2054c690", "203d54a0", "2063b950",
+        "203a1b56", "203a1b72", "203a1b8b", "203a1ba4",
+    )
     missing = [pc for pc in required if not (traces / (pc + ".ll")).is_file()]
     run("game-seed" if missing else "game-cache-check",
         [*builder, *[arg for pc in missing for arg in ("--lift", pc)]])
