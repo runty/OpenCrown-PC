@@ -140,6 +140,11 @@ bool pollRuntime() {
   // Most scalar accesses arrive while the guest is running normally. Check
   // cancellation twice only across an actual pause, where another thread can
   // change the worker's state while it is asleep.
+  if (currentMemory && currentMemory->stopping && currentMemory->poll.paused &&
+      currentMemory->poll.serviceStop && !currentMemory->stopping->load() &&
+      !currentMemory->poll.paused->load() && !currentMemory->poll.serviceStop->load() &&
+      (!currentMemory->poll.workerCancel || !currentMemory->poll.workerCancel->load()))
+    return false;
   auto stopped = [] {
     return (currentEngine && currentEngine->stop.load()) ||
            dcp_thread_shutdown_requested();
@@ -385,10 +390,13 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
   } else if (name == "sceKernelUsleep") {
     auto end = std::chrono::steady_clock::now() +
                std::chrono::microseconds(uint32_t(r.rdi.qword));
-    while (std::chrono::steady_clock::now() < end) {
+    for (;;) {
+      const auto now = std::chrono::steady_clock::now();
+      if (now >= end)
+        break;
       if (pollRuntime())
         throw std::runtime_error("bootstrap stopped while sleeping");
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_until(std::min(end, now + std::chrono::milliseconds(1)));
     }
     returnToGuest(state, *memory, 0);
   } else if (name == "sceSystemServiceGetStatus") {

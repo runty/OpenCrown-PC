@@ -92,9 +92,11 @@ bool readable(uint64_t a, uint64_t n) {
 // Never hold a capture-state lock across a guest memory callback. Guest atomic
 // regions can themselves enter capture observers, so that lock order would invert.
 bool copy_with_hooks(const AotCaptureHooks &hooks, void *destination, uint64_t address, size_t bytes) {
-    if ((!destination && bytes) || !address || bytes > (64ULL << 20) || address > UINT64_MAX - bytes ||
-        !hooks.memory || !hooks.memory(hooks.context, address, bytes, false)) return false;
+    if ((!destination && bytes) || !address || bytes > (64ULL << 20) || address > UINT64_MAX - bytes) return false;
+    // The runtime copy hook checks the complete span while holding the guest
+    // locks. Immutable fixtures without that hook still require a range check.
     if (hooks.copy_memory) return hooks.copy_memory(hooks.context, address, destination, bytes);
+    if (!hooks.memory || !hooks.memory(hooks.context, address, bytes, false)) return false;
     std::memcpy(destination, reinterpret_cast<const void*>(address), bytes);
     return true;
 }
@@ -426,7 +428,10 @@ uint64_t vertices_needed(const DrawRec& r) {
 void copy_bytes(std::vector<uint8_t>& out, uint64_t a, uint64_t n) {
 #ifdef DCP_AOT
     out.clear();
-    if (!n || !readable(a, n)) return;
+    if (!a || !n || n > (64ULL << 20) || a > UINT64_MAX - n) return;
+    // Reject large invalid ranges before allocating. Small draw constants
+    // take the checked copy path directly.
+    if (n > 4096 && !readable(a, n)) return;
     out.resize(size_t(n));
     if (!copy_memory_unlocked(out.data(), a, size_t(n))) out.clear();
 #else

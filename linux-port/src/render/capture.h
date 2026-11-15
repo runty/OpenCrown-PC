@@ -62,7 +62,7 @@ bool capture_enabled();
 struct AotCaptureHooks {
     void *context = nullptr;
     bool (*memory)(void *context, uint64_t address, size_t bytes, bool writing) = nullptr;
-    // Snapshot the complete span under the guest memory synchronization lock.
+    // Validate and snapshot the complete span under guest memory synchronization.
     // Optional only for immutable/single-threaded fixtures; runtime must provide it.
     bool (*copy_memory)(void *context, uint64_t address, void *destination, size_t bytes) = nullptr;
     // Optional synchronized comparison against an owned immutable snapshot.
