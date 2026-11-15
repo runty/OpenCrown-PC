@@ -628,9 +628,13 @@ def main():
     # reached in the Ruins interior. Equipment uses ELF 757ee4; status uses
     # ELF 71822c/718244. Each has six signed relative entries with unsigned
     # index <= 5; status preserves its zero-extended index through R15/stack.
-    # Continue during the Harpy fight reaches ELF 519d70's state dispatch:
+    # The Harpy defeat/Continue flow reaches ELF 519d70's state dispatch:
     # a zero-extended byte index guarded unsigned <= 9 selects ten signed
     # offsets from ELF 75a610. Include every case, not only observed 519de5.
+    # Victory also reaches this owner, then its nested result dispatches.
+    # Tables 75a648/75a674/75a638 have unsigned index bounds 10/14/3;
+    # the middle table uses a zero-extended EAX index after decrement.
+    # Include all 20 distinct targets across these three tables.
     traces = game / "traces"
     required = (
         "300717e0", "30000000", "2054c690", "203d54a0", "2063b950",
@@ -642,6 +646,10 @@ def main():
         "202e0e50", "202e0e5c", "202e0e68", "202e0e74", "202e0e80", "202e0e8c",
         "20519de5", "2051a0e5", "2051a17d", "2051a5ed", "2051a80f",
         "2051aaf8", "2051ae82", "2051af32", "2051b057", "2051b0d7",
+        "2051a7e8", "2051b43f", "2051b5a6", "2051b5f8", "2051b6b5",
+        "2051b779", "2051b81d", "2051b8a1", "2051b8ee", "2051b93b",
+        "2051b95b", "2051b9bf", "2051ba23", "2051ba70", "2051baae",
+        "2051bd81", "2051c06e", "2051c0a9", "2051c0ee", "2051c1d0",
     )
     missing = [pc for pc in required if not (traces / (pc + ".ll")).is_file()]
     run("game-seed" if missing else "game-cache-check",

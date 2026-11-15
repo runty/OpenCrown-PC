@@ -1,5 +1,63 @@
 # Device port progress
 
+## 2026-11-15 — Ruins status coverage and Harpy Continue dispatch
+
+Continuing from the earned guild-progress save, native Darrel passes the first
+encounter, pit vipers, spiders, bats, the waterfall corridor and lizardmen,
+collects the quest bones and reaches the Harpy boss. Ordinary item controls
+consume Heal Potion (S): HP changes from 85 to 175 and quantity from 3 to 2.
+A later use also increases HP by 90 and reduces the quantity again. This
+qualifies native ordinary potion use; touch-only and physical use remain open.
+Short right-stick pulses plus L1 also open a Ruins chest.
+
+The first interior discovery stops at missing `202e0e5c`. Original ELF
+`2e0c40` uses paired six-case signed-relative tables at `71822c` / `718244`,
+with unsigned index <= 5. Source `ff04004` requires all twelve destinations;
+six getters were already present and six setters are new. A separate bounded
+replay logs actual execution of `202e0e5c` at vblank 14,267 and continues to
+28,329 vblanks / 28,327 rendered frames in 480 seconds, with empty host/guest
+errors, acknowledged unload and unchanged guild-save bytes. The individual
+status effects have not been named from this evidence.
+
+The guided adventure then renders 40,701 frames through the Harpy fight,
+death, automatic revival and the Continue prompt. It stops after Continue at
+missing `20519de5`. Original ELF `519d70` loads a zero-extended state byte,
+guards it unsigned <= 9, then dispatches through ten signed-relative entries
+at `75a610`. All ten destination instructions and executable mappings are
+verified against the supported ELF. Source `cc12a9c` requires the complete
+switch. Its frozen 50,425-entry core builds for Mac, iPhoneOS and Simulator;
+all ten archive symbols and library hashes verify. Both icon-bearing SDK
+apps package from clean source; iPhoneOS signing verifies without increased
+memory or extended-VA entitlements. A second native run visibly defeats the Harpy. Read-only probes record
+`20519de5` at vblank 39,918 and `2051a17d` at 40,099, so the first repaired
+state target is now executed. Victory also reaches this owner: the evidence
+does not identify it as an exclusively Continue-specific routine. The run
+then stops at missing nested target `2051c06e`, before rewards/return/save.
+It renders 39,516 frames, unloads cleanly and retains the prior guild-save
+hash. All four indirect dispatches in ELF `519d70..51d520` are now inspected.
+The three nested tables at `75a648`, `75a674` and `75a638` have unsigned bounds
+10, 14 and 3 and twenty distinct destination instructions. These are added
+together in a frozen 50,445-entry core, which builds for all three targets.
+Executing the new result targets and returning with saved progress remain open.
+Neither a full adventure completion nor a newly earned adventure save is
+claimed from the boss defeat alone.
+
+The guided run pauses through the public lifecycle API between input batches.
+It modifies no guest scene, health, cursor or save fields. Its 2,926-second
+wall time includes those pauses and is not sustained-play or performance
+evidence. The collected input history is only a replay candidate until checked.
+Both physical devices remain released; no install or launch is attempted there.
+
+Packaged `cc12a9c` cold-reopens the same isolated guild-progress save twice
+without reseeding. The 300-frame settle checks render 1,871 / 1,886 frames,
+show Darrel in visible Town, retain the exact `04855cc…` hash and stop with
+empty runtime/frontend/save errors. Earlier 120-frame checks stopped while
+the loading logo remained visible; those are retained as checkpoint-only
+evidence and do not count as visual Town acceptance. Simulator audio is the
+paced null sink. The long unattended Ruins replay diverges from its guided
+source and is continued with ordinary live input; it is not an unattended
+acceptance route.
+
 ## 2026-11-15 — Fresh tutorial clear and earned-save reloads
 
 A fresh Fighter, Darrel, completes the introductory tutorial in the native
