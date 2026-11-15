@@ -247,6 +247,56 @@ int main(int argc, char **argv) {
             "nested checkpoint root accepted");
     rejects([&] { restore_checkpoint(empty, checkpoints); },
             "restore destination containing checkpoint accepted");
+    const auto exchange = base / "Exchange",
+               transferRoot = exchange / "Exports",
+               importRoot = exchange / "Imported",
+               importBackups = exchange / "Backups",
+               macSave = exchange / "MacSave";
+    write(macSave / "SAVEDATA00/SAVE0.DAT", "earned-mac-progress");
+    write(macSave / "SAVEDATA00/sce_sys/param.bin", "slot-metadata");
+    fs::create_directories(macSave / "empty-directory");
+    auto exported = transferRoot / stage_save_transfer(macSave, transferRoot);
+    expect(read(exported / "SAVEDATA00/SAVE0.DAT") == "earned-mac-progress",
+           "save export lost progress");
+    expect(import_save_folder(exported, importRoot, importBackups).empty(),
+           "first save import reported a nonexistent backup");
+    expect(
+        read(importRoot / "SAVEDATA00/SAVE0.DAT") == "earned-mac-progress" &&
+            fs::is_directory(importRoot / "empty-directory") &&
+            !fs::exists(importRoot / ".opencrown-checkpoint"),
+        "save import lost data or copied transport metadata into game saves");
+    write(importRoot / "SAVEDATA00/SAVE0.DAT", "earned-mobile-progress");
+    auto previous = import_save_folder(macSave, importRoot, importBackups);
+    expect(!previous.empty() &&
+               read(importBackups / previous / "SAVEDATA00/SAVE0.DAT") ==
+                   "earned-mobile-progress",
+           "save import lost the previous local progress");
+    write(exported / "SAVEDATA00/SAVE0.DAT", "tampered-export");
+    rejects([&] { import_save_folder(exported, importRoot, importBackups); },
+            "tampered exported save accepted");
+    expect(read(importRoot / "SAVEDATA00/SAVE0.DAT") == "earned-mac-progress",
+           "rejected save import changed local progress");
+    rejects(
+        [&] {
+          import_save_folder(base / "empty-saves", importRoot, importBackups);
+        },
+        "empty save transfer accepted");
+    write(macSave / "SAVEDATA00/SAVE0.DAT", "");
+    rejects([&] { stage_save_transfer(macSave, transferRoot); },
+            "zero-byte save transfer accepted");
+    write(macSave / "SAVEDATA00/SAVE0.DAT", "repaired");
+    fs::create_symlink(importRoot / "SAVEDATA00/SAVE0.DAT", macSave / "link");
+    rejects([&] { import_save_folder(macSave, importRoot, importBackups); },
+            "save transfer with symlink accepted");
+    fs::remove(macSave / "link");
+    rejects([&] { import_save_folder(importRoot, importRoot, importBackups); },
+            "self save transfer accepted");
+    write(exchange / ".Imported.write-session", "pending-session");
+    rejects([&] { import_save_folder(macSave, importRoot, importBackups); },
+            "save import bypassed pending write recovery");
+    rejects([&] { stage_save_transfer(importRoot, transferRoot); },
+            "save export bypassed pending write recovery");
+    fs::remove(exchange / ".Imported.write-session");
     const auto pending =
         checkpoints / ("." + std::string(32, 'b') + ".pending");
     write(pending / "partial", "partial");

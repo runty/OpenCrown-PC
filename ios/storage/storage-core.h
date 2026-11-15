@@ -44,6 +44,18 @@ void restore_checkpoint(const std::filesystem::path &checkpoint,
                         const std::filesystem::path &save_root);
 void recover_save_restore(const std::filesystem::path &save_root);
 
+// Manual Files handoff. Source is a folder containing SAVEDATA00/SAVE0.DAT,
+// either a raw Mac save root or an exported checkpoint. A supplied inventory
+// must validate and match the staged bytes. No cloud folder is modified.
+// All guest writers must be stopped and these roots exclusively owned.
+std::string stage_save_transfer(const std::filesystem::path &source,
+                               const std::filesystem::path &staging_root);
+// Stages/validates the incoming tree before backing up and replacing local
+// progress. Returns the pre-import checkpoint ID (empty for a first import).
+std::string import_save_folder(const std::filesystem::path &source,
+                               const std::filesystem::path &save_root,
+                               const std::filesystem::path &checkpoint_root);
+
 // Generic manifest-based engine is exposed for small file-free regression
 // fixtures. Production import_game always uses supported_game_files().
 namespace detail {

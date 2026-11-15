@@ -1,5 +1,46 @@
 # Device port progress
 
+## 2026-11-14 — Manual save copies through Files
+
+The stopped-game launcher now offers Transfer Save with Files. Export creates
+an independent SHA-256-inventoried folder, then uses the system copy/export
+picker. Import stages and validates the selected folder before checkpointing
+and replacing local progress. Existing inventories must match the copied
+bytes. Missing/empty slots, symlinks, overlapping roots and pending write
+journals reject. Storage actions and game execution remain mutually exclusive.
+The action sheet dismisses before picker presentation. Picker callbacks are
+checked against their active picker, and an in-progress local transaction
+finishes before releasing storage ownership. The last selected save folder is
+only a session-local picker hint, without a persistent cloud bookmark.
+
+The storage suite passes 149 checks and the integrated savedata service passes
+108 checks across four simulated relaunches. Device and Simulator SDK builds
+compile. A dedicated Simulator exported the native combat-written save through
+Files. Its exact SAVE0.DAT hash and full checkpoint inventory survive that copy.
+The exported folder also passes a host-simulated three-hop handoff. Importing
+it over the independently edited Feli save preserves Feli in a backup. These
+host hops do not represent phone/iPad/cloud-provider execution.
+
+The dedicated Simulator also exports the Feli save through the local Files
+provider, then imports it over the different native combat save. The picker
+starts at the remembered export location. Import restores Feli's exact
+`9069666…` hash and retains the replaced `affc24e…` hash in both a completed
+checkpoint and the previous tree, with no active journal. An earlier invalid
+folder selection reports an error and leaves local progress unchanged.
+Top-level app-container rows did not navigate in the automated Simulator test;
+first-use provider/container browsing remains unqualified. The successful
+round trip used the picker-granted export URL as its initial directory.
+
+A fresh native Connor replay again passes crossbow combat, the compound item
+lesson and food consumption at 330/300 HP. It renders 58,645 frames in about
+1,004 seconds and stops cleanly at the locked-door lesson, with empty host and
+guest errors and all runtime workers unloaded. The cursor-movement objective becomes checked during scripted right-stick
+input, but opening the door remains unverified. Full
+tutorial completion, ordinary potion use and new-character persistence after
+Town remain open. Both physical devices stay released for the other chat.
+First-use provider browsing, remote iCloud handoff/conflicts and sustained
+hardware play still need qualification.
+
 ## 2026-11-14 — Item lesson, food switch and scripted right stick
 
 A live-guided x86-64 Mac reference used disposable local user/save folders

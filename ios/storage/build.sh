@@ -26,6 +26,8 @@ for platform in mac ios simulator; do
     if [[ $platform != mac ]]; then
         xcrun --sdk "$sdk" clang++ "${flags[@]}" -fobjc-arc -c "$source_root/ios/storage/storage-ui.mm" -o "$output/$platform/ui.o"
         objects+=("$output/$platform/ui.o")
+        xcrun --sdk "$sdk" clang++ "${flags[@]}" -fobjc-arc -c "$source_root/ios/storage/save-transfer-ui.mm" -o "$output/$platform/transfer-ui.o"
+        objects+=("$output/$platform/transfer-ui.o")
     fi
     xcrun libtool -static -o "$output/$platform/libstorage.a" "${objects[@]}"
 done

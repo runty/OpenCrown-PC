@@ -607,4 +607,62 @@ void detail::restore_checkpoint_generation(const fs::path &checkpoint,
 void recover_save_restore(const fs::path &save_root) {
   recover_import(save_root);
 }
+std::string stage_save_transfer(const fs::path &source,
+                                const fs::path &staging_root) {
+  check(!present(source.parent_path() /
+                 ("." + source.filename().string() + ".write-session")),
+        "Recover the interrupted save before exporting it");
+  // Reject an empty/wrong folder before creating a destination. This is a
+  // filesystem/content-inventory check, not a parser of the game's save format.
+  auto slot = source_file(source, "SAVEDATA00/SAVE0.DAT");
+  check(size_of(slot.value) > 0,
+        "Choose a save folder containing SAVEDATA00/SAVE0.DAT");
+  const bool supplied = present(source / ".opencrown-checkpoint");
+  std::string manifest;
+  if (supplied) {
+    validate_checkpoint(source);
+    manifest = read_small(source / ".opencrown-checkpoint");
+  }
+  auto id = checkpoint_saves(source, staging_root);
+  try {
+    // Compare parsed inventories, allowing harmless whitespace differences in
+    // imported metadata. A source changed during copying must not be rehashed
+    // into an apparently valid replacement of its advertised snapshot.
+    if (supplied) {
+      auto expected = checkpoint_manifest(source);
+      auto copied = checkpoint_manifest(staging_root / id);
+      check(read_small(source / ".opencrown-checkpoint") == manifest,
+            "Save inventory changed during transfer");
+      check(expected.size() == copied.size(), "Save changed during transfer");
+      for (size_t i = 0; i < expected.size(); ++i)
+        check(expected[i].path == copied[i].path &&
+                  expected[i].size == copied[i].size &&
+                  expected[i].sha256 == copied[i].sha256,
+              "Save changed during transfer");
+    }
+    return id;
+  } catch (...) {
+    erase_tree(staging_root / id);
+    throw;
+  }
+}
+std::string import_save_folder(const fs::path &source,
+                               const fs::path &save_root,
+                               const fs::path &checkpoint_root) {
+  disjoint(source, save_root);
+  disjoint(save_root, checkpoint_root);
+  check(!present(save_root.parent_path() /
+                 ("." + save_root.filename().string() + ".write-session")),
+        "Recover the interrupted local save before importing");
+  const auto incoming =
+      checkpoint_root / stage_save_transfer(source, checkpoint_root);
+  // The incoming copy remains as a validated recovery point even if later
+  // backup or promotion fails. Never prune backups here.
+  std::string backup;
+  recover_save_restore(save_root);
+  if (present(save_root))
+    backup = checkpoint_saves(save_root, checkpoint_root);
+  restore_checkpoint(incoming, save_root);
+  return backup;
+}
 } // namespace dcp::storage

@@ -7,6 +7,7 @@
 #include "storage/save-transactions.h"
 #include "storage/storage-core.h"
 #import "storage/storage-ui.h"
+#import "storage/save-transfer-ui.h"
 #import <Metal/Metal.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -181,6 +182,8 @@ NSString *thermalName(NSProcessInfoThermalState state) {
 @property(nonatomic, strong) UIButton *importButton;
 @property(nonatomic, strong) UIButton *restoreButton;
 @property(nonatomic, strong) DCPStorageController *storage;
+@property(nonatomic, strong) DCPSaveTransferController *saveTransfer;
+@property(nonatomic, strong) UIButton *transferButton;
 @property(nonatomic, strong) CADisplayLink *displayLink;
 @property(nonatomic, strong) UIWindow *launcherWindow;
 @property(nonatomic, strong) UIButton *pauseButton;
@@ -292,10 +295,11 @@ UIButton *button(NSString *title, id target, SEL action) {
   UIButton *restore =
       button(@"Restore Save Checkpoint", self, @selector(restoreSave));
   self.restoreButton = restore;
+  self.transferButton = button(@"Transfer Save with Files", self, @selector(transferSave));
   UIButton *share =
       button(@"Share Diagnostics", self, @selector(shareDiagnostics));
   UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
-    self.status, self.play, self.importButton, restore, share
+    self.status, self.play, self.importButton, restore, self.transferButton, share
   ]];
   stack.axis = UILayoutConstraintAxisVertical;
   stack.spacing = 20;
@@ -318,7 +322,16 @@ UIButton *button(NSString *title, id target, SEL action) {
   ]];
   self.storage = [[DCPStorageController alloc]
       initWithDocumentsURL:[NSURL fileURLWithPath:documents() isDirectory:YES]];
+  self.saveTransfer = [[DCPSaveTransferController alloc]
+      initWithDocumentsURL:[NSURL fileURLWithPath:documents() isDirectory:YES]];
   __weak GameController *weakSelf = self;
+  self.saveTransfer.completionHandler = ^(NSString *message, NSError *error) {
+    GameController *controller = weakSelf;
+    if (!controller) return;
+    controller->_storageBusy = NO;
+    controller.status.text = error ? error.localizedDescription : message;
+    [controller updateButtons];
+  };
   self.storage.completionHandler = ^(NSError *error) {
     GameController *controller = weakSelf;
     if (!controller)
@@ -371,15 +384,16 @@ UIButton *button(NSString *title, id target, SEL action) {
 }
 - (void)updateButtons {
   const BOOL busy = _running || _storageBusy || self.storage.importing ||
-                    dcp_game_is_running();
+                    self.saveTransfer.busy || dcp_game_is_running();
   self.play.enabled =
       !busy && [NSFileManager.defaultManager
                    fileExistsAtPath:[documents() stringByAppendingPathComponent:
                                                      @"Game/eboot.bin"]];
   self.importButton.enabled = self.restoreButton.enabled = !busy;
+  self.transferButton.enabled = !busy;
 }
 - (void)importGame {
-  if (_running || _storageBusy || dcp_game_is_running())
+  if (_running || _storageBusy || self.saveTransfer.busy || dcp_game_is_running())
     return;
   _storageBusy = YES;
   [self.storage presentGameFolderPickerFrom:self];
@@ -387,7 +401,7 @@ UIButton *button(NSString *title, id target, SEL action) {
 }
 - (void)startGame {
   if (_running || _storageBusy || self.storage.importing ||
-      dcp_game_is_running())
+      self.saveTransfer.busy || dcp_game_is_running())
     return;
   _running = YES;
   _sessionID = NSUUID.UUID.UUIDString;
@@ -881,13 +895,14 @@ UIButton *button(NSString *title, id target, SEL action) {
   dcp_platform_set_paused(1);
   dcp_game_request_stop();
   [self.storage cancelImport];
-  if (!_restoring && !self.storage.importing)
+  [self.saveTransfer cancel];
+  if (!_restoring && !self.storage.importing && !self.saveTransfer.busy)
     _storageBusy = NO;
   [self dismissViewControllerAnimated:NO completion:nil];
 }
 - (void)restoreSave {
   if (_running || _storageBusy || self.storage.importing ||
-      dcp_game_is_running())
+      self.saveTransfer.busy || dcp_game_is_running())
     return;
   NSString *root =
       [documents() stringByAppendingPathComponent:@"SaveCheckpoints"];
@@ -983,6 +998,57 @@ UIButton *button(NSString *title, id target, SEL action) {
   sheet.popoverPresentationController.sourceView = self.view;
   sheet.popoverPresentationController.sourceRect = CGRectMake(
       CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
+  [self presentViewController:sheet animated:YES completion:nil];
+}
+- (void)transferSave {
+  if (_running || _storageBusy || self.storage.importing ||
+      self.saveTransfer.busy || dcp_game_is_running())
+    return;
+  UIAlertController *sheet = [UIAlertController
+      alertControllerWithTitle:@"Transfer Save"
+                       message:@"Quit the game on every device before "
+                               @"transferring. Export creates a separate copy "
+                               @"for Files or iCloud Drive. Import replaces "
+                               @"this device’s save and keeps a local backup."
+                preferredStyle:UIAlertControllerStyleActionSheet];
+  [sheet
+      addAction:[UIAlertAction
+                    actionWithTitle:@"Export Save Copy"
+                              style:UIAlertActionStyleDefault
+                            handler:^(UIAlertAction *) {
+                              self->_storageBusy = YES;
+                              [self updateButtons];
+                              self.status.text = @"Preparing save copy…";
+                              [self
+                                  dismissViewControllerAnimated:YES
+                                                     completion:^{
+                                                       [self.saveTransfer
+                                                           exportToFiles:self];
+                                                     }];
+                            }]];
+  [sheet addAction:
+             [UIAlertAction
+                 actionWithTitle:@"Import Save Folder"
+                           style:UIAlertActionStyleDestructive
+                         handler:^(UIAlertAction *) {
+                           self->_storageBusy = YES;
+                           [self updateButtons];
+                           self.status.text =
+                               @"Choose the folder containing SAVEDATA00, or "
+                               @"cancel to keep this save.";
+                           [self dismissViewControllerAnimated:YES
+                                                    completion:^{
+                                                      [self.saveTransfer
+                                                          importFromFiles:self];
+                                                    }];
+                         }]];
+  [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                            style:UIAlertActionStyleCancel
+                                          handler:^(UIAlertAction *) {
+                                            [self updateButtons];
+                                          }]];
+  sheet.popoverPresentationController.sourceView = self.transferButton;
+  sheet.popoverPresentationController.sourceRect = self.transferButton.bounds;
   [self presentViewController:sheet animated:YES completion:nil];
 }
 - (NSString *)currentSaveError {

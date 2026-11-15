@@ -103,10 +103,52 @@ Create checkpoints at known quiescent boundaries and offer explicit recovery
 after an interrupted save rather than automatically preferring a newer partial
 slot.
 
-These helpers access only the supplied local sandbox roots. They do not enable
-writes to `iCloud Drive/OpenCrown/saves`, inspect live Mac progress, or implement
-cloud conflict resolution. Cross-device cloud handoff and real termination
-while a game saves remain separate physical-device acceptance checks.
+These helpers access only the supplied roots. They do not configure automatic
+cloud sync or inspect live Mac progress. The manual Files handoff below provides
+explicit save copies. Cross-device cloud completion and conflict handling still
+need provider/device acceptance.
+
+## Manual save handoff with Files
+
+With the game stopped, **Transfer Save with Files** offers **Export Save Copy**
+and **Import Save Folder**. Export prepares a complete SHA-256 checkpoint under
+`Documents/SaveTransfers`, then opens Apple's copy/export picker. Choose a
+folder in Files, including iCloud Drive, to receive a separate copy. Local
+progress is unchanged. The temporary source is removed after picker completion
+or cancellation. A process killed while the export picker is open may retain
+its staging copy. The destination folder keeps its inventory metadata.
+
+Import accepts a folder containing `SAVEDATA00/SAVE0.DAT`, either a raw Mac save
+root or a previously exported checkpoint. It holds the Files security scope
+through a coordinated read. An existing inventory must validate, and the
+staged copy must match it. Empty/missing slots, symlinks, special files,
+overlapping roots and unrecovered save-write journals reject. The existing
+2 GiB / 8,192-file limits and storage preflight apply. This validates filesystem
+structure and advertised hashes, not the game's internal save format.
+
+Only after staging the complete incoming tree does import checkpoint current
+local progress and atomically replace `ProbeSaves`. The old save remains a
+completed local checkpoint and a previous tree. Restore Save Checkpoint can
+select the pre-import copy. Incoming checkpoints also remain available.
+The picker remembers the last transferred folder only within this launcher
+session; the next import still requires an explicit selection.
+Game execution and other storage actions remain disabled throughout a transfer.
+The integrator owns exclusive access and must stop/join all guest workers first.
+`DCPSaveTransferController` also recovers abandoned local transactions before
+reading or replacing saves.
+
+Quit the game on every participating device before handoff, and wait for Files
+to upload/download the complete folder. The Mac launcher can use a copied save
+root directly because both runtimes use the same PS4 files. Keep independent
+exports when offline progress diverges. This UI does not merge saves, overwrite
+the existing `iCloud Drive/OpenCrown/saves` root automatically, keep a persistent
+cloud-folder bookmark or declare that an upload has reached another device.
+
+The C++ entry points are `stage_save_transfer(source, staging_root)` and
+`import_save_folder(source, save_root, checkpoint_root)`. The latter returns
+the pre-import checkpoint ID, or an empty string for a first import. It refuses
+an active/interrupted write journal; call `SaveTransactions::recover()` with
+writers stopped before invoking it. Neither helper prunes checkpoints.
 
 ## Verification
 
@@ -175,8 +217,21 @@ open, commits after close, reopens the committed bytes across simulated launches
 then interrupts another write without unmount. The next launch restores the
 prewrite progress and retains the interrupted bytes; a following clean launch is
 idempotent. `build.sh` runs this fixture as `save-service-integration` in addition
-to the core suite. Current results are 137 core/retention checks and 108 integrated
+to the core suite. Current results are 149 core/retention/transfer checks and 108 integrated
 service checks, including four simulated relaunches. Both return zero failures.
 The retention suite makes fifteen commits, checks the exact latest-ten IDs after
 each commit, protects a deliberately old active rollback, preserves unknown and
 special entries, and verifies the generic checkpoint API retains more than ten.
+
+
+## Manual handoff qualification
+
+The dedicated iPhone Simulator exports a real edited save through the local
+Files provider, then imports that copy over a different real combat save using
+the remembered picker location. The imported `SAVE0.DAT` keeps its exact hash,
+and both a completed checkpoint and the previous tree retain the replaced
+save's exact hash. An invalid folder selection leaves local progress unchanged.
+Top-level app-container rows did not navigate during automated Simulator taps;
+first-use provider browsing remains unqualified. This successful round trip
+uses the picker-granted export URL as an initial directory. Actual iCloud
+propagation, offline divergence and physical-device Files remain open.

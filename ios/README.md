@@ -6,6 +6,11 @@ does not install or launch apps. The [game runtime](game/README.md),
 [renderer](render/README.md), [platform](platform/README.md) and
 [storage](storage/README.md) documents describe individual components.
 
+With the game stopped, **Transfer Save with Files** exports an independent save
+copy or imports a save folder with a backup of current local progress. See the
+[manual handoff workflow and qualification](storage/README.md#manual-save-handoff-with-files).
+Automatic cloud synchronization and conflict merging are still pending.
+
 The following records the original diagnostics probe and initial CPU harness;
 current fixture counts and port status are in [progress.md](progress.md).
 
