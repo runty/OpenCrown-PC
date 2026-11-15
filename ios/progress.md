@@ -1,5 +1,100 @@
 # Device port progress
 
+## 2026-11-15 — First-use local Files transfer and portable silent testing
+
+Separate private provider/consumer QA apps exercise the unchanged production
+save-transfer controller and storage code from the `280b856` candidate. Export
+through the system Files picker to an ordinary local root succeeds. A new
+controller with no remembered URL browses into that exported folder and imports
+the exact adventure save (`728f0ec…`) over the touch-earned save (`df59b068…`).
+The previous tree and a completed checkpoint retain the replaced bytes exactly.
+Cancelling the initial picker preserves local progress. A damaged export with a
+one-byte checksum mismatch rejects before promotion; all local/previous/checkpoint
+files remain byte-identical. Private evidence is
+`cursor-investigation/files-provider/verification.json`.
+
+App-container rows still do not navigate on both an existing and a fresh
+owned iOS 27.2 Simulator; Apple's own Files app reproduces the failure. Provider
+logs report a missing cached domain for `FILocalAppContainerNode`. Ordinary
+provider folders work in that same environment. This closes first-use local
+folder browsing, not app-container navigation, physical Files or remote iCloud
+handoff/conflicts. Earlier failed helper timing/navigation attempts are excluded;
+the final negative-case and original cancellation helpers exit with one passing
+test each. Normal game save roots and live cloud progress remain untouched.
+
+`734ceb9` changes the shared validator's misleading executable-hash message to
+`File checksum mismatch`; valid export and damaged-save fixtures confirm both
+paths, with the existing 149 storage / 108 integrated savedata checks passing.
+`851c06b` adds `DCP_MUTE_AUDIO=1` on devices as well as Simulator. The real render
+callback consumes/accounts PCM, then zeroes output buffers; diagnostics expose
+`audio.output_muted` without changing the audio-stats ABI. The legacy Simulator
+mute name remains accepted. The input/audio probe (400,000 concurrent frames),
+pointer/concurrency probes and both SDK compile/link checks pass. Both clean SDK
+app packages retain the frozen 50,464-entry core, complete backend provenance
+and compiled icons; physical signing verifies without extra memory entitlements.
+Simulator bundle signing is disabled and is not a device-signature qualification.
+
+The player makes the physical iPhone available and explicitly excludes the iPad.
+Only the iPhone is updated; all 24 pre-update non-asset files are backed up and
+preserved exactly across the initial update. Physical XCTest times out while
+enabling automation mode before test methods execute, so it provides no touch
+qualification. App-level muted output avoids relying on the private native volume
+helper; phone system media volume is not claimed to be zero. Real device timing
+and save checks are recorded separately below after completion.
+
+## 2026-11-15 — Current iPhone combat, cold saves and performance profile
+
+Only the explicitly released physical iPhone 17 Pro Max is used. Signed
+`851c06b` retains the same frozen game core. The first fixed-timing boot remains
+on the outbound map and does not qualify combat. Its retry reaches the first
+Ruins goblin encounter before newly appended late-confirm pulses are needed;
+these are not established as a fix for the timing variation. The final image
+shows Felix, a goblin, the chest and readable Ruins background. It captures
+6,848 frames, completes the 600-vblank settle and unloads without runtime,
+frontend, save or platform error. Real 256-frame / 48 kHz callbacks consume
+5,836,800 frames with `audio.output_muted=true`, zero underruns and zero clipping.
+The settled short fight is **51.63 fps**, p95 **33.33 ms**, in fair thermal state.
+Native CRILAYLA executes 122 fast calls / three translated fallbacks in this run.
+
+A cold process reuses that same isolated diagnostic save without reseeding,
+walks in recognizable Town and captures 4,591 frames. Its 3,000-vblank settle
+is **51.43 fps**, p95 **33.39 ms**, also fair thermal state. The save remains
+exact `400fed80…`. Another cold Town run retains that hash, captures 5,202 frames
+and ends in serious thermal state. An attached Time Profiler records 25.07
+seconds before ordinary diagnostic completion exits its target; that run is
+excluded from uninstrumented FPS acceptance. The first 23 seconds have 50,199
+weighted samples: 41.84% in lock/wake/wait functions, 9.21% in full texture
+comparison, and 6.50% directly in trace-entry bookkeeping. Symbol resolution
+confirms unfair locks/ulocks and `memcmp`; most lock paths lead through scalar
+memory bridges, while comparisons lead through the texture snapshot hook.
+These are statistical sample weights, not CPU durations or proof of one
+specific optimization. Remaining work should target those measured costs and
+preserve coherent texture reads, guest atomics and cancellation.
+
+The exact Simulator touch-earned `R` save (`df59b068…`) is then staged once
+in a new diagnostic UUID, leaving all earlier sessions intact. Two new physical
+processes reopen that same working root without reseeding. Their final images
+show R at 300 HP in settled Town; both preserve the exact save hash, capture
+2,804 / 2,855 frames and finish with empty runtime/frontend/save/platform errors
+and zero audio underruns/clipping. Output remains muted. Their neutral-input,
+1,200-vblank idle-Town samples are **59.35 / 59.05 fps**, at nominal / fair thermal
+state. The shorter idle route differs from the walking/combat route, so it does
+not establish that cooling alone explains the timing difference. This qualifies
+physical consumption/persistence of a new Simulator-earned save, not creation
+or touch input on hardware.
+
+Private proof is `cursor-investigation/phone-input-peek/`, including
+`qualified-runs.json`, per-run reports/images/save hashes and
+`town-cpu-{toc.xml,summary.json,symbols.json,attribution.json}`. A profiling
+configuration above the existing 3,600-frame bound rejects before game execution;
+that attempt and a name-based attach failure are excluded. Physical XCTest still
+fails enabling automation before test methods run. The optional LLDB probe also
+fails to attach and is ended; it supplies no input/power-state evidence. The
+launcher is restored with mute enabled. The physical iPad, normal player saves
+and live cloud progress remain untouched. Full hardware fresh/adventure/input,
+interruptions, physical Files, remote sync and sustained Town/combat gates remain
+open; the port is not declared complete.
+
 ## 2026-11-15 — Fresh touch-only tutorial, door/chest and earned-save reloads
 
 Clean packaged `280b856a08eb7447102c8ace8285ff03fbbd2baf`, with the unchanged

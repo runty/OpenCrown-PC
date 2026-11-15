@@ -231,7 +231,26 @@ Files provider, then imports that copy over a different real combat save using
 the remembered picker location. The imported `SAVE0.DAT` keeps its exact hash,
 and both a completed checkpoint and the previous tree retain the replaced
 save's exact hash. An invalid folder selection leaves local progress unchanged.
-Top-level app-container rows did not navigate during automated Simulator taps;
-first-use provider browsing remains unqualified. This successful round trip
-uses the picker-granted export URL as an initial directory. Actual iCloud
-propagation, offline divergence and physical-device Files remain open.
+That earlier round trip uses the picker-granted export URL as an initial
+directory. A later first-use test uses separate QA app containers and the
+unchanged production transfer controller/storage code. Export to the local
+provider's ordinary root succeeds. A new controller with no remembered directory
+then browses into that exported folder and imports the exact adventure save
+(`728f0ec…`) over the touch-earned save (`df59b068…`). The replaced save survives
+exactly in both the previous tree and a completed checkpoint. Cancelling the
+first picker also leaves local progress unchanged.
+
+A damaged copy with one changed byte fails checksum validation before promotion;
+all live, previous and checkpoint bytes remain unchanged. `734ceb9` corrects
+the generic checksum error text to `File checksum mismatch`, since the same
+validator checks saves as well as executable files. The current storage/service
+suites retain 149 / 108 passing checks, including four simulated relaunches.
+
+Top-level app-container rows still fail to navigate on both an existing and a
+fresh iOS 27.2 Simulator. Apple's Files app reproduces the failure and provider
+logs report a missing cached domain for `FILocalAppContainerNode`. Ordinary
+provider folders work in the same environment. This qualifies first-use local
+folder browsing, not app-container navigation or physical-device Files. Actual
+iCloud propagation and offline divergence remain open. Private evidence is
+`cursor-investigation/files-provider/verification.json`; QA saves never replace
+the game app's normal save root or live cloud progress.
