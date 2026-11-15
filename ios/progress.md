@@ -1,5 +1,31 @@
 # Device port progress
 
+## 2026-11-15 — Native lock-band gain does not reproduce on the iPhone
+
+The separate `48bc60b` 64 KiB experiment retains original LOCK behavior and
+passes memory/snapshot sanitizers, both SDK packages and native/Simulator
+scene/combat coherence audits. Six interleaved cache-on native Town walks show
+14.305% less median checkpoint CPU than the same guarded 256 KiB build.
+
+The physical iPhone result is different. After cooling back to nominal, four
+matched R/Town walks run 256/64/64/256 KiB with versions enabled throughout.
+Every sampled thermal state remains nominal, Low Power Mode is off, saves
+remain exact, errors are empty and real muted 256-frame audio has no underruns
+or clipping. Median checkpoint CPU is 30.819987 / 32.229454 seconds and rendered
+fps is 59.4508 / 59.1590. The candidate median uses 4.573% more CPU in this small
+series; no convincing additional phone headroom is established.
+
+The experiment stays isolated on `codex/ios-snapshot-lock-bands`. The phone is
+restored to `bb540ac` with original 256 KiB geometry; stable pin stays `851c06b`
+and texture versions stay off by default. The candidate install retains all
+81 existing non-asset files exactly, and restoration retains all 88 then-present
+files exactly. Each diagnostic restores input and the silent normal launcher.
+Do not promote the narrower geometry based on its native proxy. Further tuning
+should use a new cache-enabled phone profile; the completed long Town failure
+below remains open. Private proof: `snapshot-lock-band-candidate/` phone summary
+and preservation reports, plus the matched reference runs under
+`texture-cache-abi-candidate/phone-comparison/geometry-baseline-{before,after}/`.
+
 ## 2026-11-15 — Native coherence audit reaches the Harpy; input fallback is exercised
 
 A private native `bb540ac` harness advances through the first chest (Treasure
