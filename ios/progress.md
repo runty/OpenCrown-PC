@@ -29,9 +29,19 @@ proxy; neither series establishes sustained 60 or heavy-action headroom.
 A separate physical full-content audit covers 25,286 hits / 114,880,665,600
 logical bytes with zero proof failures, exact R bytes and the same clean audio
 accounting. Auditing does the extra full comparisons and is excluded from the
-timing comparison. A longer Town walking run is underway: it reaches serious
-thermal state and later falls below 60, so no sustained-performance pass is
-claimed. Stable pin/default remain `851c06b`/versions off pending qualification.
+timing comparison. A longer Town run completes 2,015.13 observed Town seconds /
+1,933.08 walking seconds and 110,697 frames before clean scheduled shutdown.
+It fails sustained performance: rolling approximately minute-long windows have
+median 55.14 fps, minimum 43.22 and final 52.99; final p95 is 33.34 ms in serious
+thermal state. One observed burst adds 12,800 underrun frames (266.7 ms) at
+1,122.35 Town seconds; clipping remains zero. This is muted real audio
+accounting, not an audible-output check. Sampled peak footprint is
+2,362,724,184 bytes (heartbeat samples, not an OS high-water mark). Guest/
+frontend/save/platform errors remain empty, exact R bytes survive, input is
+restored and the silent launcher is reopened. The retained `result.json`
+explicitly records `performance_pass=false`; the original test correctly rejects
+the underruns. Neither sustained 60 nor clean audio passes. Stable pin/default
+remain `851c06b`/versions off pending qualification.
 
 Native `bb540ac` also reaches the Ruins first goblin encounter from the
 qualified Darrel adventure save: 7,272 consumed frames, 720 settled intervals,

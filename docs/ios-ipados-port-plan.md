@@ -99,8 +99,11 @@ walks, all nominal with Low Power Mode off, measure median 54.46 fps off versus
 59.40 on and 37.14% less checkpoint CPU. Real muted 256-frame audio callbacks
 report zero underruns/clipping/errors. An independent phone full-content audit
 checks 25,286 hits / 114.88 GB of logical spans with zero mismatches. These are
-short-run results: the ongoing long Town run reaches serious thermal state
-and later drops below 60, so sustained acceptance remains open. The earlier
+short-run results: the subsequent 33.59-minute Town run (32.22 walking) fails
+sustained acceptance. Rolling minute windows have median 55.14 fps, minimum
+43.22 and final 52.99 in serious thermal state; one 12,800-frame audio underrun
+burst occurs at 18.71 Town minutes. Shutdown/errors/save preservation are clean,
+but sustained 60 and clean audio remain open. The earlier
 installed `110904c` experiment changes lock geometry and is not the baseline.
 
 The same guarded cache now passes native and packaged Simulator Town → world
