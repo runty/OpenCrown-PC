@@ -20,7 +20,8 @@ public:
   bool present(int width, int height);
   bool suspend(bool value);
   uint64_t decoded_uploads() const;
-  render::TextureStats texture_stats() const;
+  // Link-time guard against the old, smaller statistics return layout.
+  render::TextureStats texture_stats_v2() const;
 
 private:
   std::unique_ptr<render::Backend> backend_;

@@ -101,7 +101,7 @@ int main() {
   const uint64_t base = 0x230000000ULL;
   Memory memory{reinterpret_cast<uint64_t>(image.data()), image.size(), base,
                 16384};
-  assert(initialize_aot_capture(image.data(), image.size(),
+  assert(initialize_aot_capture_v2(image.data(), image.size(),
                                 {&memory, valid, copy}));
   uint8_t probe = 0;
   assert(!aot_capture_copy(UINT64_MAX, &probe, 1));
@@ -157,7 +157,7 @@ int main() {
            writes > 0 && checked >= 16384);
     shutdown_aot_capture();
     memory.mutateAfterCopy = false;
-    assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid, copy, matches}));
+    assert(initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid, copy, matches}));
     std::fill(memory.texture_bytes.begin(), memory.texture_bytes.end(), 0x41);
     backend.draw(frame);
     const auto previousCopies = memory.snapshots.load();

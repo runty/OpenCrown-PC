@@ -33,7 +33,9 @@ public:
     // Any device (make_gl_device / make_gpu_device); takes ownership. False if dev->init() fails.
     bool init(std::unique_ptr<Device> dev);
     const char* device_name() const;
-    TextureStats texture_stats() const;
+    // V2 includes version-proof counters. The symbol is deliberately distinct
+    // so an old cached implementation cannot return the smaller V1 record.
+    TextureStats texture_stats_v2() const;
     // Replays one frame into the game's render targets (one device texture per target address).
     void draw(const Frame& f);
     // The texture shown by the last frame (row 0 = top) and its size; 0 if nothing drawn yet.

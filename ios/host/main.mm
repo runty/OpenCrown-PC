@@ -282,7 +282,7 @@ int main(int argc, char **argv) {
               nonuniformSeen |= varied;
             }
             decoded = replay->decoded_uploads();
-            textureStats = replay->texture_stats();
+            textureStats = replay->texture_stats_v2();
             if (!replay->suspend(true) && hostError.empty())
               hostError = "Metal GPU drain failed";
             replay.reset();
@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
       }
       if (replay) {
         decoded = replay->decoded_uploads();
-        textureStats = replay->texture_stats();
+        textureStats = replay->texture_stats_v2();
         replay->suspend(true);
         replay.reset();
       }

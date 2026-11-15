@@ -61,7 +61,7 @@ int main() {
   const uint64_t base = reinterpret_cast<uint64_t>(texture);
   Memory memory{reinterpret_cast<uint64_t>(image.data()), image.size(), base,
                 16384};
-  assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid}));
+  assert(initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}));
   auto counted = std::make_unique<CountDevice>(texture);
   auto *count = counted.get();
   {

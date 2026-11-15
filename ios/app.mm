@@ -870,7 +870,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   if (_replay && !_replay->suspend(true))
     _hostError = @"Metal could not drain during shutdown.";
   if (_replay)
-    _lastTextureStats = _replay->texture_stats();
+    _lastTextureStats = _replay->texture_stats_v2();
   _replay.reset();
   if (_gameWindow) {
     SDL_DestroyWindow(_gameWindow);
@@ -1067,7 +1067,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   dcp_platform_copy_error(platformError, sizeof(platformError));
   const auto thermal = NSProcessInfo.processInfo.thermalState;
   if (_replay)
-    _lastTextureStats = _replay->texture_stats();
+    _lastTextureStats = _replay->texture_stats_v2();
   static NSDictionary *gameArtifact;
   static dispatch_once_t artifactOnce;
   dispatch_once(&artifactOnce, ^{

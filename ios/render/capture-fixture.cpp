@@ -45,7 +45,7 @@ int main() {
          reinterpret_cast<uint64_t>(mapping) < (1ULL << 40));
   Memory memory{{{reinterpret_cast<uint64_t>(image.data()), image.size()},
                  {reinterpret_cast<uint64_t>(mapping), 0x10000}}};
-  assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid}));
+  assert(initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}));
   assert(!install_hooks(image.data()));
   const uint64_t base = reinterpret_cast<uint64_t>(mapping), dcb = base + 0x100,
                  cue = dcb + 0x2e8;
@@ -90,7 +90,7 @@ int main() {
           false); // rejected without touching unregistered memory
   shutdown_aot_capture();
   assert(!capture_enabled());
-  assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid}));
+  assert(initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}));
   assert(!take_frame(0));
   shutdown_aot_capture();
   std::atomic<bool> finished{false};
@@ -104,14 +104,14 @@ int main() {
   });
   for (unsigned i = 0; i < 1000; ++i) {
     assert(
-        initialize_aot_capture(image.data(), image.size(), {&memory, valid}));
+        initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}));
     on_flip(0);
     shutdown_aot_capture();
   }
   finished = true;
   consumer.join();
   assert(polled > 0);
-  assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid}));
+  assert(initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}));
   std::atomic<bool> waiting{false};
   std::thread sleeper([&] {
     waiting = true;

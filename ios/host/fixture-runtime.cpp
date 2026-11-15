@@ -49,7 +49,7 @@ extern "C" const char *dcp_cpu_report() {
     throw std::runtime_error("Synthetic mapping failed");
   uint64_t base = reinterpret_cast<uint64_t>(mapping);
   Memory memory{reinterpret_cast<uint64_t>(image.data()), image.size(), base};
-  if (!initialize_aot_capture(image.data(), image.size(), {&memory, valid}))
+  if (!initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}))
     throw std::runtime_error("Synthetic capture initialization failed");
   const uint64_t program = base + 0x1000;
   std::memcpy(image.data() + 0xe97350 + 51 * 0x20, &program, 8);

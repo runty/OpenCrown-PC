@@ -1167,7 +1167,7 @@ extern "C" const char *dcp_cpu_report() {
       auto &data = engine().modules.back().data;
       addRegion(memory, data.data(), data.size());
     }
-    if (!dcp::render::initialize_aot_capture(
+    if (!dcp::render::initialize_aot_capture_v2(
             engine().modules[0].data.data(), engine().modules[0].data.size(),
             {owner.get(),
              [](void *context, uint64_t address, size_t bytes, bool writing) {

@@ -27,7 +27,7 @@ namespace {
 uint8_t* g_base = nullptr;
 #ifdef DCP_AOT
 std::atomic<bool> g_enabled{false};
-AotCaptureHooks g_aot_hooks;
+AotCaptureHooksV2 g_aot_hooks;
 #else
 bool g_enabled = false;
 #endif
@@ -91,7 +91,7 @@ bool readable(uint64_t a, uint64_t n) {
 #ifdef DCP_AOT
 // Never hold a capture-state lock across a guest memory callback. Guest atomic
 // regions can themselves enter capture observers, so that lock order would invert.
-bool copy_with_hooks(const AotCaptureHooks &hooks, void *destination, uint64_t address, size_t bytes) {
+bool copy_with_hooks(const AotCaptureHooksV2 &hooks, void *destination, uint64_t address, size_t bytes) {
     if ((!destination && bytes) || !address || bytes > (64ULL << 20) || address > UINT64_MAX - bytes) return false;
     // The runtime copy hook checks the complete span while holding the guest
     // locks. Immutable fixtures without that hook still require a range check.
@@ -458,7 +458,7 @@ uint32_t fairy_cursor(float* x, float* y) {
 
 uint32_t sprite_ps_table(uint32_t perm) {
 #ifdef DCP_AOT
-    AotCaptureHooks hooks;
+    AotCaptureHooksV2 hooks;
     uint64_t address;
     {
         std::shared_lock lock(g_state_lock);
@@ -495,7 +495,7 @@ void shutdown_aot_capture() {
     t_cls = Cls::None;
     g_q_cv.notify_all();
 }
-bool initialize_aot_capture(uint8_t *base, size_t image_size, AotCaptureHooks hooks) {
+bool initialize_aot_capture_v2(uint8_t *base, size_t image_size, AotCaptureHooksV2 hooks) {
     shutdown_aot_capture();
     if (!base || !hooks.memory || image_size < 0xe97ad0 + 25 * 0x30 ||
         !hooks.memory(hooks.context, reinterpret_cast<uint64_t>(base), image_size, false)) return false;
@@ -516,7 +516,7 @@ bool initialize_aot_capture(uint8_t *base, size_t image_size, AotCaptureHooks ho
     return true;
 }
 bool aot_capture_memory(uint64_t address, size_t bytes, bool writing) {
-    AotCaptureHooks hooks;
+    AotCaptureHooksV2 hooks;
     {
         std::shared_lock lock(g_state_lock);
         if (!g_enabled.load(std::memory_order_acquire)) return false;
@@ -526,7 +526,7 @@ bool aot_capture_memory(uint64_t address, size_t bytes, bool writing) {
 }
 bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes) {
     if (!address || !snapshot || !bytes || bytes > (64ULL << 20) || address > UINT64_MAX - bytes) return false;
-    AotCaptureHooks hooks;
+    AotCaptureHooksV2 hooks;
     {
         std::shared_lock lock(g_state_lock);
         if (!g_enabled.load(std::memory_order_acquire)) return false;
@@ -535,7 +535,7 @@ bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes) {
     return hooks.matches_memory && hooks.matches_memory(hooks.context, address, snapshot, bytes);
 }
 bool aot_capture_copy(uint64_t address, void *destination, size_t bytes) {
-    AotCaptureHooks hooks;
+    AotCaptureHooksV2 hooks;
     {
         std::shared_lock lock(g_state_lock);
         if (!g_enabled.load(std::memory_order_acquire)) return false;
@@ -545,7 +545,7 @@ bool aot_capture_copy(uint64_t address, void *destination, size_t bytes) {
 }
 std::shared_ptr<AotSnapshot> aot_capture_snapshot(uint64_t address, size_t bytes) {
     if (!address || !bytes || bytes > (64ULL << 20) || address > UINT64_MAX - bytes) return {};
-    AotCaptureHooks hooks;
+    AotCaptureHooksV2 hooks;
     {
         std::shared_lock lock(g_state_lock);
         if (!g_enabled.load(std::memory_order_acquire)) return {};

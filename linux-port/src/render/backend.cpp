@@ -958,7 +958,7 @@ bool Backend::present(int w, int h, Device::Overlay* overlay) const {
 }
 
 const char* Backend::device_name() const { return m_->dev ? m_->dev->name() : "none"; }
-TextureStats Backend::texture_stats() const {
+TextureStats Backend::texture_stats_v2() const {
 #ifdef DCP_AOT
     auto stats = m_->textureStats;
     stats.snapshot_bytes = m_->snapshotBytes;

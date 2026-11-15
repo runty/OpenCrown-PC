@@ -83,8 +83,8 @@ bool Replay::present(int width, int height) {
 uint64_t Replay::decoded_uploads() const {
   return device_ ? metal_decoded_uploads(*device_) : 0;
 }
-render::TextureStats Replay::texture_stats() const {
-  return backend_ ? backend_->texture_stats() : render::TextureStats{};
+render::TextureStats Replay::texture_stats_v2() const {
+  return backend_ ? backend_->texture_stats_v2() : render::TextureStats{};
 }
 bool Replay::suspend(bool value) {
   return device_ && set_metal_suspended(*device_, value);

@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
          reinterpret_cast<uint64_t>(mapping) < (1ULL << 40));
   uint64_t base = reinterpret_cast<uint64_t>(mapping);
   Memory memory{reinterpret_cast<uint64_t>(image.data()), image.size(), base};
-  assert(initialize_aot_capture(image.data(), image.size(), {&memory, valid}));
+  assert(initialize_aot_capture_v2(image.data(), image.size(), {&memory, valid}));
   const uint64_t program = base + 0x1000;
   std::memcpy(image.data() + 0xe97350 + 51 * 0x20, &program, 8);
   std::memcpy(image.data() + 0xe97ad0 + 24 * 0x30, &program, 8);

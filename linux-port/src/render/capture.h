@@ -69,7 +69,9 @@ public:
     virtual AotSnapshotMatch matches(uint64_t address) = 0;
 };
 // Lifecycle calls require all guest workers and the frame consumer to be stopped.
-struct AotCaptureHooks {
+// V2 includes the owned-snapshot factory; never pass this by value to a
+// pre-version implementation. Both type and initializer have new symbols.
+struct AotCaptureHooksV2 {
     void *context = nullptr;
     bool (*memory)(void *context, uint64_t address, size_t bytes, bool writing) = nullptr;
     // Validate and snapshot the complete span under guest memory synchronization.
@@ -79,7 +81,7 @@ struct AotCaptureHooks {
     bool (*matches_memory)(void *, uint64_t, const void *, size_t) = nullptr;
     std::shared_ptr<AotSnapshot> (*snapshot)(void *, uint64_t, size_t) = nullptr;
 };
-bool initialize_aot_capture(uint8_t *eboot_base, size_t image_size, AotCaptureHooks hooks);
+bool initialize_aot_capture_v2(uint8_t *eboot_base, size_t image_size, AotCaptureHooksV2 hooks);
 void shutdown_aot_capture();
 bool aot_capture_memory(uint64_t address, size_t bytes, bool writing);
 bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes);
