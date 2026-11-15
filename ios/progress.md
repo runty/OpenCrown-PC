@@ -1,5 +1,46 @@
 # Device port progress
 
+## 2026-11-15 — Screen pointing and actual touch-only chest opening
+
+Runtime `ce065bbb9e58337d64eedc3e580becf94fb26ba0` connects the mobile
+screen pointer to the existing Mac relative-touch loop. A checked read-only
+observer samples the original cursor at its normal player-zero pad-record
+call. A short screen tap steers to its target, then emits the ordinary
+touchpad interaction; dragging moves without a click. Raw touchpad/Map input,
+pause, cancellation and reset cancel queued pointer actions. Other fingers
+retain virtual controls. No guest scene/cursor/save fields are written.
+
+The independent cursor/input model passes normal, ASan/UBSan and TSan runs,
+including four sensitivities, bounded targets, tap/drag and simultaneous
+direction/action, Map priority, cancellation and coherent snapshots. Both
+SDK adapters compile/link, the normal 14-test Mac suite passes, and clean
+iPhoneOS/Simulator apps package with compiled icons. Device signature verifies
+without memory entitlements. All three frozen 50,464-entry cores retain complete
+current/generation backend provenance and native CRILAYLA/libc fast paths.
+An actual native cold Town reload captures 2,525 frames / 1,894 cursor samples,
+with no read error, clean unload and the exact earned adventure-save hash.
+
+Actual UIKit touches in the dedicated iPhone Simulator load Darrel LV2 / 248
+gold, use Town Map to reach the Gate, enter Ancient Temple Ruins and clear the
+first goblin encounter/crates with virtual controls. A held screen target has
+less than 0.27 pixels of measured cursor error. After the camera settles, a
+short screen tap on the first chest makes Rannie unlock and open it; the
+original Treasure ranks tutorial appears. Cross dismisses that tutorial.
+Public Pause → Stop Game returns to launcher after 15,014 captured frames,
+with 13,149 cursor samples, zero read errors and empty runtime/frontend/save
+errors. The isolated save remains byte-identical (`728f0ec…`). Earlier taps
+aimed at a pre-settle screenshot and missed the moving chest; no source change
+was needed. The private test shim only suppresses Mac-forwarded controllers.
+The input body acknowledges all commands and terminates the owned game, while
+XCTest teardown still stalls separately; no official suite-pass is claimed.
+
+This qualifies Simulator screen targeting and chest interaction, not the
+touch-only door/full fresh tutorial or physical input. The real Simulator
+audio adapter reports zero underrun frames and clipping in this guided run;
+audibility, interruption/output recovery and physical audio remain open.
+Lifecycle pauses and read-only debugger snapshots exclude a sustained timing
+claim. Both physical devices and normal/live-cloud saves remain untouched.
+
 ## 2026-11-15 — Touch Town Map and destination travel
 
 Source `d1da89a` changes the development overlay's Pad control to Map. The

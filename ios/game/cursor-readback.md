@@ -39,6 +39,26 @@ Mac regression suite also passes. Original ELF PT_LOAD/PT_SCE_RELRO bytes and
 LLVM disassembly verify the observation boundary. A retained Hopper analysis
 session already owns this target and is left untouched.
 
-Actual game readback, screen targeting and door/chest interaction remain
-pending until the candidate is exercised. Fixture convergence does not count
-as those runtime results, physical input or sustained performance.
+Clean `ce065bb` executes the observer in the actual native game: a 2,525-frame
+cold Town reload collects 1,894 samples with zero read errors and preserves
+the earned adventure save. In packaged iPhone Simulator, actual UIKit input
+holds a free-screen target at `(246.273,-108)` game pixels. A read-only host
+snapshot records `(246.213,-108.253)`, less than 0.27 pixels from that target,
+with the virtual movement axes neutral.
+
+The same packaged build loads Data 1, travels from Town to Ancient Temple
+Ruins, clears the first encounter/crates through the virtual controls and
+opens the first chest with a short screen tap. Rannie unlocks the chest and
+the original Treasure ranks tutorial appears. Earlier attempts used a chest
+coordinate captured before the camera settled; the settled target succeeds
+without a code change. Public Pause → Stop Game returns to the launcher after
+15,014 captured frames, with 13,149 cursor samples, zero read errors and empty
+runtime/frontend/save errors. The isolated save retains exact `728f0ec…`
+bytes. Private evidence is `cursor-investigation/touch-pointer-verification.json`.
+The XCTest input body acknowledges and terminates the owned game; its separate
+teardown stalls, so this is not an official XCTest suite-pass claim.
+
+This qualifies actual Simulator cursor steering and chest interaction. Door
+use, a complete touch-only fresh tutorial, physical controls and sustained
+performance remain separate acceptance gates. Simulator audio counters are
+clean in this run; they do not qualify audibility or physical audio behavior.
