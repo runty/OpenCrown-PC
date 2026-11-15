@@ -35,9 +35,12 @@ bool savedata_name_match(const char* pattern, const std::string& name);
 
 // Headless input script: lines "frame buttons" (buttons = hex/decimal ScePadData mask or names joined by '+' / '|',
 // e.g. "120 CROSS", "130 0", "200 OPTIONS+UP"); '#' starts a comment. A line's state holds until the next line.
-// Names LS_LEFT/LS_RIGHT/LS_UP/LS_DOWN set the script-only bits below (left stick at an edge).
+// LS_LEFT/LS_RIGHT/LS_UP/LS_DOWN and RS_LEFT/RS_RIGHT/RS_UP/RS_DOWN
+// hold the corresponding stick at an edge; the pad shim strips these bits.
 constexpr uint32_t kScriptStickLeft = 0x10000000, kScriptStickRight = 0x20000000, kScriptStickUp = 0x40000000,
-                   kScriptStickDown = 0x80000000, kScriptStickMask = 0xf0000000;
+                   kScriptStickDown = 0x80000000, kScriptStickMask = 0xff000000;
+constexpr uint32_t kScriptRightStickLeft = 0x01000000, kScriptRightStickRight = 0x02000000,
+                   kScriptRightStickUp = 0x04000000, kScriptRightStickDown = 0x08000000;
 struct InputEvent { uint64_t frame; uint32_t buttons; };
 // Returns false (and the 1-based line number in *bad_line) on a malformed line. Events are sorted by frame.
 bool parse_input_script(const std::string& text, std::vector<InputEvent>* out, int* bad_line);

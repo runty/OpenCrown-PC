@@ -42,7 +42,9 @@ int main(int argc, char **argv) {
   hooks.scripted_input_active = [](void *) { return script_active; };
   hooks.save_root = argv[1];
   hooks.input_script = "# Same desktop syntax, deliberately out of order\n"
-                       "30 0\n10 CROSS+LS_LEFT\n20 OPTIONS|LS_DOWN\n";
+                       "30 0\n10 CROSS+LS_LEFT\n20 OPTIONS|LS_DOWN\n"
+                       "40 LS_LEFT+LS_UP+RS_RIGHT+RS_DOWN+SQUARE\n"
+                       "50 LS_RIGHT+LS_DOWN+RS_LEFT+RS_UP+TRIANGLE\n60 0\n";
   dcp_offline_init(hooks);
   require(service("scePadOpen", 1000) == 1);
   require(service("scePadOpen", 1001) == 2);
@@ -57,6 +59,18 @@ int main(int argc, char **argv) {
   read(20, 8, 128, 255);
   read(29, 8, 128, 255);
   read(30, 0);
+  read(40, 0x8000, 0, 0);
+  require(output[7] == 255 && output[8] == 255);
+  read(50, 0x1000, 255, 255);
+  require(output[7] == 0 && output[8] == 0);
+  script_active = false;
+  read(50, 0);
+  require(output[7] == 128 && output[8] == 128);
+  script_active = true;
+  read(50, 0, 128, 128, 2);
+  require(output[7] == 128 && output[8] == 128);
+  read(60, 0);
+  require(output[7] == 128 && output[8] == 128);
   read(10000, 0);
   read(10, 0, 128, 128, 2); // Secondary slots are not scripted.
   hooks.input_script = "\n# Explicit idle; never falls back to boot presses\n";
@@ -80,23 +94,28 @@ int main(int argc, char **argv) {
   require(rejected);
   read(600, 0x4000); // A rejected script does not partially replace the source.
   hooks.input_script = "0 CROSS\n";
-  hooks.scene_input_script = "0 LS_RIGHT\n5 0\n";
+  hooks.scene_input_script = "0 LS_RIGHT+RS_LEFT\n5 0\n";
   hooks.scene_elapsed_frames = [](void *) { return frame - 100; };
   dcp_offline_init(hooks);
   require(service("scePadOpen", 1000) == 1);
   read(99, 0x4000);
   script_active = false;
   read(100, 0, 255);
+  require(output[7] == 0 && output[8] == 128);
   read(104, 0, 255);
   read(105, 0);
+  require(output[7] == 128 && output[8] == 128);
   script_active = false; // The checkpoint driver must not suppress real input.
   hooks.input_read = [](void *, unsigned, DcpPlatformPad *pad) {
     pad->connected = 1;
     pad->buttons = 0x8000;
+    pad->rx = 200;
+    pad->ry = 201;
   };
   dcp_offline_init(hooks);
   require(service("scePadOpen", 1000) == 1);
   read(600, 0x8000); // A real producer takes precedence over scripted input.
+  require(output[7] == 200 && output[8] == 201);
   uint64_t fatal_arguments[6]{}, fatal_result = 0xa5a5;
   bool fatal_threw = false;
   try {

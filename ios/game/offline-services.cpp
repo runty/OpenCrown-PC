@@ -424,6 +424,10 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
       if (pad.buttons & dcp::hle::kScriptStickRight) pad.lx = 255;
       if (pad.buttons & dcp::hle::kScriptStickUp) pad.ly = 0;
       if (pad.buttons & dcp::hle::kScriptStickDown) pad.ly = 255;
+      if (pad.buttons & dcp::hle::kScriptRightStickLeft) pad.rx = 0;
+      if (pad.buttons & dcp::hle::kScriptRightStickRight) pad.rx = 255;
+      if (pad.buttons & dcp::hle::kScriptRightStickUp) pad.ry = 0;
+      if (pad.buttons & dcp::hle::kScriptRightStickDown) pad.ry = 255;
       pad.buttons &= ~dcp::hle::kScriptStickMask;
     }
     if (named(name, "scePadGetControllerInformation")) {

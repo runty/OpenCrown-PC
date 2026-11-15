@@ -140,6 +140,9 @@ int main() {
     CHECK(script_buttons_at(ev, 130) == 0 && script_buttons_at(ev, 350) == 0x4000);
     CHECK(script_buttons_at(ev, 400) == 0x2010 && script_buttons_at(ev, 99999) == 0x4008);
     CHECK(!parse_input_script("10 CROSS\nabc CROSS\n", &ev, &bad) && bad == 2);
+    CHECK(parse_input_script("0 RS_LEFT+RS_UP\n10 RS_RIGHT+RS_DOWN+CROSS\n", &ev, &bad));
+    CHECK(script_buttons_at(ev, 0) == (kScriptRightStickLeft | kScriptRightStickUp));
+    CHECK(script_buttons_at(ev, 10) == (kScriptRightStickRight | kScriptRightStickDown | 0x4000));
     CHECK(!parse_input_script("10 JUMP\n", &ev, &bad) && bad == 1);
     CHECK(!parse_input_script("10\n", &ev, &bad) && bad == 1);
     CHECK(parse_input_script("", &ev, &bad) && ev.empty());

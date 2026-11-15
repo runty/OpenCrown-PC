@@ -1,5 +1,37 @@
 # Device port progress
 
+## 2026-11-14 — Item lesson, food switch and scripted right stick
+
+A live-guided x86-64 Mac reference used disposable local user/save folders
+with the Mac-only story, tutorial and warning skip offers disabled. The
+reference and arm64 AOT runs both passed movement, ground/aerial attacks,
+guard, Power Smash and the crossbow encounter. A compound controller sequence
+advanced the item lesson in both runtimes. An enlarged HUD capture identifies
+the selected item as the Buckler. Potion consumption and ordinary directional
+item selection still need separate qualification.
+
+The AOT run broke the food box and picked up its apple, then stopped at
+`202ab640` when eating began. Source `7f3e2f7` compiles all six verified
+destinations of the bounded food switch at ELF `710570`. The 50,403-entry
+core packages for iOS and Simulator. A fresh native run consumed the apple,
+raised Abby's HP from 300 to 330 and reached the locked-door/Rannie lesson.
+Its 1,400-second diagnostic ended there with an empty runtime error.
+
+The headless script now accepts `RS_LEFT`, `RS_RIGHT`, `RS_UP` and
+`RS_DOWN` alongside the existing left-stick controls. Both desktop and AOT
+pad adapters convert those flags into axes and clear the flags from guest
+buttons. The expanded input fixture passes 141 checks in native and
+ASan/UBSan runs and compiles for the iOS SDKs. All 14 x86-64 desktop
+regressions pass. Real-game scripted cursor movement is the next check.
+
+The iPad Simulator also created a new level-one Fighter, Gerald, and reached
+crossbow pickup using the food candidate. The fixed replay's pickup positions
+required adjustment. Food consumption in Simulator remains open. Its
+ordinary saves, checkpoints and diagnostic seed retain their exact hashes,
+and the original diagnostic input was restored after stopping that test.
+Both physical devices remain released. Tutorial completion, a successful
+adventure clear, sustained hardware acceptance and cloud handoff remain open.
+
 ## 2026-11-14 — Character-edit switch and post-write recovery
 
 The iPad Simulator's original game keyboard shortened the disposable name from

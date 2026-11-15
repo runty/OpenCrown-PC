@@ -37,6 +37,10 @@ public:
         if (s.buttons & kScriptStickRight) s.lx = 0xff;
         if (s.buttons & kScriptStickUp) s.ly = 0x00;
         if (s.buttons & kScriptStickDown) s.ly = 0xff;
+        if (s.buttons & kScriptRightStickLeft) s.rx = 0;
+        if (s.buttons & kScriptRightStickRight) s.rx = 255;
+        if (s.buttons & kScriptRightStickUp) s.ry = 0;
+        if (s.buttons & kScriptRightStickDown) s.ry = 255;
         s.buttons &= ~kScriptStickMask;
         return s;
     }

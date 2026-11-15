@@ -138,8 +138,10 @@ constexpr ButtonName kButtons[] = {
     {"L3", 0x2}, {"R3", 0x4}, {"OPTIONS", 0x8}, {"UP", 0x10}, {"RIGHT", 0x20}, {"DOWN", 0x40}, {"LEFT", 0x80},
     {"L2", 0x100}, {"R2", 0x200}, {"L1", 0x400}, {"R1", 0x800}, {"TRIANGLE", 0x1000}, {"CIRCLE", 0x2000},
     {"CROSS", 0x4000}, {"SQUARE", 0x8000}, {"TOUCHPAD", 0x100000},
-    // Left stick held to an edge (script-only bits, see kScriptStick*; the pad shim turns them into lx/ly).
-    {"LS_LEFT", 0x10000000}, {"LS_RIGHT", 0x20000000}, {"LS_UP", 0x40000000}, {"LS_DOWN", 0x80000000}};
+    // Sticks held to an edge (script-only bits; the pad shim turns them into axes).
+    {"LS_LEFT", 0x10000000}, {"LS_RIGHT", 0x20000000}, {"LS_UP", 0x40000000}, {"LS_DOWN", 0x80000000},
+    {"RS_LEFT", kScriptRightStickLeft}, {"RS_RIGHT", kScriptRightStickRight},
+    {"RS_UP", kScriptRightStickUp}, {"RS_DOWN", kScriptRightStickDown}};
 
 bool parse_buttons(std::string tok, uint32_t* out) {
     *out = 0;

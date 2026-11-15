@@ -15,13 +15,18 @@ checkpoint stop and ignores these harness environment overrides.
 | `DCP_MAX_VBLANKS` | 7,200 | 1–216,000 |
 | `DCP_INPUT_SCRIPT` | Built-in boot input | Path to a text file, maximum 1 MiB |
 
-The input file uses exactly the desktop runner's parser and button/left-stick
+The input file uses exactly the desktop runner's parser and button/stick
 mapping. A line is `frame buttons`; button names combine with `+` or `|`, and
 `#` starts a comment. Each state persists until the next line. An empty or
 comment-only file means explicit idle, without built-in button presses.
 Malformed scripts fail before game execution, naming the line. A real input
 producer takes precedence over scripted input. Script-only stick bits never
 leak into the guest's button mask.
+
+Use `RS_LEFT`, `RS_RIGHT`, `RS_UP` and `RS_DOWN` to move the finger cursor
+with the right stick. The `LS_*` names continue to move the left stick. Both
+sticks can be combined with buttons in the same event.
+
 
 The existing [Mac smoke script](../../macos/headless-input.txt) is available
 unchanged. Use a disposable save copy, with the game stopped while copying.
