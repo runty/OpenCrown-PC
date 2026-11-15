@@ -6,6 +6,19 @@
 #include <os/lock.h>
 #endif
 
+struct RegionCache {
+  const std::vector<Memory::Region> *registry = nullptr;
+  std::array<Memory::Region, 8> regions{};
+  // Each nonzero tag proves that one registered native mapping covers the
+  // entire page. Partial pages and cross-page accesses use the range checks.
+  std::array<uint64_t, 256> pageTags{};
+};
+struct GuestScalarThread {
+  RegionCache cache{};
+  unsigned exclusiveDepth = 0;
+};
+static thread_local GuestScalarThread scalarThread{};
+void bindScalarThread(Memory &memory) { memory.scalarThread = &scalarThread; }
 namespace {
 constexpr size_t stripeCount = 64;
 constexpr uintptr_t pageSize = 4096;
@@ -23,16 +36,8 @@ struct alignas(128) Stripe {
 };
 std::array<Stripe, stripeCount> stripes;
 GuestAtomicMutex guestAtomics;
-thread_local unsigned exclusiveDepth = 0;
+
 std::mutex registryMutex;
-struct RegionCache {
-  const std::vector<Memory::Region> *registry = nullptr;
-  std::array<Memory::Region, 8> regions{};
-  // Each nonzero tag proves that one registered native mapping covers the
-  // entire page. Partial pages and cross-page accesses use the range checks.
-  std::array<uint64_t, 256> pageTags{};
-};
-thread_local RegionCache regionCache{};
 // Only the miss path needs a nontrivial TLS initializer and destructor.
 thread_local std::shared_ptr<std::vector<Memory::Region>> registryOwner;
 
@@ -54,8 +59,8 @@ uint64_t spanMask(const void *pointer, size_t size) {
 }
 class AccessLock {
 public:
-  AccessLock(const void *pointer, size_t size) {
-    if (exclusiveDepth)
+  AccessLock(const void *pointer, size_t size, unsigned depth = scalarThread.exclusiveDepth) {
+    if (depth)
       return;
     const uintptr_t address = reinterpret_cast<uintptr_t>(pointer);
     if (size <= pageSize - address % pageSize) {
@@ -65,7 +70,7 @@ public:
       acquire(spanMask(pointer, size));
   }
   AccessLock(const void *a, const void *b, size_t bytes) {
-    if (!exclusiveDepth)
+    if (!scalarThread.exclusiveDepth)
       acquire(spanMask(a, bytes) | spanMask(b, bytes));
   }
   AccessLock(const AccessLock &) = delete;
@@ -103,7 +108,7 @@ private:
 // Guest atomics exclude all checked operations. Every multi-stripe path
 // acquires its locks in ascending order.
 void GuestAtomicMutex::lock() {
-  if (exclusiveDepth++ != 0)
+  if (scalarThread.exclusiveDepth++ != 0)
     return;
   size_t held = 0;
   try {
@@ -112,12 +117,12 @@ void GuestAtomicMutex::lock() {
   } catch (...) {
     while (held)
       stripes[--held].mutex.unlock();
-    --exclusiveDepth;
+    --scalarThread.exclusiveDepth;
     throw;
   }
 }
 void GuestAtomicMutex::unlock() noexcept {
-  if (--exclusiveDepth == 0)
+  if (--scalarThread.exclusiveDepth == 0)
     for (auto it = stripes.rbegin(); it != stripes.rend(); ++it)
       it->mutex.unlock();
 }
@@ -133,15 +138,28 @@ static void recordFault(Memory &memory, const char *description) {
   std::lock_guard<std::mutex> lock(registryMutex);
   memory.fault = description;
 }
-static void checkCancelled(const Memory &memory) {
+[[gnu::noinline]] static void checkSignals(const Memory &memory, uint64_t generation) {
   if (memory.stopping && memory.stopping->load())
     throw std::runtime_error("bootstrap stopped");
   if (memory.poll.paused && memory.poll.serviceStop &&
       !memory.poll.paused->load() && !memory.poll.serviceStop->load() &&
-      (!memory.poll.workerCancel || !memory.poll.workerCancel->load()))
+      (!memory.poll.workerCancel || !memory.poll.workerCancel->load())) {
+    if (memory.signalCache)
+      memory.signalCache->lastClear.store(generation, std::memory_order_relaxed);
     return;
+  }
   if (memory.cancelled && memory.cancelled())
     throw std::runtime_error("bootstrap stopped");
+}
+[[gnu::always_inline]] static inline void checkCancelled(const Memory &memory) {
+  auto *cache = memory.signalCache;
+  uint64_t generation = 0;
+  if (cache) {
+    generation = cache->generation.load(std::memory_order_acquire);
+    if (cache->lastClear.load(std::memory_order_relaxed) == generation)
+      return;
+  }
+  checkSignals(memory, generation);
 }
 [[gnu::noinline]] static uint8_t *lookupRegion(Memory &memory,
                                                RegionCache &cache,
@@ -174,7 +192,7 @@ static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
     return memory.bytes.data() + (address - Memory::base);
   if (!memory.regions)
     throw std::runtime_error("missing guest memory registry");
-  auto &cache = regionCache;
+  auto &cache = scalarThread.cache;
   if (cache.registry != memory.regions.get())
     return lookupRegion(memory, cache, address, size);
   const uint64_t page = address / pageSize;
@@ -209,17 +227,36 @@ uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
   AccessLock lock(pointer, size);
   return pointer;
 }
-template <typename T> static T loadScalar(Memory &memory, uint64_t address) {
-  const auto *pointer = checkedPointer(memory, address, sizeof(T));
-  AccessLock lock(pointer, sizeof(T));
+// The bound thread already has the registry proof for a whole native page.
+// Keep that common case inside the bridge; unusual spans still go through
+// the same synthetic, registry and boundary checks used by host hooks.
+template <typename T>
+[[gnu::always_inline]] static inline uint8_t *scalarPointer(
+    Memory &memory, uint64_t address, const GuestScalarThread &thread) {
+  const uint64_t page = address / pageSize;
+  const auto &cache = thread.cache;
+  if (address > Memory::base && address - Memory::base >= memory.bytes.size() &&
+      cache.registry == memory.regions.get() &&
+      sizeof(T) <= pageSize - address % pageSize &&
+      cache.pageTags[(page ^ (page >> 8)) % cache.pageTags.size()] == page + 1)
+    return reinterpret_cast<uint8_t *>(address);
+  return checkedPointer(memory, address, sizeof(T));
+}
+
+template <typename T, bool lifted = false>
+static T loadScalar(Memory &memory, uint64_t address) {
+  auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
+  const auto *pointer = scalarPointer<T>(memory, address, thread);
+  AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
   T value;
   std::memcpy(&value, pointer, sizeof(value));
   return value;
 }
-template <typename T>
+template <typename T, bool lifted = false>
 static void storeScalar(Memory &memory, uint64_t address, T value) {
-  auto *pointer = checkedPointer(memory, address, sizeof(T));
-  AccessLock lock(pointer, sizeof(T));
+  auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
+  auto *pointer = scalarPointer<T>(memory, address, thread);
+  AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
   std::memcpy(pointer, &value, sizeof(value));
 }
 uint64_t read64(Memory &memory, uint64_t address) {
@@ -232,7 +269,8 @@ void write64(Memory &memory, uint64_t address, uint64_t value) {
 }
 extern "C" uint64_t __remill_read_memory_64(Memory *memory, uint64_t address) {
   try {
-    return read64(*memory, address);
+    checkCancelled(*memory);
+    return loadScalar<uint64_t, true>(*memory, address);
   } catch (const std::runtime_error &error) {
     recordFault(*memory, error.what());
     if (memory->stopOnFault)
@@ -243,7 +281,8 @@ extern "C" uint64_t __remill_read_memory_64(Memory *memory, uint64_t address) {
 extern "C" Memory *__remill_write_memory_64(Memory *memory, uint64_t address,
                                             uint64_t value) {
   try {
-    write64(*memory, address, value);
+    checkCancelled(*memory);
+    storeScalar<uint64_t, true>(*memory, address, value);
   } catch (const std::runtime_error &error) {
     recordFault(*memory, error.what());
     if (memory->stopOnFault)
@@ -325,7 +364,7 @@ extern "C" uint8_t __remill_undefined_8() { return 0; }
     checkCancelled(*memory);                                                   \
     TYPE value = 0;                                                            \
     try {                                                                      \
-      value = loadScalar<TYPE>(*memory, address);                              \
+      value = loadScalar<TYPE, true>(*memory, address);                              \
     } catch (const std::runtime_error &error) {                                \
       recordFault(*memory, error.what());                                      \
       if (memory->stopOnFault)                                                 \
@@ -337,7 +376,7 @@ extern "C" uint8_t __remill_undefined_8() { return 0; }
       Memory *memory, uint64_t address, TYPE value) {                          \
     checkCancelled(*memory);                                                   \
     try {                                                                      \
-      storeScalar(*memory, address, value);                                    \
+      storeScalar<TYPE, true>(*memory, address, value);                                    \
     } catch (const std::runtime_error &error) {                                \
       recordFault(*memory, error.what());                                      \
       if (memory->stopOnFault)                                                 \

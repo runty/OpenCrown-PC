@@ -108,10 +108,13 @@ std::shared_ptr<Worker> worker(uint64_t id) {
   return found == workers.end() ? nullptr : found->second;
 }
 void record_error(const char *message) {
-  std::lock_guard<std::mutex> lock(state_lock);
-  if (error.empty())
-    error = message;
-  stop = true;
+  {
+    std::lock_guard<std::mutex> lock(state_lock);
+    if (error.empty())
+      error = message;
+    stop = true;
+  }
+  notify_cancellation();
 }
 void copy_name(char (&destination)[32], uint64_t source) {
   std::memset(destination, 0, sizeof(destination));

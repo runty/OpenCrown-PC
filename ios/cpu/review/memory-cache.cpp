@@ -175,6 +175,44 @@ void boundPollSignals() {
   check(signalPolls == 4, "unbound generic callback always runs");
 }
 
+void boundExecution() {
+  Memory memory;
+  bindScalarThread(memory);
+  memory.stopOnFault = true;
+  alignas(4096) std::array<uint8_t, 8192> data{};
+  const uint64_t start = address(data.data());
+  addRegion(memory, data.data(), 4096);
+  __remill_write_memory_32(&memory, start + 4092, 42);
+  check(__remill_read_memory_32(&memory, start + 4092) == 42, "bound scalar page hit");
+  rejects([&] { __remill_read_memory_32(&memory, start + 4093); }, "bound cross-page fault");
+  memory.regions = std::make_shared<std::vector<Memory::Region>>();
+  rejects([&] { __remill_read_memory_32(&memory, start); }, "bound page revocation");
+
+  std::atomic<uint64_t> generation{1};
+  std::atomic<bool> stop{false}, paused{false}, service{false}, cancel{false};
+  Memory::SignalCache signals{generation};
+  memory.signalCache = &signals;
+  memory.stopping = &stop;
+  memory.poll = {&paused, &service, &cancel};
+  memory.cancelled = [] { ++signalPolls; return false; };
+  const unsigned before = signalPolls;
+  __remill_read_memory_32(&memory, Memory::base);
+  check(signals.lastClear.load() == 1, "bound clear signal generation");
+  for (auto *flag : {&paused, &service, &cancel}) {
+    *flag = true;
+    ++generation;
+    __remill_read_memory_32(&memory, Memory::base);
+    __remill_read_memory_32(&memory, Memory::base);
+    *flag = false;
+    ++generation;
+    __remill_read_memory_32(&memory, Memory::base);
+  }
+  check(signalPolls == before + 6, "pending signals remain visible until cleared");
+  stop = true;
+  ++generation;
+  rejects([&] { __remill_read_memory_32(&memory, Memory::base); }, "bound stop");
+}
+
 void overlappingPages() {
   Memory memory;
   // Register the backing a second way. Alternate between a low guest address
@@ -632,6 +670,7 @@ int main() {
     outerAtomicExcludesContender();
     overlappingPages();
     boundPollSignals();
+    boundExecution();
     narrowAtomics();
     wideAtomics();
     concurrent();

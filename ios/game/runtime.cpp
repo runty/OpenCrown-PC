@@ -15,7 +15,6 @@
 #include "libc-bulk.h"
 #endif
 #include "modules.h"
-#include "trace-budget.h"
 #include "offline-services.h"
 #include "render/capture.h"
 #include "thread-services.h"
@@ -82,6 +81,8 @@ struct Engine {
   std::mutex diagnosticLock;
   std::mutex eventLock;
   std::atomic<bool> stop{false};
+  alignas(128) std::atomic<uint64_t> signalGeneration{1};
+  Memory::SignalCache mainSignals{signalGeneration};
   std::atomic<bool> userStop{false};
   std::atomic<bool> paused{false};
   std::mutex pauseMutex;
@@ -90,9 +91,8 @@ struct Engine {
   std::chrono::nanoseconds pausedTime{0};
   dcp::game::VblankClock vblankClock;
   std::atomic<bool> interactive{false};
-  dcp::game::TraceBudget tracesEntered;
-  uint64_t traceLimit = UINT64_MAX;
-  std::atomic<uint64_t> vblanks{0};
+  alignas(128) std::atomic<uint64_t> steps{0};
+  alignas(128) std::atomic<uint64_t> vblanks{0};
   uint64_t directCursor = 0;
   bool userLogged = false;
   std::atomic<uint64_t> libcChecks{0};
@@ -127,7 +127,6 @@ std::mutex engineLifetime;
 std::atomic<bool> requestedPause{false};
 DcpGameHostHooks configuredHost{};
 bool configuredWaiting = false, configuredCancelled = false;
-thread_local dcp::game::TraceBudget::Worker *traceWorker = nullptr;
 thread_local Engine *currentEngine = nullptr;
 thread_local Memory *currentMemory = nullptr;
 thread_local uint64_t rootStack = 0;
@@ -172,6 +171,7 @@ void stopEngine(Engine &target) {
   {
     std::lock_guard<std::mutex> lock(target.pauseMutex);
     target.stop = true;
+    target.signalGeneration.fetch_add(1, std::memory_order_release);
   }
   target.pauseChanged.notify_all();
 }
@@ -833,9 +833,9 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
   local.cancelled = pollRuntime;
   local.poll = {&target.paused, dcp_thread_stop_flag(), dcp_thread_current_cancel_flag()};
   local.stopOnFault = true;
-  auto *previousTraceWorker = traceWorker;
-  if (!nested)
-    traceWorker = &target.tracesEntered.addWorker();
+  Memory::SignalCache localSignals{target.signalGeneration};
+  local.signalCache = &localSignals;
+  bindScalarThread(local);
   auto *previousEngine = currentEngine;
   auto *previousMemory = currentMemory;
   const auto previousStack = rootStack;
@@ -860,7 +860,6 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
     }
     if (!nested)
       releaseHeldMutexes();
-    traceWorker = previousTraceWorker;
     currentEngine = previousEngine;
     currentMemory = previousMemory;
     rootStack = previousStack;
@@ -877,7 +876,6 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
     }
     stopEngine(target);
     releaseHeldMutexes();
-    traceWorker = previousTraceWorker;
     currentEngine = previousEngine;
     currentMemory = previousMemory;
     rootStack = previousStack;
@@ -949,6 +947,8 @@ extern "C" const char *dcp_cpu_report() {
   memory.stopOnFault = true;
   memory.cancelled = pollRuntime;
   currentMemory = &memory;
+  bindScalarThread(memory);
+  memory.signalCache = &engine().mainSignals;
   dcp_thread_init(
       {owner.get(), runWorker,
        [](void *context) {
@@ -965,6 +965,7 @@ extern "C" const char *dcp_cpu_report() {
        [](void *context) {
          auto &target = *static_cast<Engine *>(context);
          std::lock_guard<std::mutex> lock(target.pauseMutex);
+         target.signalGeneration.fetch_add(1, std::memory_order_release);
          target.pauseChanged.notify_all();
        }});
   memory.poll = {&engine().paused, dcp_thread_stop_flag(), dcp_thread_current_cancel_flag()};
@@ -995,8 +996,6 @@ extern "C" const char *dcp_cpu_report() {
       engine().headless = dcp::game::headless_config(
           std::getenv("DCP_CHECKPOINT_SCENE"), std::getenv("DCP_MAX_TRACE_ENTRIES"),
           std::getenv("DCP_MAX_VBLANKS"), std::getenv("DCP_CHECKPOINT_SETTLE_FRAMES"));
-    engine().traceLimit = engine().interactive ? UINT64_MAX : engine().headless.trace_budget;
-    traceWorker = &engine().tracesEntered.addWorker();
     DcpFileHooks files;
     files.context = owner.get();
     files.pointer = [](void *context, uint64_t address, size_t size,
@@ -1234,7 +1233,7 @@ extern "C" const char *dcp_cpu_report() {
   const auto directMemory = engine().directMemory.stats();
   std::ostringstream out;
   out << "{\"backend\":\"Remill AOT real modules\",\"stage\":\"" << stage
-      << "\",\"steps\":" << engine().tracesEntered.steps()
+      << "\",\"steps\":" << engine().steps
       << ",\"booted\":" << (checkpointComplete ? "true" : "false")
       << ",\"game_code_executed\":"
       << (engine().enteredEboot ? "true" : "false")
@@ -1314,7 +1313,6 @@ extern "C" const char *dcp_cpu_report() {
     std::lock_guard<std::mutex> lock(engineLifetime);
     activeEngine = nullptr;
   }
-  traceWorker = nullptr;
   currentEngine = nullptr;
   currentMemory = nullptr;
   if (!joined)
@@ -1336,7 +1334,7 @@ extern "C" Memory *__remill_sync_hyper_call(State &state, Memory *,
 extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
   if (pollRuntime())
     throw std::runtime_error("bootstrap stopped");
-  if (!engine().tracesEntered.enter(*traceWorker, engine().traceLimit))
+  if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
   const uint64_t observedPC = canonical(pc);
   if (observedPC >= 0x20000000 && observedPC < 0x30000000) {
@@ -1484,6 +1482,7 @@ extern "C" void dcp_game_set_paused(int paused) {
     target->pausedAt = now;
   else if (!paused && target->paused.exchange(false))
     target->pausedTime += now - target->pausedAt;
+  target->signalGeneration.fetch_add(1, std::memory_order_release);
   target->pauseChanged.notify_all();
 }
 extern "C" void dcp_game_request_stop() {
@@ -1520,7 +1519,7 @@ extern "C" int dcp_game_snapshot(DcpGameStats *output) {
   if (!target)
     return 0;
   output->running = 1;
-  output->steps = target->tracesEntered.steps();
+  output->steps = target->steps.load();
   output->vblanks = target->vblanks.load();
   output->workers = target->workersStarted.load();
   output->libc_checks = target->libcChecks.load();

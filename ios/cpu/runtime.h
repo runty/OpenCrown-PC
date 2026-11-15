@@ -17,6 +17,7 @@ public:
   void unlock() noexcept;
 };
 
+struct GuestScalarThread;
 struct Memory {
   static constexpr uint64_t base = 0x100000;
   std::vector<uint8_t> bytes = std::vector<uint8_t>(65536);
@@ -39,9 +40,18 @@ struct Memory {
   std::string fault;
   unsigned calls = 0;
   unsigned returns = 0;
+  // Only lifted scalar bridges use this owner-thread binding. Host hooks
+  // sharing this Memory continue to use the calling thread's checked cache.
+  GuestScalarThread *scalarThread = nullptr;
+  struct SignalCache {
+    const std::atomic<uint64_t> &generation;
+    std::atomic<uint64_t> lastClear{0};
+  };
+  SignalCache *signalCache = nullptr;
 };
 using Lifted = Memory *(*)(State &, uint64_t, Memory *);
 Memory *dispatch(State &, uint64_t, Memory *);
+void bindScalarThread(Memory &);
 void addRegion(Memory &, uint8_t *, size_t);
 uint8_t *guestPointer(Memory &, uint64_t, size_t);
 void guestRead(Memory &, uint64_t, void *, size_t);
