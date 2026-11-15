@@ -24,9 +24,10 @@ void bindScalarThread(Memory &memory) { memory.scalarThread = &scalarThread; }
 namespace {
 constexpr size_t stripeCount = 64;
 constexpr uintptr_t pageSize = 4096; // validation granularity
-// Guest atlas comparisons are multi-megabyte reads. A 4 KiB lock band
-// turned each into a global lock even for workers on unrelated mappings.
-constexpr uintptr_t stripeBytes = 256 * 1024;
+// Keep coarse bands for multi-megabyte copies, while reducing false contention
+// between unrelated mappings now that owned versions avoid most comparisons.
+// Experimental geometry: retain all 64 locks and original LOCK exclusion.
+constexpr uintptr_t stripeBytes = 64 * 1024;
 #ifdef __APPLE__
 struct StripeMutex {
   os_unfair_lock value = OS_UNFAIR_LOCK_INIT;
