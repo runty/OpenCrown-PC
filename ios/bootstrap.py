@@ -623,11 +623,12 @@ def main():
     if args.translated_libc_bulk:
         builder.append("--translated-libc-bulk")
     # Include the observed startup and gameplay entries and every distinct case
-    # of the supported dump’s 11-slot character selection switch.
+    # of the supported dump’s character-selection and edit-result switches.
     traces = game / "traces"
     required = (
         "300717e0", "30000000", "2054c690", "203d54a0", "2063b950",
         "203a1b56", "203a1b72", "203a1b8b", "203a1ba4",
+        "203ae061", "203ae9f0", "203aea03", "203aea16",
     )
     missing = [pc for pc in required if not (traces / (pc + ".ll")).is_file()]
     run("game-seed" if missing else "game-cache-check",
