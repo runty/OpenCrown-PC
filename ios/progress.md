@@ -1,5 +1,56 @@
 # Device port progress
 
+## 2026-11-15 — Font and IME guest output uses checked publication
+
+Implementation `e9369f1` routes font input, initialization, handles, layouts,
+surface descriptors and results through checked copies. The original font
+renderer rasterizes privately; clipped bitmap rows publish with checked
+`max(old, coverage)`, preserving higher existing coverage and pitch padding.
+This avoids full-surface staging per glyph. `guestMaxBytes` shares access locks
+and original guest LOCK exclusion with other native writes. Font/IME callback
+groups must be complete; legacy pointer users remain supported. IME name/result
+writes now use checked publication too, preserving dialog state on rejection.
+See [the protocol and fixture command](game/font-memory.md).
+
+The font fixture compares exact surface, metrics and result bytes with the
+original renderer across ten glyph/surface cases. All 985 checks pass natively,
+with ASan/UBSan and with TSan. The deliberately unlocked blend fails the
+functional original-LOCK assertion as expected; it is fixture-only. The cached
+FreeType library itself is not rebuilt with sanitizers. The memory fixture
+passes 267,130 checks per configuration, including max-coverage bounds,
+page/lock-band crossings and native/synthetic aliases. IME passes 1,002 checks
+per configuration, including 200 concurrent completions across legacy/checked
+paths, failure retry and complete panel validation. Both SDK probes compile.
+
+Six native support objects are rebuilt for Mac/iPhoneOS/Simulator, preserving
+the frozen 50,464-entry corpus and original archive hashes. Source/native header
+hashes and commands are recorded separately; packages carry explicit native
+override metadata. Both SDK apps build with icons and full translation
+provenance. The iPhoneOS signature verifies without extra memory entitlements;
+Simulator signing is disabled. Stable pipeline pin stays `851c06b`.
+
+The real native game reaches inspected Town, consumes 2,828 frames and completes
+a 1,200-vblank checkpoint with clean unload and empty guest/host errors. Font
+diagnostics confirm checked setup: 6,758,400 read bytes and 416 written bytes.
+Native CRILAYLA still executes 91 fast calls / three fallbacks. The packaged
+iPhone Simulator independently reaches inspected Town, captures 2,144 frames
+and completes a 600-vblank checkpoint with the same font counters and empty
+runtime/frontend/save/platform errors. Both retain exact disposable R
+`df59b068…` save bytes. Existing Simulator state survives installation/run except
+the two global reports, with input restored and silent launcher reopened.
+
+Both Town runs record zero dynamic glyph calls: its text uses a baked atlas.
+They qualify setup/integration, not dynamic glyph execution in the game or a
+new IME keyboard UI pass. No speedup or sustained hardware result is claimed.
+Opaque native-owned Font/token objects and other service pointer escapes still
+need conservative exclusion or mutation tracking. Next work is snapshot-bound
+version metadata with full-content fallback for untracked writes, preserving
+original LOCK behavior and mapping/snapshot identity. Private evidence:
+`mobile-adventure-live/font-memory-candidate/` (`font-tests-final/`, `ime/`,
+`memory-tests/`, `core-verification.json`, `package-verification.json`,
+`native-town/` and `simulator-town/`). Neither physical device is used; the iPad
+stays excluded and the player-skipped manual save test remains deferred.
+
 ## 2026-11-15 — Native file output uses checked memory publication
 
 Implementation `fe8f18a` supplies non-escaping validation and synchronized

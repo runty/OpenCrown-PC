@@ -18,17 +18,20 @@ this run.
 | Native libc bulk adapters | Delegate to the bulk memory operations | Keep invalidation in the common operation, rather than relying on each adapter. |
 | Native CRILAYLA in `ios/game/crilayla-native.cpp` | Uses non-escaping `guestValidate`, decodes privately, publishes with `guestWrite` | Publication must invalidate the output when versions are added. Include translated fallback stores. |
 | File service in `ios/game/file-services.cpp` | The game supplies checked copy callbacks: bounded host staging, `guestWrite` publication, checked input/string copies and stat outputs | Add version invalidation to the common memory writes. Legacy pointer-only callers must remain conservatively untracked. |
-| Font services in `ios/game/font-services.cpp` | Original font implementation receives mutable structures and render buffers | Cover returned handles, metrics and full pitched glyph/surface output. A pointer validated before the call is not a completed write. |
-| IME and offline services | Write service results through borrowed pointers | Track complete output spans or conservatively exclude their escaped mappings from version-only hits. |
+| Font services in `ios/game/font-services.cpp` | Guest input/output uses checked copies; original rasterization is private and clipped coverage rows use checked max publication | Invalidate checked output pages when versions are added. Native-owned opaque Font/token mappings still require exclusion or mutation/lifetime tracking. |
+| IME services | Checked copies publish accepted text/results; host UI never accesses guest memory | Invalidate through common checked writes. Pointer-only callers remain untracked. |
+| Offline services | Several service results still use borrowed pointers | Track complete output spans or conservatively exclude their escaped mappings from version-only hits. |
 | Thread/service hooks and direct copies in `ios/game/runtime.cpp` | Several `memcpy`/`memset`/field writes use `guestPointer` | Audit each mutable escape, including initialization and worker paths. Validation alone cannot establish future immutability. |
 | Capture/marker callbacks | Capture has separate validation, copy and equality hooks; its memory hook accepts a `writing` flag | Honor any actual writes or keep them conservatively untracked. Read validation must not poison otherwise trackable regions. |
 
 `guestPointer` releases its access lock before returning the borrowed pointer.
-The legacy pointer callback shared with font/IME/offline services in
+The legacy pointer callback available to font/IME/offline services in
 `ios/game/runtime.cpp` still ignores its `writing` argument; the capture
 validation callback does too. The file adapter now uses separate checked copy
-callbacks and does not escape guest pointers on the production path; see
-[checked native file memory](../game/file-memory.md).
+callbacks and does not escape guest pointers on the production path. Font and
+IME guest input/output now use checked publication too; native-owned handle
+ranges remain a separate concern. See [file memory](../game/file-memory.md)
+and [font/IME publication](../game/font-memory.md).
 Consequently, adding epochs only to translated stores would be incomplete.
 The pointer flag by itself is also insufficient: a renderer could read a new
 epoch before the native function actually writes its output.
@@ -39,9 +42,10 @@ epoch before the native function actually writes its output.
    access and escaped mutable pointers. Unknown escapes must disable a
    version-only hit for the affected mapping. Preserve the existing content
    comparison path whenever tracking cannot prove that the snapshot is current.
-2. Native file outputs now publish through checked memory writes. Route other
-   simple service copies through the same protocol. Give longer-lived font/surface writes an explicit completion protocol
-   or private staging buffer. Do not assume a pointer's declared read-only use
+2. Native file, font and IME guest output now publish through checked memory
+   operations, with private font rasterization. Route remaining service copies
+   through the same protocol, or mark escaped/native-owned ranges conservatively
+   untracked. Do not assume a pointer's declared read-only use
    prevents a callee from writing it; audit the actual implementation.
 3. Associate page versions with the underlying host mapping, not just a guest
    address. Synthetic/native aliases must share identity. Registration, session
