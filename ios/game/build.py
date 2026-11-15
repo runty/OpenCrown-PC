@@ -13,6 +13,7 @@ import shlex
 import struct
 import subprocess
 from native_libc_ir import native_libc_ir
+from trace_flags import inline_flags
 from trace_provenance import record_current, needs_fp80
 
 parser = argparse.ArgumentParser()
@@ -148,11 +149,12 @@ backend_snapshot = {
 }
 
 
-def run(command, log):
+def run(command, log, *, data=None):
     with (root / log).open("w") as stream:
         try:
             subprocess.run(
                 [str(x) for x in command],
+                input=data,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 check=True,
@@ -824,30 +826,35 @@ for platform, target, sdk in platforms:
         freetype.parent / "include",
     ]
 
+    # Separate namespaces keep objects from different lowering implementations
+    # and decoder entry ABIs from being mixed on an incremental rebuild.
+    flag_revision = sha256(source / "ios/game/trace_flags.py")
+    folded = directory / ("inline-flags-" + flag_revision[:16])
+    folded.mkdir(exist_ok=True)
+    (folded / "native-crilayla").mkdir(exist_ok=True)
+
     def compile_trace(path):
-        obj = directory / (path.stem + ".o")
         if native_codec and path.stem == "2062ce30":
             path = codec_input
-            obj = directory / "native-crilayla" / (path.stem + ".o")
-            obj.parent.mkdir(exist_ok=True)
+            obj = folded / "native-crilayla" / (path.stem + ".o")
+        else:
+            obj = folded / (path.stem + ".o")
         if not obj.exists() or obj.stat().st_mtime < path.stat().st_mtime:
+            original = path.read_bytes()
+            lowered = inline_flags(original)
+            if lowered == original:
+                previous = directory / obj.relative_to(folded)
+                if previous.is_file() and previous.stat().st_mtime >= path.stat().st_mtime:
+                    return previous
             temporary = obj.with_suffix(".o.partial")
             temporary.unlink(missing_ok=True)
             run(
                 [
-                    llvm / "clang",
-                    "-target",
-                    target,
-                    "-isysroot",
-                    sdk_path,
-                    "-O2",
-                    "-funwind-tables",
-                    "-c",
-                    path,
-                    "-o",
-                    temporary,
+                    llvm / "clang", "-target", target, "-isysroot", sdk_path,
+                    "-O2", "-funwind-tables", "-x", "ir", "-c", "-", "-o", temporary,
                 ],
                 platform + "-" + path.stem + "-compile.log",
+                data=lowered,
             )
             temporary.replace(obj)
         return obj
@@ -944,6 +951,7 @@ for platform, target, sdk in platforms:
             "platform": platform,
             "target": target,
             "trace_hash": trace_hash.hexdigest(),
+            "inline_flag_lowering_sha256": flag_revision,
             "entrypoints": len(definitions),
             "native_libc_bulk": bool(native_bulk),
             "native_crilayla": {"compiled": native_codec,
