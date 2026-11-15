@@ -23,7 +23,7 @@ for sdk in iphoneos iphonesimulator; do
   xcrun --sdk "$sdk" clang++ "${flags[@]}" -c "$source_dir/core.cpp" -o "$out/$sdk/core.o"
   xcrun --sdk "$sdk" clang++ "${flags[@]}" -fobjc-arc -fblocks -c "$source_dir/platform.mm" -o "$out/$sdk/platform.o"
   xcrun --sdk "$sdk" ar rcs "$out/$sdk/libdcp-platform.a" "$out/$sdk/core.o" "$out/$sdk/platform.o"
-  printf '%s\n' '#include "platform.h"' 'int main() { DcpPlatformAudioStats s; dcp_platform_audio_stats(&s); return 0; }' > "$out/link-probe.cpp"
+  printf '%s\n' '#include "platform.h"' 'int main() { DcpPlatformAudioStats s; dcp_platform_audio_stats(&s); return dcp_platform_audio_muted(); }' > "$out/link-probe.cpp"
   xcrun --sdk "$sdk" clang++ "${flags[@]}" -I "$source_dir" "$out/link-probe.cpp" "$out/$sdk/libdcp-platform.a" \
     -framework Foundation -lobjc -framework UIKit -framework GameController -framework AVFoundation -framework AudioToolbox -o "$out/$sdk/link-probe"
   echo "PASS: $sdk arm64 iOS18 compile and framework link"

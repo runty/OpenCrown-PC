@@ -32,6 +32,7 @@ struct AudioState {
   std::mutex errorMutex;
   std::string error;
   std::atomic<bool> wanted{false}, running{false}, paused{true}, primed{false};
+  std::atomic<bool> muted{false};
   std::atomic<unsigned> callbacks{0}, callbackFrames{256};
   std::atomic<uint64_t> submitted{0}, rendered{0}, underrun{0}, clipped{0},
       flushed{0};
@@ -97,12 +98,14 @@ bool startAudio() {
   engine = [[AVAudioEngine alloc] init];
   AVAudioFormat *format =
       [[AVAudioFormat alloc] initStandardFormatWithSampleRate:48000 channels:2];
+  const char *muteSetting = std::getenv("DCP_MUTE_AUDIO");
+  bool muteOutput = muteSetting && !std::strcmp(muteSetting, "1");
 #if TARGET_OS_SIMULATOR
-  const char *muteSetting = std::getenv("DCP_SIM_MUTE_AUDIO");
-  const bool muted = muteSetting && !std::strcmp(muteSetting, "1");
-#else
-  constexpr bool muted = false;
+  const char *legacyMute = std::getenv("DCP_SIM_MUTE_AUDIO");
+  muteOutput = muteOutput || (legacyMute && !std::strcmp(legacyMute, "1"));
 #endif
+  const bool muted = muteOutput;
+  audio.muted.store(muted);
   source = [[AVAudioSourceNode alloc]
       initWithFormat:format
          renderBlock:^OSStatus(BOOL *silence, const AudioTimeStamp *,
@@ -128,8 +131,8 @@ bool startAudio() {
              }
              audio.rendered.fetch_add(got, std::memory_order_relaxed);
            }
-           // Quiet simulator verification still consumes the real stream and
-           // retains callback/underrun accounting. Device output is unchanged.
+           // Quiet verification still consumes the real stream and retains
+           // callback/underrun accounting on both devices and Simulator.
            if (muted)
              for (UInt32 i = 0; i < buffers->mNumberBuffers; ++i)
                std::memset(buffers->mBuffers[i].mData, 0,
@@ -766,6 +769,7 @@ extern "C" void dcp_platform_audio_stats(DcpPlatformAudioStats *s) {
         audio.running.load(),   audio.paused.load(),
         audio.rate.load(),      audio.duration.load()};
 }
+extern "C" int dcp_platform_audio_muted() { return audio.muted.load(); }
 extern "C" void dcp_platform_copy_error(char *destination, size_t capacity) {
   if (!destination || !capacity)
     return;

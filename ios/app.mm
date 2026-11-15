@@ -115,9 +115,9 @@ NSDictionary *audioSnapshot() {
     @"paused" : @(stats.paused != 0),
     @"device_rate" : @(stats.device_sample_rate),
     @"buffer_seconds" : @(stats.device_buffer_seconds),
+    @"output_muted" : @(dcp_platform_audio_muted() != 0),
 #if TARGET_OS_SIMULATOR
-    @"simulator_muted" : @(std::getenv("DCP_SIM_MUTE_AUDIO") &&
-        !std::strcmp(std::getenv("DCP_SIM_MUTE_AUDIO"), "1"))
+    @"simulator_muted" : @(dcp_platform_audio_muted() != 0)
 #else
     @"simulator_muted" : @NO
 #endif

@@ -128,7 +128,10 @@ AudioSink/PadState conversion, saving and Metal presentation.
 The native core probe also passed AddressSanitizer and UndefinedBehaviorSanitizer
 on the development Mac. Hardware-dependent behavior remains unverified.
 
-For unattended Simulator verification, `DCP_SIM_MUTE_AUDIO=1` silences only the
-simulator output after consuming its real PCM ring. Callback/underrun counters
-continue, and app diagnostics identify `audio.simulator_muted=true`. This is
-not an audible-quality test. Physical-device code ignores the variable.
+For quiet device or Simulator verification, `DCP_MUTE_AUDIO=1` silences output
+after consuming the real PCM ring. Callback, underrun and clipping counters
+continue. App diagnostics report the source node's captured output mode as
+`audio.output_muted`; it remains available after stopping for the final report.
+This does not change system volume or qualify audible quality. The setting is
+read when the audio graph starts or restarts. The older `DCP_SIM_MUTE_AUDIO=1`
+alias and `audio.simulator_muted` field remain supported only in Simulator.

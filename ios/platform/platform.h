@@ -53,6 +53,10 @@ void dcp_platform_audio_stop(void);
 size_t dcp_platform_audio_submit(const float *stereo, size_t frames,
                                  uint32_t timeout_ms);
 void dcp_platform_audio_stats(DcpPlatformAudioStats *stats);
+/* Output mode captured by the last source-node configuration; retained on
+ * stop so final diagnostics describe the stream that was actually consumed.
+ * Separate query preserves the existing audio-stats struct ABI. */
+int dcp_platform_audio_muted(void);
 void dcp_platform_copy_error(char *destination, size_t capacity);
 
 #ifdef __cplusplus
