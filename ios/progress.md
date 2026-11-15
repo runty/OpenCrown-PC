@@ -1,5 +1,36 @@
 # Device port progress
 
+## 2026-11-14 — Character-edit switch and post-write recovery
+
+The iPad Simulator's original game keyboard shortened the disposable name from
+Felix to Feli. Leaving the Inn saved it. A cold process reopened Feli with the
+exact new SAVE0.DAT SHA-256
+`9069666229e360dd969bbe0fe1953589f2f8ecfe55f2d0107e5556dfe669d05d`.
+This exercises the game's keyboard through the touch overlay. The native
+UIKit IME was not invoked on this route.
+
+A subsequent armor edit stopped at missing target `203aea16`. Source
+`5ad93eb` adds every destination of its original four-entry relative switch
+at ELF `74dce0`. An unsigned index guard, signed relative loads and target
+instructions were verified before translation. The frozen core has 50,397
+entries and packages for both iOS and Simulator. Reinstall retained the edited
+name and its save hash.
+
+With that build, another armor edit reached an actual savedata write. The
+watcher stopped and killed the Simulator app after SAVE0.DAT changed to
+`af7dce1f69b43594f912734beaec402910441c3333d21018d87e0e14fafba1f4`
+while its save journal remained active. A cold launch recovered the exact
+prior `9069666…` save, cleared the journal and displayed Feli with Burnished
+Bronze. The retained interrupted file matches the captured `af7dce1…` hash.
+This qualifies interruption after guest bytes changed and before transaction
+commit, alongside the earlier prewrite case. Physical interruption remains open.
+
+The fresh-Fighter native replay also passed crossbow pickup, firing and the
+goblin encounter. It stopped at potion selection/use until its 1,400-second
+deadline. No missing trace was reported there. The cause is unresolved.
+A disposable x86-64 Mac reference replay is comparing the same control route.
+Both physical devices remain released.
+
 ## 2026-11-14 — Fresh Fighter creation and changed-save cold reloads
 
 Build `7f7298f` compiles all four verified destinations of the character-selection
