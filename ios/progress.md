@@ -1,5 +1,45 @@
 # Device port progress
 
+## 2026-11-15 — Native coherence audit reaches the Harpy; input fallback is exercised
+
+A private native `bb540ac` harness advances through the first chest (Treasure
+rank E / +98 gold), spiders, water/bugs, lizard combat, one death/respawn and
+the visible Harpy boss / first 95-damage strike. Across 19,982 consumed frames,
+all 497,273 version hits / 1,742,735,489,024 logical bytes pass full-content
+verification with zero mismatches. Guest/host errors are empty, unload is
+acknowledged and the original `728f0ec…` save remains exact. It stops
+intentionally before the host wall budget; no boss/adventure-clear, sustained
+timing or physical-device qualification is claimed.
+
+The level component remains GOBLIN even while the Harpy and boss health bar
+are visible. HARPY was therefore an unmet diagnostic target, not a valid
+automatic boss checkpoint. Exit 1 / incomplete checkpoint is retained rather
+than rewritten as a passing game-run result. Visual boss arrival and the
+independent coherence counters are the evidence here.
+
+Private support replacements supply ordinary pad/tap input and a read-only
+snapshot of the same AOT cursor mailbox used by mobile input. The first pointer
+harness incorrectly queried the separate native relay cursor storage, which
+remains empty under AOT; that attempt is stopped and excluded. The corrected
+harness uses the production TouchLoop and public pause API. It changes no
+guest fields or translated functions; runtime/offline/host source/object hashes
+and commands are recorded separately. This diagnostic harness is not packaged
+into either device app and is not a performance sample.
+
+The adventure-save route also gains late walking for slower Ruins arrival.
+A separate `48bc60b` Simulator test deliberately removes the early encounter
+walk and requires GOBLIN observation at vblank 8,800 or later. It captures 9,637
+frames and verifies 219,540 hits / 780,911,747,072 bytes with zero mismatches,
+exact Darrel bytes, clean errors and preserved prior state/input. This proves
+the fallback actually executes, rather than merely passing via early movement.
+It is an input fixture, not a promotion of the experimental CPU geometry.
+
+Private evidence: `texture-cache-abi-candidate/scene-guided/` provenance and
+`adventure-aot-pointer/observation.json`, command log and inspected step images;
+`snapshot-lock-band-candidate/simulator-ruins-fallback/` and its explicit
+checkpoint-threshold assertion. Physical iPad remains excluded; the player’s
+manual save check remains skipped.
+
 ## 2026-11-15 — Guarded cache reaches the iPhone and the Ruins
 
 The player unlocks the only authorized physical iPhone. Clean `bb540ac`
