@@ -41,8 +41,12 @@ buttons. Remaining controllers compact into available slots. No special Bluetoot
 permission or custom pairing flow is used.
 
 Touch controls provide two sticks, D-pad, four face buttons, shoulders, triggers,
-stick clicks, Menu and Pad. Connecting a supported extended gamepad hides those
-controls and releases held touches. The screen still accepts game touchpad
+stick clicks, Menu and Map. Menu sends the ordinary Options button. Map sends a
+touchpad click with a left-half contact, matching the game's Town Map gesture;
+a touchpad click without a contact opens the character menu. The Map contact
+is published first if another screen contact is held, and releases with the
+button. Connecting a supported extended gamepad hides those controls and
+releases held touches. The screen still accepts game touchpad
 input, including on controllers without a touchpad. The separate Pause button
 remains available. Disconnecting the last supported gamepad restores the
 on-screen controls immediately. Multiple captured touches combine movement/actions.

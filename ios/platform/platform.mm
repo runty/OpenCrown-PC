@@ -243,7 +243,7 @@ struct TouchCapture {
   if (_touchpadOnly)
     return;
   NSArray<NSString *> *labels = @[
-    @"MOVE", @"LOOK", @"×", @"○", @"△", @"□", @"L1", @"R1", @"MENU", @"PAD",
+    @"MOVE", @"LOOK", @"×", @"○", @"△", @"□", @"L1", @"R1", @"MENU", @"MAP",
     @"D-PAD", @"L2", @"R2", @"L3", @"R3"
   ];
   CGFloat u = self.unit;
@@ -292,7 +292,18 @@ struct TouchCapture {
     content.origin.y = (content.size.height - height) / 2;
     content.size.height = height;
   }
+  // The game distinguishes Town Map from the character menu by the first
+  // touchpad contact. Match the Mac adapter's left-half click gesture and
+  // publish that contact first, even when another screen touch is held.
+  for (const auto &capture : _captures)
+    if (capture.control == 9) {
+      pad.buttons |= 0x100000;
+      touch_point(pad, 300.f / 1919.f, 471.f / 942.f, capture.id);
+      break;
+    }
   for (const auto &capture : _captures) {
+    if (capture.control == 9)
+      continue;
     CGPoint p = [capture.touch locationInView:self];
     if (capture.control < 0) {
       touch_point(pad, (p.x - content.origin.x) / content.size.width,
