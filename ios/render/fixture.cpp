@@ -110,6 +110,33 @@ int main(int argc, char **argv) {
     rgb.insert(rgb.end(), {pixels[i], pixels[i + 1], pixels[i + 2]});
   if (!write_png(std::string(argv[1]) + "-mask.png", width, height, rgb))
     return 1;
+  // Two identical translucent draws must blend in submission order.
+  // A pair of incomplete triangle lists must never form a triangle together.
+  draw.flags = 4;
+  draw.cst[0] = 1;
+  draw.cst[1] = draw.cst[2] = 0;
+  draw.cst[3] = 1;
+  device->draw(draw);
+  draw.cst[0] = 0;
+  draw.cst[2] = 1;
+  draw.cst[3] = 0.5f;
+  draw.blend.on = true;
+  device->draw(draw);
+  device->draw(draw);
+  draw.blend.on = false;
+  draw.cst[1] = 1;
+  draw.n = 2;
+  device->draw(draw);
+  draw.n = 1;
+  draw.v = vertices + 2;
+  device->draw(draw);
+  device->end_frame();
+  if (!device->read_rgba(draw.target, width, height, &pixels))
+    return 1;
+  const int twiceBlended[4] = {63, 0, 192, 255};
+  for (int y = 0; y < height; ++y)
+    for (int x = 0; x < width; ++x)
+      inspect(twiceBlended, x, y);
   std::ofstream report(std::string(argv[1]) + ".json");
   report << "{\"pixel_channel_checks\":" << checked << ",\"failed\":" << failed
          << ",\"frames\":120,\"render_readback_us\":" << micros

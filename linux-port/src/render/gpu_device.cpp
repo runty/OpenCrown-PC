@@ -256,6 +256,22 @@ public:
         std::memcpy(f.cm, d.cm, sizeof f.cm);
         std::memcpy(f.grad, d.grad, sizeof f.grad);
         f.factor = d.factor, f.flags = d.flags;
+        // Consecutive complete primitives keep their original order in one
+        // draw. Feedback must snapshot the target separately for each draw.
+        if (!recs_.empty() && (d.prim == Prim::Lines || d.prim == Prim::Triangles) &&
+            r.tex[0] != r.target && r.tex[1] != r.target) {
+            Rec& prev = recs_.back();
+            const unsigned primitive = d.prim == Prim::Lines ? 2 : 3;
+            if (!prev.clear && prev.target == r.target && prev.pipe == r.pipe &&
+                prev.count % primitive == 0 && r.count % primitive == 0 &&
+                uint64_t(prev.first) + prev.count == r.first && r.count <= UINT32_MAX - prev.count &&
+                !std::memcmp(prev.tex, r.tex, sizeof r.tex) && !std::memcmp(prev.samp, r.samp, sizeof r.samp) &&
+                !std::memcmp(&prev.sc, &r.sc, sizeof r.sc) && !std::memcmp(&prev.vs, &r.vs, sizeof r.vs) &&
+                !std::memcmp(&prev.fs, &r.fs, sizeof r.fs)) {
+                prev.count += r.count;
+                return;
+            }
+        }
         recs_.push_back(r);
     }
 
