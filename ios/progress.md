@@ -1,5 +1,40 @@
 # Device port progress
 
+## 2026-11-14 — Town frame budget on iPad mini
+
+Signed build `c8b7c9f` completed two consecutive 3,000-frame walks on the
+physical A20 Pro iPad mini. The starting save, boot input and scene-relative
+walk match the earlier 45.3–45.4 fps runs. All 3,000 flips were replayed in
+each window. The final captures show Felix in the street with the HUD.
+
+| Run | Thermal state | Rendered fps | Median interval | p95 interval | p95 replay work | Process CPU per walk |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| First | nominal → fair | 59.40 | 16.67 ms | 16.82 ms | 2.82 ms | 69.30 s |
+| Immediate repeat | fair → fair | 59.38 | 16.67 ms | 16.84 ms | 2.74 ms | 67.33 s |
+
+The AOT texture snapshot budget increased from 64 to 192 MiB. An intermediate
+build reached 52.32 fps with this change. The renderer checks the entire
+texture and combines adjacent sprite primitives with identical state. Following
+an on-device CPU profile, guest threads now back off after repeated yields,
+cache whole-page range checks and synchronize large atlas comparisons in
+256 KiB bands. Each translated unit can fold the runtime's pure flag helpers.
+With the other changes in place, the walk used 84.98 process CPU seconds
+before flag folding. CPU time sums all threads. Per-frame replay work measures
+host processing through submission and excludes asynchronous GPU execution.
+
+An earlier trial under serious thermal pressure measured 42.67 fps. The final
+build peaked at 2.33 GB across these short walks. Both used scripted input
+and paced null audio. Each finished with zero runtime, frontend or save
+errors. The seed and ordinary save files retained their pre-run hashes and
+the device returned to the normal launcher. Combat, long-session thermal
+behavior, physical iPhone performance and interactive audio remain open.
+
+Native Metal regressions passed 49,152 channel checks, with another 36,864
+channels independently checked from PNGs. Checked guest memory passed
+267,095 assertions per native, ASan/UBSan and TSan build. An active-Town
+pause/resume/stop completed on the native host, which rendered 58.79 fps
+on the same walk. All 14 x86-64 Mac regression tests passed.
+
 ## 2026-11-14 — Physical iPad Town walks at 45 fps
 
 Signed build `34e793f` ran the same 3,000-frame Felix walk twice on the

@@ -6,8 +6,11 @@ cache hits locally. Registry replacement requires quiescence, and a change of
 registry identity clears the thread's cached entries before reuse. Synthetic
 addresses are translated separately.
 
-Checked data access locks the stripes covering the actual host bytes. A
-cross-page operation takes every participating stripe in ascending order.
+Checked data access locks the stripes covering the actual host bytes. A full 4 KiB
+page can be cached once its entire range is proven to belong to the registry.
+Lock bands span 256 KiB. A cross-band access takes its participating stripes
+in ascending order. A multi-megabyte comparison can run concurrently with a
+guest access whose stripes are disjoint.
 Copies protect both spans. An original guest LOCK takes all stripes until
 its matching release. Same-thread nested guest contexts retain the enclosing
 lock. Mapping lookup and guest code that waits for lifecycle changes run
@@ -39,7 +42,7 @@ python3 ios/cpu/review/memory-cache.py \
   --backend-root /Volumes/office/Build/OpenCrown/cpu-backends
 ```
 
-The same fixture passed **251,055 checks** in each configuration:
+The same fixture passed **267,095 checks** in each configuration:
 
 | Configuration | Exit | Failures | Sanitizer diagnostics |
 | --- | --- | --- | --- |

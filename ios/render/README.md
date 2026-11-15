@@ -98,7 +98,7 @@ alive while queued frames are consumed.
 
 All draws using a texture in one frame share its first synchronized snapshot.
 On a later frame, the renderer checks the complete guest span against the
-bytes used for the upload. It retains up to 64 MiB of these snapshots and
+bytes used for the upload. It retains up to 192 MiB of these snapshots and
 prefers active textures. A changed or uncached span goes through synchronized
 copy, SHA-256 and detiling. A write to the last byte participates in the check.
 The renderer submits a new upload only when the content changes. Guest code may
@@ -124,10 +124,9 @@ python3 ios/render/run-fixtures.py --build /Volumes/office/Build/OpenCrown/ios-r
 
 On the M5 Max/macOS 27.2.1, with Metal API validation enabled:
 
-- The lower Device fixture passes 32,768 RGBA channel checks for blending,
-  top-origin scissor, two-texture mask sampling and suspend/resume. Its 120
-  offscreen 64×64 frames plus final readback take 11,526 microseconds in the
-  recorded run. This tiny synthetic workload does not predict game frame rate.
+- The lower Device fixture passes 49,152 RGBA channel checks for blending,
+  top-origin scissor, two-texture mask sampling, adjacent translucent draws, incomplete primitives and suspend/resume. It renders 120
+  offscreen 64×64 frames and reads back the result.
 - The AOT capture fixture passes wrapper state, shader-pool lookup, copied
   vertices, submitted marker ordering, display/flip metadata, invalid-memory
   rejection and reinitialization.

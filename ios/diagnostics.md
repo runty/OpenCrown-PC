@@ -128,6 +128,13 @@ the first and last captured flips within the window. The report omits replay
 timing if another observed component replaces the requested scene. Drawable
 presents and repeated images do not count as extra game frames.
 
+Within that window, `replay_work_p50_ms` and `replay_work_p95_ms` measure
+wall time spent replaying individual new frames on the host. GPU execution
+can continue after submission. `guest.checkpoint_process_cpu_us` sums user
+and system CPU time across all process threads. Divide by the number of
+guest frames for CPU cost per frame. Record thermal state before and after
+each walk when comparing builds.
+
 To repeat the 3,000-frame Felix walk on the native host, use a disposable
 copy of the Felix slot, start the runner from the repository root and pass
 the usual game, save and output arguments. Set these variables before launch.

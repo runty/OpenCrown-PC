@@ -25,6 +25,7 @@ for executable, parameters in [
     ("metal-fixture", [output / "fixture"]),
     ("capture-fixture", []),
     ("texture-fixture", []),
+    ("texture-snapshot-fixture", []),
     ("bc-fixture", []),
     ("replay-fixture", [output / "replay.png"]),
 ]:
