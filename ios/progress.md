@@ -1,5 +1,57 @@
 # Device port progress
 
+## 2026-11-15 — Texture scan counters identify repeated unchanged comparisons
+
+Implementation `ee59b0c` adds render-thread texture request, comparison, copy,
+hash, upload and snapshot-budget counters to native and iOS diagnostic reports.
+The counters survive renderer teardown. They preserve the current full-content
+checks and do not change the CPU memory-lock geometry. Both SDK app packages
+build with compiled icons and the unchanged 50,464-entry frozen core, complete
+current/generation backend provenance and native libc/CRILAYLA paths. The
+iPhoneOS signature verifies without increased-memory or extended-VA
+entitlements; Simulator signing is disabled. Neither physical device is used
+for these checks, and the stable pipeline pin stays `851c06b`.
+
+The real native R/Town run consumes 2,825 frames and completes its 1,200-vblank
+checkpoint with clean unload and empty guest/host errors. It compares
+187,525,429,248 logical bytes: 44,074 of 44,075 comparisons match. Successful
+matches cover about 66.38 MB per consumed frame across the whole session,
+including startup. Copies/hashes total 276,334,592 bytes, with 60 uploads,
+six budget evictions and zero retention misses. This points to redundant
+comparisons rather than the snapshot budget on this route. Instrumented timing
+is 57.58 fps; there is no performance improvement or zero-overhead claim.
+
+The packaged iPhone Simulator app independently reaches visible R/Town,
+captures 2,146 frames and completes a 600-vblank checkpoint. Its counters
+survive teardown: 25,528 of 25,529 comparisons match, spanning
+118,000,379,904 matched logical bytes; copies/hashes again total 276,334,592
+bytes, with 60 uploads and zero retention misses. The final image is inspected,
+runtime/frontend/save/platform errors are empty, and the disposable R save
+remains exact `df59b068…`. Every pre-existing non-asset file survives installation
+and the run exactly, except the two intentionally replaced global reports;
+the original scripted input is restored. This is renderer integration evidence,
+not hardware timing or the skipped manual save test.
+
+All six renderer fixtures pass, retaining exact image hashes, 49,152 pixel
+channel checks, 36,864 saved RGB checks, 1,504 BC checks and suspend/resume.
+A fresh shared Mac build passes all 14 CTest suites. Its CPU oracle reports
+1,206/1,206 byte-exact re-encodings, zero unplaceable/failed sites; it separately
+reports 37 original patch-site byte mismatches. Rebuilding the original cached
+backend/replay objects with their original commands reproduces their hashes
+exactly before adding the counters.
+
+The [writer audit](render/texture-coherence.md) finds that file reads, font/IME
+outputs and runtime hooks still use borrowed mutable guest pointers. A cache
+that tracks only translated stores would miss those writers. Next work must
+give native writes an explicit lifetime/publication protocol, associate versions
+with the exact snapshot and mapping, and retain full comparisons whenever
+tracking is incomplete. No cache shortcut or lock experiment is promoted.
+Private proof is `mobile-adventure-live/texture-metrics-candidate/`, including
+`native-town/`, `simulator-town/`, `render-fixtures/`,
+`baseline-object-check/verification.json`, `package-verification.json` and
+`macos-ctest.log`. Physical input confirmation remains valid; the player-skipped
+manual save check remains deferred and the physical iPad stays excluded.
+
 ## 2026-11-15 — Physical controls pass; sustained iPhone pacing remains below target
 
 The player confirms actual iPhone touch movement/menu use, controller movement/

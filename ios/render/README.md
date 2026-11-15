@@ -200,3 +200,7 @@ the renderer verifier still checks all36,864 saved RGB channels plus1,504 BC
 channels/edges. Updated Mac, Simulator and iPhoneOS archives compile. Real-game
 performance measurements are recorded in the progress ledger; fixture timings
 alone do not establish gameplay frame rate.
+
+The [texture writer audit](texture-coherence.md) records the measured remaining
+comparison work and the native pointer writers that must be covered before
+introducing a version-only cache hit.
