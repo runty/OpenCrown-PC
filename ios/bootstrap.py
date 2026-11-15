@@ -622,21 +622,13 @@ def main():
     ]
     if args.translated_libc_bulk:
         builder.append("--translated-libc-bulk")
-    if not list((game / "traces").glob("*.ll")):
-        run(
-            "game-seed",
-            [
-                *builder,
-                "--lift",
-                "300717e0",
-                "--lift",
-                "30000000",
-                "--lift",
-                "2054c690",
-            ],
-        )
-    else:
-        run("game-cache-check", builder)
+    # These indirect entries were requested by the supported game at runtime.
+    # Keep later gameplay reachable on fresh builds and on existing caches.
+    traces = game / "traces"
+    required = ("300717e0", "30000000", "2054c690", "203d54a0", "2063b950")
+    missing = [pc for pc in required if not (traces / (pc + ".ll")).is_file()]
+    run("game-seed" if missing else "game-cache-check",
+        [*builder, *[arg for pc in missing for arg in ("--lift", pc)]])
     provenance = json.loads((game / "trace-provenance.json").read_text())
     if not provenance["complete_current_backend"]:
         run("game-relift", [*builder, "--relift-stale"])
