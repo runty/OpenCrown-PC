@@ -1,5 +1,57 @@
 # Device port progress
 
+## 2026-11-15 — Narrower lock bands with versioned snapshots remain experimental
+
+Implementation `48bc60b` changes only the AOT CPU lock band from 256 to 64 KiB,
+retaining all 64 locks, original LOCK exclusion, checked copies and snapshot
+proof rules. It is isolated on `codex/ios-snapshot-lock-bands`; the integration
+branch, stable pipeline pin and device installed during this test stay on their
+previous geometry. This revisits the earlier band experiment on the actual
+owned-snapshot implementation, not on the older renderer.
+
+The memory suite passes 267,130 checks in native, ASan/UBSan and TSan modes.
+Snapshot tests pass all three modes, forced seven-count saturation and the
+omitted-store-invalidation negative control. Concurrent snapshot check counts
+vary by scheduling. Both SDK apps build with icons, signature/provenance checks
+and the unchanged complete 50,464-entry corpus. Seven native support overrides
+are explicit; guarded V2 renderer archives are reused byte-for-byte. Physical
+signing uses no additional memory entitlements. These apps identify clean
+implementation `48bc60b`; later changes on this branch are documentation/routes.
+
+Six interleaved native R/Town walks keep versions enabled and unverified in both
+builds. Order is 256/64/64/256/256/64 KiB, three samples each, with identical
+save, input, settled interval count, corpus and renderer. Every run has clean
+errors/unload and exact R bytes. Median checkpoint CPU is 31.339345 seconds at
+256 KiB versus 26.856139 at 64 KiB: 14.305% less. This is native proxy evidence,
+not an additional phone speedup or sustained-performance qualification.
+
+An independent native Town audit verifies 42,771 hits / 177,965,541,376 logical
+bytes. Native Ruins captures 7,192 frames and verifies 142,919 hits /
+549,930,784,768 bytes; packaged Simulator captures 7,015 frames and verifies
+139,204 hits / 534,793,191,424 bytes. Every audit has zero proof failures and
+the expected exact R/Darrel bytes, with clean errors and inspected recognizable
+images. The Ruins runs include new uploads and budget evictions, but are not
+adventure-clear or actual platform-audio qualification.
+
+One earlier Simulator attempt arrives in the Ruins after its walking input
+expires, leaving the component TOWN and never activating the first encounter.
+It is excluded from combat acceptance. The route now repeats late confirmation
+and walking pulses for this specific adventure save. A separate test deliberately
+suppresses the early encounter movement: GOBLIN must be observed at vblank
+8,800 or later. That run captures 9,637 frames and verifies 219,540 hits /
+780,911,747,072 bytes with zero mismatches, exact Darrel bytes and inspected
+Ruins. The explicit threshold assertion proves the late walking fallback runs.
+Existing Simulator state is preserved except global reports and input restored
+after every attempt. This is input-only fixture work, without guest-field edits.
+
+The phone remains on `bb540ac` while cooling after its failed long Town test.
+Next compare this candidate on the phone at matched thermal/low-power state,
+with muted real audio and new disposable saves, before integration/default/pin
+promotion. The iPad remains excluded and the manual save check stays skipped.
+Private proof: `mobile-adventure-live/snapshot-lock-band-candidate/`, including
+memory/snapshot results, `native-comparison.json`, native Town/Ruins,
+`simulator-ruins{,-late-walk,-fallback}/`, package and core provenance.
+
 ## 2026-11-15 — Guarded cache reaches the iPhone and the Ruins
 
 The player unlocks the only authorized physical iPhone. Clean `bb540ac`
