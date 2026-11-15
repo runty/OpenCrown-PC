@@ -34,6 +34,14 @@ int main() {
     catch (const std::invalid_argument &) { rejected = true; }
     require(rejected);
   }
+  require(standard.after.empty());
+  require(dcp::game::headless_config("TOWN", nullptr, nullptr, "120", "GOBLIN").after == "GOBLIN");
+  for (const char *bad : {"", "GOBLIN/INN", "TOWN"}) {
+    bool rejected = false;
+    try { dcp::game::headless_config("TOWN", nullptr, nullptr, nullptr, bad); }
+    catch (const std::invalid_argument &) { rejected = true; }
+    require(rejected);
+  }
   const auto tiny = dcp::game::headless_config("A_1", "1", "1");
   require(tiny.scene == "A_1" && tiny.trace_budget == 1 && tiny.vblank_budget == 1);
   for (const char *valid : {"120", "1800", "3600"}) {

@@ -108,6 +108,7 @@ struct Engine {
   dcp::game::HeadlessConfig headless;
   std::atomic<bool> checkpointSeen{false}, checkpointSceneChanged{false};
   bool sceneInputEnabled = false;
+  bool prerequisiteSeen = false; // Under diagnosticLock until workers join.
   std::atomic<uint64_t> checkpointVblank{0}, checkpointFlip{0};
   std::atomic<uint64_t> checkpointStartNs{0}, checkpointElapsedNs{0};
   std::atomic<uint64_t> checkpointCpuStartUs{0}, checkpointCpuElapsedUs{0};
@@ -233,7 +234,10 @@ void recordComponent(const char *name, const char *stage) {
       engine().titleSeen = true;
     if (engine().checkpointSeen.load() && engine().headless.scene != name)
       engine().checkpointSceneChanged = true;
-    if (engine().headless.scene == name && !engine().checkpointSeen.load()) {
+    if (engine().headless.after == name)
+      engine().prerequisiteSeen = true;
+    if (engine().headless.scene == name && !engine().checkpointSeen.load() &&
+        (engine().headless.after.empty() || engine().prerequisiteSeen)) {
       engine().checkpointVblank = engine().vblanks.load();
       engine().checkpointFlip = dcp_gnm_stats().flips;
       engine().checkpointCpuStartUs = processCpuMicroseconds();
@@ -995,7 +999,8 @@ extern "C" const char *dcp_cpu_report() {
     if (!engine().interactive)
       engine().headless = dcp::game::headless_config(
           std::getenv("DCP_CHECKPOINT_SCENE"), std::getenv("DCP_MAX_TRACE_ENTRIES"),
-          std::getenv("DCP_MAX_VBLANKS"), std::getenv("DCP_CHECKPOINT_SETTLE_FRAMES"));
+          std::getenv("DCP_MAX_VBLANKS"), std::getenv("DCP_CHECKPOINT_SETTLE_FRAMES"),
+          std::getenv("DCP_CHECKPOINT_AFTER"));
     DcpFileHooks files;
     files.context = owner.get();
     files.pointer = [](void *context, uint64_t address, size_t size,
@@ -1252,6 +1257,8 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"libc_start_result\":" << engine().libcResult
       << ",\"title_seen\":" << (engine().titleSeen.load() ? "true" : "false")
       << ",\"checkpoint_scene\":" << jsonString(engine().headless.scene)
+      << ",\"checkpoint_after\":" << jsonString(engine().headless.after)
+      << ",\"checkpoint_after_seen\":" << (engine().prerequisiteSeen ? "true" : "false")
       << ",\"checkpoint_seen\":" << (engine().checkpointSeen ? "true" : "false")
       << ",\"checkpoint_settle_frames\":" << engine().headless.settle_frames
       << ",\"checkpoint_observed_vblank\":" << engine().checkpointVblank.load()

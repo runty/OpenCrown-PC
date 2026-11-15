@@ -45,7 +45,7 @@ scripts={'valid':b'10 CROSS\n20 0\n','empty':b'','invalid':b'10 UNKNOWN_BUTTON\n
 for name,data in scripts.items():(root/(name+'.txt')).write_bytes(data)
 def run(name, settings):
     global checks
-    env={k:v for k,v in os.environ.items() if k not in ['DCP_CHECKPOINT_SCENE','DCP_MAX_TRACE_ENTRIES','DCP_MAX_VBLANKS','DCP_CHECKPOINT_SETTLE_FRAMES','DCP_INPUT_SCRIPT']}
+    env={k:v for k,v in os.environ.items() if k not in ['DCP_CHECKPOINT_SCENE','DCP_CHECKPOINT_AFTER','DCP_MAX_TRACE_ENTRIES','DCP_MAX_VBLANKS','DCP_CHECKPOINT_SETTLE_FRAMES','DCP_INPUT_SCRIPT']}
     env.update(DCP_GAME_MODE='checkpoint',DCP_SAVE_ROOT=str(root/('runtime-saves-'+name)),**settings)
     result=subprocess.run([str(game/'game-boot')],env=env,capture_output=True,text=True,timeout=30,check=True)
     report=json.loads(result.stdout);(root/(name+'-runtime.json')).write_text(json.dumps(report,indent=2)+'\n')

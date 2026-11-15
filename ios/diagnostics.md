@@ -158,3 +158,9 @@ interactive platform sink while the script drives the pad. Check submitted
 and rendered frame counts, device rate, underruns and clipping in `audio`.
 The Simulator can exercise a muted sink. Use physical hardware for output
 and callback timing.
+
+For a return trip, `DCP_CHECKPOINT_AFTER=GOBLIN` together with
+`DCP_CHECKPOINT_SCENE=TOWN` waits for an active enemy component followed by
+Town. The first outbound Town visit keeps using the boot input script.
+The completed report records the prerequisite and whether it was observed.
+Validate the saved slot separately after a cold process restart.
