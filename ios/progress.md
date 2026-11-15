@@ -1,5 +1,35 @@
 # Device port progress
 
+## 2026-11-14 — Fresh Fighter creation and changed-save cold reloads
+
+Build `7f7298f` compiles all four verified destinations of the character-selection
+switch. The 11 signed table entries resolve to four unique targets. Instruction
+and table bytes were checked against the extracted ELF before compilation.
+The frozen core contains 50,393 entries and packages for iOS and Simulator.
+
+Touch input in the iPhone Simulator created a Fighter in an empty slot and
+entered the introductory tutorial. The native arm64 harness independently
+created Willie from empty save data and passed movement, ground attacks,
+aerial attacks, guard and Power Smash. Tutorial completion remains open.
+
+On the iPad Simulator, touch input changed Felix's armor from Sterling Silver
+to Burnished Bronze. Leaving the Inn wrote SAVE0.DAT with SHA-256
+`91dfab154867eb3dd3e8ec4653b777466f22e8cb6bd9c340166164f88d095890`,
+different from the original seed. Two cold launches resumed the same working
+folder without seeding. Both reopened the character editor with Burnished
+Bronze visible and the exact saved hash. Three completed checkpoints existed
+and the write journal was absent after the save. Normal player saves and the
+seed remained unchanged. These runs used a test-only Simulator shim to hide
+the Mac-forwarded controller and exercise the shipping touch overlay.
+
+The arm64 combat route also passed the spoils exit and RTC call, reached the
+Town scene checkpoint after GOBLIN and wrote a changed SAVE0.DAT
+(`affc24e12f718663174ec55860521458eb1a1fcf7b766c6146c03755c50a5e36`).
+Its final captured image was still black during transition. This qualifies
+the scene observer and save write. Visual Town arrival, reopening the earned
+save, a successful adventure clear and the same sequence on physical devices
+remain open. Both physical devices are released for another chat.
+
 ## 2026-11-14 — iPhone Town, existing-save reload and Simulator lifecycle
 
 On iPhone 17 Pro Max, the 3,000-frame Felix Town walk with platform audio
