@@ -31,6 +31,20 @@ verified separately from fixture/model success.
 
 ## Verification
 
+Controller information must not advance the virtual finger. The original
+parser calls `scePadReadState` at ELF `5a2a18`, then
+`scePadGetControllerInformation` at `5a2a4d`. Sharing the consuming read hook
+between these calls can discard an edge step: actual game samples alternate
+contact/no-contact at pad centre with zero delta, while the frontend repeatedly
+re-contacts and its cursor stays still. A model with a second consuming read
+reproduces the exact `(211,-293)` → `(211,380)` stall. Metadata now uses a
+separate non-consuming connection query, with a last-valid-read fallback for
+hosts without that query. Invalid destination buffers also reject before a
+sample is consumed. The offline fixture checks query/read counts, connection
+changes, bounds and fallback; the cursor model includes repeated metadata
+queries between real samples. The headless test script runs the offline
+fixture normally and under ASan/UBSan.
+
 `ios/platform/build-check.sh` compiles/runs the independent relative-cursor
 model and snapshot probe, then compiles/links both mobile SDK adapters.
 The model includes first contact, id changes, lifts, the observation delay and

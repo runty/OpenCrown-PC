@@ -40,6 +40,7 @@ public:
   void pointer_release(bool tap);
   void pointer_cancel();
   void pointer_cursor(uint32_t sequence, float x, float y);
+  bool connected(unsigned slot);
   DcpPlatformPad read(unsigned slot);
 
 private:

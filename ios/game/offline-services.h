@@ -19,6 +19,9 @@ struct DcpOfflineHooks {
   // callers.
   void (*input_read)(void *context, unsigned slot,
                      DcpPlatformPad *pad) = nullptr;
+  // Non-consuming connection metadata. Without this callback, information
+  // queries use the last valid read (initially connected for an open handle).
+  int (*input_connected)(void *context, unsigned slot) = nullptr;
   // Start on the first open port and stop after the last port closes.
   // A failed start may be transient (inactive app), so guest handles remain
   // valid.

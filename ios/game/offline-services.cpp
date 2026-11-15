@@ -25,6 +25,7 @@ bool mount_writable = false, mount_transition = false,
 uint64_t mount_blocks = 0x8000;
 uint8_t mount_metadata_failures = 0;
 std::array<bool, 4> pads{};
+std::array<bool, 4> pad_connected{};
 struct Port {
   bool used = false, is_float = false;
   uint32_t frames = 0;
@@ -383,24 +384,40 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
     int64_t slot = int32_t(a[0]) - 1000;
     if (slot < 0 || slot >= 4 || int32_t(a[1]) != 0 || int32_t(a[2]) != 0)
       return 0x80920001;
-    if (named(name, "scePadOpen"))
+    if (named(name, "scePadOpen")) {
       pads[size_t(slot)] = true;
+      pad_connected[size_t(slot)] = true;
+    }
     return pads[size_t(slot)] ? uint32_t(slot + 1) : 0x80920001;
   }
   if (a[0] < 1 || a[0] > 4 || !pads[size_t(a[0] - 1)])
     return 0x80920003;
   if (named(name, "scePadClose")) {
     pads[size_t(a[0] - 1)] = false;
+    pad_connected[size_t(a[0] - 1)] = false;
     return 0;
   }
   if (named(name, "scePadReadState") ||
       named(name, "scePadGetControllerInformation")) {
     const unsigned slot = unsigned(a[0] - 1);
+    const bool information = named(name, "scePadGetControllerInformation");
+    const bool last_connected = pad_connected[slot];
     lock.unlock();
+    auto *out = static_cast<uint8_t *>(
+        pointer(a[1], information ? 0x1c : 0x78, true));
+    if (!out)
+      return 0x80920003;
     DcpPlatformPad pad{};
     pad.connected = 1;
     pad.lx = pad.ly = pad.rx = pad.ry = 128;
-    if (hooks.input_read) {
+    if (information) {
+      // This query follows ReadState in the game's original pad parser.
+      // Consuming another virtual-finger step here discards edge movement
+      // before the next actual read, trapping distant screen targets.
+      pad.connected = hooks.input_connected
+                          ? !!hooks.input_connected(hooks.context, slot)
+                          : last_connected;
+    } else if (hooks.input_read) {
       hooks.input_read(hooks.context, slot, &pad);
       pad.touch_count = std::min<uint8_t>(pad.touch_count, 2);
       if (!pad.connected) {
@@ -430,10 +447,7 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
       if (pad.buttons & dcp::hle::kScriptRightStickDown) pad.ry = 255;
       pad.buttons &= ~dcp::hle::kScriptStickMask;
     }
-    if (named(name, "scePadGetControllerInformation")) {
-      auto *out = static_cast<uint8_t *>(pointer(a[1], 0x1c, true));
-      if (!out)
-        return 0x80920003;
+    if (information) {
       std::memset(out, 0, 0x1c);
       float density = 44.86f;
       uint16_t x = 1920, y = 943;
@@ -445,9 +459,9 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
       out[0xc] = bool(pad.connected);
       return 0;
     }
-    auto *out = static_cast<uint8_t *>(pointer(a[1], 0x78, true));
-    if (!out)
-      return 0x80920003;
+    lock.lock();
+    pad_connected[slot] = pad.connected;
+    lock.unlock();
     std::memset(out, 0, 0x78);
     std::memcpy(out, &pad.buttons, 4);
     out[4] = pad.lx;
@@ -674,6 +688,7 @@ void dcp_offline_init(DcpOfflineHooks callbacks) {
   mount_blocks = default_blocks;
   mount_metadata_failures = 0;
   pads = {};
+  pad_connected = {};
   ports = {};
   audio_initialized = false;
   next_audio = {};

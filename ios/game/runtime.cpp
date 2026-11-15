@@ -1068,6 +1068,9 @@ extern "C" const char *dcp_cpu_report() {
     }
 #ifdef DCP_MOBILE_PLATFORM
     if (engine().interactive) {
+      offline.input_connected = [](void *, unsigned slot) {
+        return dcp_platform_input_connected(slot);
+      };
       offline.input_read = [](void *, unsigned slot, DcpPlatformPad *pad) {
         if (!slot) {
           const auto cursor = engine().cursor.read();

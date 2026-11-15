@@ -16,6 +16,7 @@ PY
 mkdir -p "$output"
 flags=(-std=c++17 -O2 -g -Wall -Wextra -Werror -I"$source_root/linux-port/src")
 sources=("$source_root/ios/game/scripted-input-fixture.cpp" "$source_root/ios/game/offline-services.cpp" "$source_root/linux-port/src/hle/kernel/pure.cpp")
+offline_sources=("$source_root/ios/game/offline-fixture.cpp" "$source_root/ios/game/offline-services.cpp" "$source_root/linux-port/src/hle/kernel/pure.cpp")
 xcrun clang++ "${flags[@]}" "$source_root/ios/game/headless-config-fixture.cpp" -o "$output/config"
 "$output/config" > "$output/config-results.json"
 xcrun clang++ "${flags[@]}" "$source_root/ios/game/vblank-clock-fixture.cpp" -o "$output/vblank-clock"
@@ -24,6 +25,10 @@ xcrun clang++ "${flags[@]}" "${sources[@]}" -o "$output/input"
 "$output/input" "$output/saves" > "$output/input-results.json"
 xcrun clang++ "${flags[@]}" -fsanitize=address,undefined "${sources[@]}" -o "$output/input-asan-ubsan"
 "$output/input-asan-ubsan" "$output/asan-saves" > "$output/asan-ubsan-results.json" 2> "$output/asan-ubsan.log"
+xcrun clang++ "${flags[@]}" "${offline_sources[@]}" -o "$output/offline"
+"$output/offline" "$output/offline-saves" > "$output/offline-results.txt"
+xcrun clang++ "${flags[@]}" -fsanitize=address,undefined "${offline_sources[@]}" -o "$output/offline-asan-ubsan"
+"$output/offline-asan-ubsan" "$output/offline-asan-saves" > "$output/offline-asan-ubsan-results.txt" 2> "$output/offline-asan-ubsan.log"
 for platform in mac ios simulator; do
   case "$platform" in
     mac) sdk=macosx; target=arm64-apple-macos15 ;;
@@ -31,7 +36,7 @@ for platform in mac ios simulator; do
     simulator) sdk=iphonesimulator; target=arm64-apple-ios18-simulator ;;
   esac
   mkdir -p "$output/$platform"
-  for path in "${sources[@]}" "$source_root/ios/game/headless-config-fixture.cpp"; do
+  for path in "${sources[@]}" "$source_root/ios/game/offline-fixture.cpp" "$source_root/ios/game/headless-config-fixture.cpp"; do
     name=$(basename "$path" .cpp)
     xcrun --sdk "$sdk" clang++ "${flags[@]}" -target "$target" -isysroot "$(xcrun --sdk "$sdk" --show-sdk-path)" -c "$path" -o "$output/$platform/$name.o"
   done
@@ -71,4 +76,4 @@ assert 'Invalid DCP_CHECKPOINT_SETTLE_FRAMES' in a['error'] and a['steps']==0;ch
 print((root/'runtime-results.json').read_text())
 PY
 fi
-cat "$output/config-results.json" "$output/input-results.json" "$output/asan-ubsan-results.json"
+cat "$output/config-results.json" "$output/input-results.json" "$output/asan-ubsan-results.json" "$output/offline-results.txt" "$output/offline-asan-ubsan-results.txt"

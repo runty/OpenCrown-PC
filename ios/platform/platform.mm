@@ -704,6 +704,9 @@ extern "C" void dcp_platform_input_read(unsigned slot, DcpPlatformPad *p) {
   if (p)
     *p = input.read(slot);
 }
+extern "C" int dcp_platform_input_connected(unsigned slot) {
+  return input.connected(slot);
+}
 extern "C" void dcp_platform_input_cursor(uint32_t sequence, float x, float y) {
   input.pointer_cursor(sequence, x, y);
 }

@@ -20,6 +20,7 @@ struct Context {
   std::vector<float> audio;
   size_t accepted = SIZE_MAX;
   unsigned calls = 0, starts = 0, stops = 0, begins = 0, commits = 0;
+  unsigned input_reads = 0, connection_queries = 0;
   bool transaction_okay = true, expect_metadata = false;
   std::string save_root;
   std::mutex transition_mutex;
@@ -35,9 +36,18 @@ void *pointer(void *opaque, uint64_t address, size_t size, bool) {
 }
 void input(void *opaque, unsigned slot, DcpPlatformPad *pad) {
   assert(slot == 0);
-  *pad = static_cast<Context *>(opaque)->pad;
+  auto &c = *static_cast<Context *>(opaque);
+  ++c.input_reads;
+  *pad = c.pad;
   // Read-only state queries demonstrate the shared state mutex is not held.
   (void)dcp_offline_savedata_access(false);
+}
+int connected(void *opaque, unsigned slot) {
+  assert(slot == 0);
+  auto &c = *static_cast<Context *>(opaque);
+  ++c.connection_queries;
+  (void)dcp_offline_savedata_access(false);
+  return c.pad.connected;
 }
 int start(void *opaque) {
   ++static_cast<Context *>(opaque)->starts;
@@ -104,6 +114,7 @@ int main(int argc, char **argv) {
   hooks.pointer = pointer;
   hooks.save_root = argv[1];
   hooks.input_read = input;
+  hooks.input_connected = connected;
   hooks.audio_start = start;
   hooks.audio_stop = stop;
   hooks.audio_submit = submit;
@@ -131,6 +142,9 @@ int main(int argc, char **argv) {
   assert(call("sceRtcGetWin32FileTime", date, stamp) == error(0x80b50002));
   assert(get<uint64_t>(c, stamp) == UINT64_C(116444736000000420));
   assert(call("scePadOpen", 1000) == 1);
+  // Even before the first ReadState, information uses a non-consuming peek.
+  assert(call("scePadGetControllerInformation", 1, 128) == 0 &&
+         !c.bytes[128 + 0xc] && c.input_reads == 0 && c.connection_queries == 1);
   c.pad.connected = 1;
   c.pad.buttons = 0x4008;
   c.pad.lx = 5;
@@ -156,12 +170,33 @@ int main(int argc, char **argv) {
          get<uint16_t>(c, 128 + 0x46) == 456 && c.bytes[128 + 0x48] == 7);
   assert(c.bytes[128 + 0x4c] == 1 && c.bytes[128 + 0x68] == 1 &&
          get<uint64_t>(c, 128 + 0x50) > 0);
-  assert(call("scePadReadState", 1, c.bytes.size() - 100) == error(0x80920003));
+  const unsigned reads = c.input_reads;
+  assert(call("scePadGetControllerInformation", 1, 128) == 0 &&
+         c.bytes[128 + 0xc] && c.input_reads == reads);
+  assert(call("scePadReadState", 1, c.bytes.size() - 100) == error(0x80920003) &&
+         c.input_reads == reads);
+  const unsigned queries = c.connection_queries;
+  assert(call("scePadGetControllerInformation", 1, c.bytes.size() - 27) ==
+             error(0x80920003) && c.connection_queries == queries);
   c.pad.connected = 0;
+  assert(call("scePadGetControllerInformation", 1, 128) == 0 &&
+         !c.bytes[128 + 0xc] && c.input_reads == reads);
   assert(call("scePadReadState", 1, 128) == 0 && get<uint32_t>(c, 128) == 0 &&
          c.bytes[132] == 128 && !c.bytes[128 + 0x4c]);
   assert(call("scePadGetControllerInformation", 1, 128) == 0 &&
          !c.bytes[128 + 0xc]);
+  // A host without the peek hook uses the last valid read, not another read.
+  hooks.input_connected = nullptr;
+  dcp_offline_init(hooks);
+  assert(call("scePadOpen", 1000) == 1);
+  assert(call("scePadReadState", 1, 128) == 0);
+  const unsigned fallback_reads = c.input_reads;
+  c.pad.connected = 1;
+  assert(call("scePadGetControllerInformation", 1, 128) == 0 &&
+         !c.bytes[128 + 0xc] && c.input_reads == fallback_reads);
+  assert(call("scePadReadState", 1, 128) == 0);
+  assert(call("scePadGetControllerInformation", 1, 128) == 0 &&
+         c.bytes[128 + 0xc] && c.input_reads == fallback_reads + 1);
   assert(call("sceAudioOutInit") == 0);
   assert(call("sceAudioOutOpen", 255, 0, 0, 4097, 48000, 4) ==
          error(0x80260002));
@@ -307,7 +342,7 @@ int main(int argc, char **argv) {
   put(c, 12000 + 24, uint32_t(1));
   assert(call("sceSaveDataMount2", 12000, 12100) == 0 && c.begins == 2);
   assert(call("sceSaveDataUmount", 16032) == 0 && c.commits == 2);
-  std::cout << "PASS: guest pad layout/touch/disconnect, all audio "
+  std::cout << "PASS: guest pad layout/touch/disconnect/non-consuming metadata, all audio "
                "formats/downmix/batches/bounds/short writes, save transition "
                "isolation/failure/retry/readonly\n";
 }

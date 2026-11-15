@@ -129,6 +129,11 @@ void InputState::pointer_cursor(uint32_t sequence, float x, float y) {
   cursorX_ = cursorSequence_ ? x : 0;
   cursorY_ = cursorSequence_ ? y : 0;
 }
+bool InputState::connected(unsigned slot) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return slot < physical_.size() &&
+         (physical_[slot].connected || (slot == 0 && touch_.connected));
+}
 DcpPlatformPad InputState::read(unsigned slot) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (slot >= physical_.size())

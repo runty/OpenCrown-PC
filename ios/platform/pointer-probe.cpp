@@ -26,7 +26,12 @@ struct Game {
   uint32_t sequence = 0;
   int presses = 0;
   DcpPlatformPad frame() {
+    const bool connected = input.connected(0);
     auto p = input.read(0);
+    // The original pad parser asks for controller information after ReadState.
+    // Repeated metadata queries must not consume finger steps or tap pulses.
+    for (unsigned n = 0; n < 5; ++n)
+      assert(input.connected(0) == connected);
     input.pointer_cursor(++sequence, x, y);
     if (p.touch_count) {
       assert(p.tx[0] <= 1919 && p.ty[0] <= 942 && p.tid[0] < 128);
@@ -46,6 +51,13 @@ struct Game {
   void frames(unsigned n) { while (n--) frame(); }
 };
 int main() {
+  {
+    Game g; g.x = 211; g.y = -293;
+    g.input.pointer_cursor(++g.sequence, g.x, g.y);
+    g.input.pointer_press(211, 380); g.frames(600);
+    assert(std::fabs(g.x - 211) < 8 && std::fabs(g.y - 380) < 8);
+    assert(!g.input.connected(4));
+  }
   for (float gain : {.4f, .6f, 1.f, 2.f}) {
     Game g; g.k = gain;
     g.input.pointer_cursor(++g.sequence, g.x, g.y);
