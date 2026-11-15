@@ -53,6 +53,37 @@ using Lifted = Memory *(*)(State &, uint64_t, Memory *);
 Memory *dispatch(State &, uint64_t, Memory *);
 void bindScalarThread(Memory &);
 void addRegion(Memory &, uint8_t *, size_t);
+// Opt-in mappings whose post-registration writes all use checked operations
+// or guestPointer (which permanently excludes escaped pages). Native-owned
+// objects must use ordinary addRegion. Backing lives until joined teardown.
+void addSnapshotRegion(Memory &, uint8_t *, size_t);
+// Quiescent session boundary only; invalidates every previous version proof.
+void configureGuestSnapshots(bool enabled, bool verify = false);
+struct GuestSnapshotDiagnostics {
+  bool enabled = false, verifying = false;
+  uint64_t version_hits = 0, verified_checks = 0, verified_bytes = 0,
+           proof_failures = 0;
+};
+GuestSnapshotDiagnostics guestSnapshotDiagnostics();
+enum class GuestSnapshotMatch { Version, Content, Different, Invalid };
+class GuestSnapshot {
+public:
+  ~GuestSnapshot();
+  const uint8_t *data() const;
+  size_t size() const;
+  size_t capacity() const;
+  // Single-consumer proof state; bytes remain immutable. Never memoize a
+  // comparison for an unrelated pointer or caller-owned mutable buffer.
+  GuestSnapshotMatch matches(Memory &, uint64_t address);
+
+private:
+  struct Impl;
+  explicit GuestSnapshot(std::unique_ptr<Impl>);
+  std::unique_ptr<Impl> impl_;
+  friend std::shared_ptr<GuestSnapshot> guestSnapshot(Memory &, uint64_t,
+                                                      size_t);
+};
+std::shared_ptr<GuestSnapshot> guestSnapshot(Memory &, uint64_t, size_t);
 uint8_t *guestPointer(Memory &, uint64_t, size_t);
 // Check a range without returning a mutable pointer that can escape its lock.
 void guestValidate(Memory &, uint64_t, size_t);

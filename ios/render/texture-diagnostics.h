@@ -13,6 +13,8 @@ inline NSDictionary *textureStatsDictionary(const render::TextureStats &stats) {
     @"comparison_span_bytes" : @(stats.comparison_span_bytes),
     @"comparison_hits" : @(stats.comparison_hits),
     @"matched_span_bytes" : @(stats.matched_span_bytes),
+    @"version_hits" : @(stats.version_hits),
+    @"version_matched_bytes" : @(stats.version_matched_bytes),
     @"copies" : @(stats.copies),
     @"copied_bytes" : @(stats.copied_bytes),
     @"hashed_bytes" : @(stats.hashed_bytes),

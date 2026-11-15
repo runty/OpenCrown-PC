@@ -58,6 +58,16 @@ struct Frame {
 bool install_hooks(uint8_t* eboot_base);
 bool capture_enabled();
 #ifdef DCP_AOT
+enum class AotSnapshotMatch { Version, Content, Different, Invalid };
+// Owns immutable bytes and any proof for those exact bytes. Single consumer.
+class AotSnapshot {
+public:
+    virtual ~AotSnapshot() = default;
+    virtual const uint8_t *data() const = 0;
+    virtual size_t size() const = 0;
+    virtual size_t capacity() const = 0;
+    virtual AotSnapshotMatch matches(uint64_t address) = 0;
+};
 // Lifecycle calls require all guest workers and the frame consumer to be stopped.
 struct AotCaptureHooks {
     void *context = nullptr;
@@ -67,12 +77,14 @@ struct AotCaptureHooks {
     bool (*copy_memory)(void *context, uint64_t address, void *destination, size_t bytes) = nullptr;
     // Optional synchronized comparison against an owned immutable snapshot.
     bool (*matches_memory)(void *, uint64_t, const void *, size_t) = nullptr;
+    std::shared_ptr<AotSnapshot> (*snapshot)(void *, uint64_t, size_t) = nullptr;
 };
 bool initialize_aot_capture(uint8_t *eboot_base, size_t image_size, AotCaptureHooks hooks);
 void shutdown_aot_capture();
 bool aot_capture_memory(uint64_t address, size_t bytes, bool writing);
 bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes);
 bool aot_capture_copy(uint64_t address, void *destination, size_t bytes);
+std::shared_ptr<AotSnapshot> aot_capture_snapshot(uint64_t address, size_t bytes);
 // Called before executing the original wrapper entry instructions. Arguments are SysV integer args.
 bool observe_aot_entry(uint64_t eboot_offset, const uint64_t arguments[6]);
 #endif

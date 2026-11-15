@@ -543,6 +543,31 @@ bool aot_capture_copy(uint64_t address, void *destination, size_t bytes) {
     }
     return copy_with_hooks(hooks, destination, address, bytes);
 }
+std::shared_ptr<AotSnapshot> aot_capture_snapshot(uint64_t address, size_t bytes) {
+    if (!address || !bytes || bytes > (64ULL << 20) || address > UINT64_MAX - bytes) return {};
+    AotCaptureHooks hooks;
+    {
+        std::shared_lock lock(g_state_lock);
+        if (!g_enabled.load(std::memory_order_acquire)) return {};
+        hooks = g_aot_hooks;
+    }
+    if (hooks.snapshot) return hooks.snapshot(hooks.context, address, bytes);
+    class ContentSnapshot final : public AotSnapshot {
+    public:
+        std::vector<uint8_t> bytes;
+        const uint8_t *data() const override { return bytes.data(); }
+        size_t size() const override { return bytes.size(); }
+        size_t capacity() const override { return bytes.capacity(); }
+        AotSnapshotMatch matches(uint64_t address) override {
+            return aot_capture_matches(address, data(), size())
+                ? AotSnapshotMatch::Content : AotSnapshotMatch::Different;
+        }
+    };
+    auto snapshot = std::make_shared<ContentSnapshot>();
+    snapshot->bytes.resize(bytes);
+    if (!copy_with_hooks(hooks, snapshot->bytes.data(), address, bytes)) return {};
+    return snapshot;
+}
 bool observe_aot_entry(uint64_t offset, const uint64_t arguments[6]) {
     if (!g_enabled || !arguments) return false;
     using Observer = void (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);

@@ -18,6 +18,7 @@ struct TextureStats {
     uint64_t requests = 0, same_frame_hits = 0;
     uint64_t comparisons = 0, comparison_span_bytes = 0;
     uint64_t comparison_hits = 0, matched_span_bytes = 0;
+    uint64_t version_hits = 0, version_matched_bytes = 0;
     uint64_t copies = 0, copied_bytes = 0, hashed_bytes = 0, uploads = 0;
     uint64_t budget_evictions = 0, retention_misses = 0;
     uint64_t snapshot_bytes = 0, peak_snapshot_bytes = 0, snapshot_budget_bytes = 0;

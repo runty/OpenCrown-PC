@@ -1,7 +1,9 @@
 #include "runtime.h"
 #include <cfenv>
 #include <cstring>
+#include <limits>
 #include <mutex>
+#include <unordered_map>
 #ifdef __APPLE__
 #include <os/lock.h>
 #endif
@@ -34,11 +36,30 @@ struct StripeMutex {
 #else
 using StripeMutex = std::mutex;
 #endif
+struct VersionPage {
+  uint64_t version = 1;
+  bool escaped = false, watched = false;
+};
 struct alignas(128) Stripe {
   StripeMutex mutex;
+  // Fast negative filter: ordinary stores outside watched pages avoid a map
+  // lookup. Every access is protected by the corresponding existing stripe.
+  std::array<uint64_t, 64> watched{};
+  std::unordered_map<uintptr_t, std::shared_ptr<VersionPage>> pages;
 };
 std::array<Stripe, stripeCount> stripes;
 GuestAtomicMutex guestAtomics;
+std::atomic<bool> snapshotsEnabled{false};
+std::atomic<bool> verifySnapshots{false};
+std::atomic<uint64_t> snapshotHits{0}, snapshotVerified{0},
+    snapshotVerifiedBytes{0}, snapshotFailures{0};
+std::atomic<uintptr_t> watchedFirst{UINTPTR_MAX}, watchedEnd{0};
+uint64_t snapshotGeneration = 1;
+struct RegistryTracking {
+  std::shared_ptr<std::vector<Memory::Region>> owner;
+  std::unordered_map<size_t, Memory::Region> ranges;
+};
+std::unordered_map<const void *, RegistryTracking> trackedRegistries;
 
 std::mutex registryMutex;
 // Only the miss path needs a nontrivial TLS initializer and destructor.
@@ -48,6 +69,70 @@ thread_local std::shared_ptr<std::vector<Memory::Region>> registryOwner;
 // page addressed through both the synthetic guest base and a native mapping.
 unsigned stripeForBand(uintptr_t page) {
   return (page ^ (page >> 6) ^ (page >> 12)) % stripeCount;
+}
+uintptr_t filterIndex(uintptr_t page) {
+  return (page ^ (page >> 12) ^ (page >> 24)) & 4095;
+}
+Stripe &stripeForPage(uintptr_t page) {
+  return stripes[stripeForBand(page / (stripeBytes / pageSize))];
+}
+template <class F> void pagesIn(const void *pointer, size_t size, F operation) {
+  if (!size)
+    return;
+  const auto address = reinterpret_cast<uintptr_t>(pointer);
+  const auto first = address / pageSize;
+  const auto last = (address + size - 1) / pageSize;
+  for (auto page = first;; ++page) {
+    operation(page, stripeForPage(page));
+    if (page == last)
+      break;
+  }
+}
+[[gnu::noinline]] void changedPages(const void *pointer, size_t size) {
+  pagesIn(pointer, size, [](uintptr_t page, Stripe &stripe) {
+    const auto bit = filterIndex(page);
+    if (!(stripe.watched[bit / 64] & (uint64_t(1) << (bit % 64))))
+      return;
+    auto it = stripe.pages.find(page);
+    if (it == stripe.pages.end() || !it->second->watched)
+      return;
+    auto &entry = *it->second;
+#ifdef DCP_SNAPSHOT_TEST_VERSION_LIMIT
+    constexpr uint64_t limit = DCP_SNAPSHOT_TEST_VERSION_LIMIT;
+#else
+    constexpr uint64_t limit = std::numeric_limits<uint64_t>::max();
+#endif
+    if (entry.version == limit)
+      entry.escaped = true;
+    else
+      ++entry.version;
+  });
+}
+[[gnu::always_inline]] static inline void changed(const void *pointer,
+                                                  size_t size) {
+  if (!size)
+    return;
+  const auto address = reinterpret_cast<uintptr_t>(pointer);
+  if (address + size - 1 < watchedFirst.load(std::memory_order_relaxed) ||
+      address >= watchedEnd.load(std::memory_order_relaxed))
+    return;
+  if (size <= pageSize - address % pageSize) {
+    const auto page = address / pageSize;
+    const auto bit = filterIndex(page);
+    if (!(stripeForPage(page).watched[bit / 64] & (uint64_t(1) << (bit % 64))))
+      return;
+  }
+  changedPages(pointer, size);
+}
+void escaped(const void *pointer, size_t size) {
+  if (!snapshotsEnabled.load(std::memory_order_relaxed))
+    return;
+  pagesIn(pointer, size, [](uintptr_t page, Stripe &stripe) {
+    auto &entry = stripe.pages[page];
+    if (!entry)
+      entry = std::make_shared<VersionPage>();
+    entry->escaped = true;
+  });
 }
 uint64_t spanMask(const void *pointer, size_t size) {
   const uintptr_t first = reinterpret_cast<uintptr_t>(pointer) / stripeBytes;
@@ -129,13 +214,56 @@ void GuestAtomicMutex::unlock() noexcept {
     for (auto it = stripes.rbegin(); it != stripes.rend(); ++it)
       it->mutex.unlock();
 }
-void addRegion(Memory &memory, uint8_t *address, size_t size) {
+static void registerRegion(Memory &memory, uint8_t *address, size_t size,
+                           bool track) {
   std::lock_guard<GuestAtomicMutex> lock(guestAtomics);
   const uint64_t base = reinterpret_cast<uint64_t>(address);
   if (!memory.regions || !address || size > UINT64_MAX - base)
     throw std::runtime_error("invalid guest memory region registration");
   std::lock_guard<std::mutex> registryLock(registryMutex);
+  const auto index = memory.regions->size();
+  changed(address, size);
   memory.regions->push_back({address, size});
+  if (track && snapshotsEnabled.load(std::memory_order_relaxed)) {
+    auto &registry = trackedRegistries[memory.regions.get()];
+    registry.owner = memory.regions;
+    registry.ranges.emplace(index, Memory::Region{address, size});
+  }
+  // Registration never revives escaped pages. Re-registering backing
+  // invalidates prior proofs even if its address and size are reused.
+}
+void addRegion(Memory &memory, uint8_t *address, size_t size) {
+  registerRegion(memory, address, size, false);
+}
+void addSnapshotRegion(Memory &memory, uint8_t *address, size_t size) {
+  registerRegion(memory, address, size, true);
+}
+void configureGuestSnapshots(bool enabled, bool verify) {
+  std::lock_guard<GuestAtomicMutex> lock(guestAtomics);
+  std::lock_guard<std::mutex> registryLock(registryMutex);
+  snapshotsEnabled = false;
+  for (auto &stripe : stripes) {
+    stripe.pages.clear();
+    stripe.watched.fill(0);
+  }
+  trackedRegistries.clear();
+  watchedFirst = UINTPTR_MAX;
+  watchedEnd = 0;
+  if (snapshotGeneration &&
+      snapshotGeneration != std::numeric_limits<uint64_t>::max())
+    ++snapshotGeneration;
+  else
+    snapshotGeneration = 0;
+  // Zero is terminal: never revive proofs after a generation wraps.
+  snapshotsEnabled = enabled && snapshotGeneration != 0;
+  verifySnapshots = verify;
+  snapshotHits = snapshotVerified = snapshotVerifiedBytes = snapshotFailures =
+      0;
+}
+GuestSnapshotDiagnostics guestSnapshotDiagnostics() {
+  return {snapshotsEnabled.load(),      verifySnapshots.load(),
+          snapshotHits.load(),          snapshotVerified.load(),
+          snapshotVerifiedBytes.load(), snapshotFailures.load()};
 }
 static void recordFault(Memory &memory, const char *description) {
   std::lock_guard<std::mutex> lock(registryMutex);
@@ -228,11 +356,143 @@ static uint8_t *checkedPointer(Memory &memory, uint64_t address, size_t size) {
 uint8_t *guestPointer(Memory &memory, uint64_t address, size_t size) {
   auto pointer = checkedPointer(memory, address, size);
   AccessLock lock(pointer, size);
+  escaped(pointer, size);
   return pointer;
 }
 void guestValidate(Memory &memory, uint64_t address, size_t size) {
   auto pointer = checkedPointer(memory, address, size);
   AccessLock lock(pointer, size);
+}
+static bool snapshotEligible(Memory &memory, const uint8_t *pointer,
+                             size_t size) {
+  std::lock_guard<std::mutex> registryLock(registryMutex);
+  const auto registry = trackedRegistries.find(memory.regions.get());
+  if (registry == trackedRegistries.end())
+    return false;
+  const auto first = reinterpret_cast<uintptr_t>(pointer);
+  const auto last = first + size;
+  bool covered = false;
+  for (size_t i = 0; i < memory.regions->size(); ++i) {
+    const auto &range = memory.regions->at(i);
+    const auto base = reinterpret_cast<uintptr_t>(range.data);
+    if (!range.data || range.size > UINTPTR_MAX - base)
+      continue;
+    if (first >= base + range.size || base >= last)
+      continue;
+    const auto known = registry->second.ranges.find(i);
+    if (known == registry->second.ranges.end() ||
+        known->second.data != range.data || known->second.size != range.size)
+      return false;
+    covered |= first >= base && size <= range.size &&
+               first - base <= range.size - size;
+  }
+  return covered;
+}
+struct GuestSnapshot::Impl {
+  struct Observed {
+    std::shared_ptr<VersionPage> page;
+    uint64_t version;
+  };
+  std::shared_ptr<std::vector<Memory::Region>> owner;
+  const uint8_t *pointer = nullptr;
+  std::vector<uint8_t> bytes;
+  std::vector<Observed> proof;
+  uint64_t generation = 0;
+  void refresh(Memory &memory) {
+    proof.clear();
+    generation = 0;
+    if (!snapshotsEnabled.load(std::memory_order_relaxed) ||
+        !snapshotEligible(memory, pointer, bytes.size()))
+      return;
+    bool valid = true;
+    pagesIn(pointer, bytes.size(), [&](uintptr_t page, Stripe &stripe) {
+      if (!valid)
+        return;
+      auto &entry = stripe.pages[page];
+      if (!entry)
+        entry = std::make_shared<VersionPage>();
+      if (entry->escaped) {
+        valid = false;
+        return;
+      }
+      entry->watched = true;
+      const auto bit = filterIndex(page);
+      stripe.watched[bit / 64] |= uint64_t(1) << (bit % 64);
+      proof.push_back({entry, entry->version});
+    });
+    if (valid && !proof.empty()) {
+      generation = snapshotGeneration;
+      auto first = watchedFirst.load(std::memory_order_relaxed);
+      const auto address = reinterpret_cast<uintptr_t>(pointer);
+      while (address < first &&
+             !watchedFirst.compare_exchange_weak(first, address,
+                                                 std::memory_order_relaxed)) {
+      }
+      auto end = watchedEnd.load(std::memory_order_relaxed);
+      const auto limit = address + bytes.size();
+      while (limit > end && !watchedEnd.compare_exchange_weak(
+                                end, limit, std::memory_order_relaxed)) {
+      }
+    } else
+      proof.clear();
+  }
+};
+GuestSnapshot::GuestSnapshot(std::unique_ptr<Impl> impl)
+    : impl_(std::move(impl)) {}
+GuestSnapshot::~GuestSnapshot() = default;
+const uint8_t *GuestSnapshot::data() const { return impl_->bytes.data(); }
+size_t GuestSnapshot::size() const { return impl_->bytes.size(); }
+size_t GuestSnapshot::capacity() const {
+  return impl_->bytes.capacity() +
+         impl_->proof.capacity() * sizeof(Impl::Observed);
+}
+std::shared_ptr<GuestSnapshot> guestSnapshot(Memory &memory, uint64_t address,
+                                             size_t size) {
+  if (!size || size > (64u << 20) || address > UINT64_MAX - size)
+    throw std::runtime_error("invalid guest snapshot span");
+  auto pointer = checkedPointer(memory, address, size);
+  auto impl = std::make_unique<GuestSnapshot::Impl>();
+  impl->owner = memory.regions;
+  impl->pointer = pointer;
+  impl->bytes.resize(size);
+  AccessLock lock(pointer, size);
+  std::memcpy(impl->bytes.data(), pointer, size);
+  impl->refresh(memory);
+  return std::shared_ptr<GuestSnapshot>(new GuestSnapshot(std::move(impl)));
+}
+GuestSnapshotMatch GuestSnapshot::matches(Memory &memory, uint64_t address) {
+  auto &s = *impl_;
+  if (s.owner != memory.regions)
+    return GuestSnapshotMatch::Invalid;
+  auto pointer = checkedPointer(memory, address, s.bytes.size());
+  if (pointer != s.pointer)
+    return GuestSnapshotMatch::Invalid;
+  AccessLock lock(pointer, s.bytes.size());
+  if (s.generation && s.generation == snapshotGeneration &&
+      snapshotsEnabled.load(std::memory_order_relaxed) &&
+      snapshotEligible(memory, pointer, s.bytes.size())) {
+    bool same = true;
+    for (const auto &observed : s.proof)
+      same &=
+          !observed.page->escaped && observed.page->version == observed.version;
+    if (same) {
+      if (verifySnapshots.load(std::memory_order_relaxed)) {
+        snapshotVerified.fetch_add(1, std::memory_order_relaxed);
+        snapshotVerifiedBytes.fetch_add(s.bytes.size(),
+                                        std::memory_order_relaxed);
+        if (std::memcmp(pointer, s.bytes.data(), s.bytes.size())) {
+          snapshotFailures.fetch_add(1, std::memory_order_relaxed);
+          return GuestSnapshotMatch::Different;
+        }
+      }
+      snapshotHits.fetch_add(1, std::memory_order_relaxed);
+      return GuestSnapshotMatch::Version;
+    }
+  }
+  if (std::memcmp(pointer, s.bytes.data(), s.bytes.size()))
+    return GuestSnapshotMatch::Different;
+  s.refresh(memory);
+  return GuestSnapshotMatch::Content;
 }
 // The bound thread already has the registry proof for a whole native page.
 // Keep that common case inside the bridge; unusual spans still go through
@@ -264,6 +524,7 @@ static void storeScalar(Memory &memory, uint64_t address, T value) {
   auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
   auto *pointer = scalarPointer<T>(memory, address, thread);
   AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
+  changed(pointer, sizeof(T));
   std::memcpy(pointer, &value, sizeof(value));
 }
 uint64_t read64(Memory &memory, uint64_t address) {
@@ -420,7 +681,9 @@ extern "C" Memory *__remill_write_memory_f80(Memory *memory, uint64_t address,
   checkCancelled(*memory);
   std::lock_guard<GuestAtomicMutex> lock(guestAtomics);
   try {
-    std::memcpy(checkedPointer(*memory, address, 10), value.data, 10);
+    auto pointer = checkedPointer(*memory, address, 10);
+    changed(pointer, 10);
+    std::memcpy(pointer, value.data, 10);
   } catch (const std::runtime_error &error) {
     recordFault(*memory, error.what());
     if (memory->stopOnFault)
@@ -475,8 +738,10 @@ static Memory *compareExchange(Memory *memory, uint64_t address, T &expected,
   AccessLock lock(pointer, sizeof(T));
   T current;
   std::memcpy(&current, pointer, sizeof(T));
-  if (current == expected)
+  if (current == expected) {
+    changed(pointer, sizeof(T));
     std::memcpy(pointer, &desired, sizeof(T));
+  }
   expected = current;
   return memory;
 }
@@ -529,6 +794,7 @@ void guestWrite(Memory &memory, uint64_t address, const void *input,
                 size_t size) {
   auto pointer = checkedPointer(memory, address, size);
   AccessLock lock(pointer, input, size);
+  changed(pointer, size);
   if (size)
     std::memcpy(pointer, input, size);
 }
@@ -540,6 +806,7 @@ void guestMove(Memory &memory, uint64_t destination, uint64_t source,
   auto output = checkedPointer(memory, destination, size);
   auto input = checkedPointer(memory, source, size);
   AccessLock lock(output, input, size);
+  changed(output, size);
   std::memmove(output, input, size);
 }
 void guestFill(Memory &memory, uint64_t destination, uint8_t value,
@@ -549,6 +816,7 @@ void guestFill(Memory &memory, uint64_t destination, uint8_t value,
     return;
   auto output = checkedPointer(memory, destination, size);
   AccessLock lock(output, size);
+  changed(output, size);
   std::memset(output, value, size);
 }
 
@@ -556,6 +824,7 @@ void guestMaxBytes(Memory &memory, uint64_t destination, const uint8_t *input,
                    size_t size) {
   auto output = checkedPointer(memory, destination, size);
   AccessLock lock(output, input, size);
+  changed(output, size);
   for (size_t i = 0; i < size; ++i)
     if (input[i] > output[i])
       output[i] = input[i];

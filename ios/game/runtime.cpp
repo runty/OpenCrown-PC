@@ -558,8 +558,8 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
     const auto address = engine().directMemory.allocate(
         bytes, std::max<uint64_t>(65536, r.r9.qword));
     const uint64_t page = getpagesize();
-    addRegion(*memory, reinterpret_cast<uint8_t *>(address),
-              (bytes + page - 1) & ~(page - 1));
+    addSnapshotRegion(*memory, reinterpret_cast<uint8_t *>(address),
+                      (bytes + page - 1) & ~(page - 1));
     recordEvent("DirectMemory map 0x" + hex(address) + " bytes 0x" + hex(bytes));
     write64(*memory, r.rdi.qword, address);
     returnToGuest(state, *memory, 0);
@@ -950,6 +950,11 @@ extern "C" const char *dcp_cpu_report() {
   engine().enteredEboot = false;
   tlsBlocks[0] = tlsBlocks[1] = errorSlot = engine().heapTrace = mainThread = 0;
   Memory &memory = engine().primary;
+  configureGuestSnapshots(
+      std::getenv("DCP_TEXTURE_VERSIONS") &&
+          std::string_view(std::getenv("DCP_TEXTURE_VERSIONS")) == "1",
+      std::getenv("DCP_TEXTURE_VERSION_VERIFY") &&
+          std::string_view(std::getenv("DCP_TEXTURE_VERSION_VERIFY")) == "1");
   memory.stopping = &engine().stop;
   memory.stopOnFault = true;
   memory.cancelled = pollRuntime;
@@ -1165,10 +1170,14 @@ extern "C" const char *dcp_cpu_report() {
     if (!dcp::render::initialize_aot_capture(
             engine().modules[0].data.data(), engine().modules[0].data.size(),
             {owner.get(),
-             [](void *context, uint64_t address, size_t bytes, bool) {
+             [](void *context, uint64_t address, size_t bytes, bool writing) {
                try {
-                 return guestPointer(static_cast<Engine *>(context)->primary,
-                                     address, bytes) != nullptr;
+                 auto &memory = static_cast<Engine *>(context)->primary;
+                 if (writing)
+                   (void)guestPointer(memory, address, bytes);
+                 else
+                   guestValidate(memory, address, bytes);
+                 return true;
                } catch (const std::exception &) {
                  return false;
                }
@@ -1183,12 +1192,55 @@ extern "C" const char *dcp_cpu_report() {
                  return false;
                }
              },
-             [](void *context, uint64_t address, const void *snapshot, size_t bytes) {
+             [](void *context, uint64_t address, const void *snapshot,
+                size_t bytes) {
                try {
                  return guestMatches(static_cast<Engine *>(context)->primary,
                                      address, snapshot, bytes);
                } catch (const std::runtime_error &) {
                  return false;
+               }
+             },
+             [](void *context, uint64_t address,
+                size_t size) -> std::shared_ptr<dcp::render::AotSnapshot> {
+               class Snapshot final : public dcp::render::AotSnapshot {
+                 Memory &memory;
+                 std::shared_ptr<GuestSnapshot> snapshot;
+
+               public:
+                 Snapshot(Memory &m, std::shared_ptr<GuestSnapshot> s)
+                     : memory(m), snapshot(std::move(s)) {}
+                 const uint8_t *data() const override {
+                   return snapshot->data();
+                 }
+                 size_t size() const override { return snapshot->size(); }
+                 size_t capacity() const override {
+                   return snapshot->capacity();
+                 }
+                 dcp::render::AotSnapshotMatch
+                 matches(uint64_t address) override {
+                   try {
+                     switch (snapshot->matches(memory, address)) {
+                     case GuestSnapshotMatch::Version:
+                       return dcp::render::AotSnapshotMatch::Version;
+                     case GuestSnapshotMatch::Content:
+                       return dcp::render::AotSnapshotMatch::Content;
+                     case GuestSnapshotMatch::Different:
+                       return dcp::render::AotSnapshotMatch::Different;
+                     case GuestSnapshotMatch::Invalid:
+                       return dcp::render::AotSnapshotMatch::Invalid;
+                     }
+                   } catch (const std::exception &) {
+                   }
+                   return dcp::render::AotSnapshotMatch::Invalid;
+                 }
+               };
+               try {
+                 auto &memory = static_cast<Engine *>(context)->primary;
+                 return std::make_shared<Snapshot>(
+                     memory, guestSnapshot(memory, address, size));
+               } catch (const std::exception &) {
+                 return {};
                }
              }}))
       throw std::runtime_error("AOT capture initialization failed");
@@ -1278,6 +1330,9 @@ extern "C" const char *dcp_cpu_report() {
     dcp_ime_init({});
     dcp::render::shutdown_aot_capture();
   }
+  const auto textureVersions = guestSnapshotDiagnostics();
+  if (textureVersions.proof_failures)
+    error = "texture version proof disagrees with full content";
   const bool checkpointComplete = engine().booted.load() && firstError.empty() && error.empty() && joined;
   const auto directMemory = engine().directMemory.stats();
   std::ostringstream out;
@@ -1332,6 +1387,13 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"fault_context\":" << jsonString(faultContext)
       << ",\"trace_hash\":\"" << traceHash << "\"";
   const auto cursor = engine().cursor.read();
+  out << ",\"texture_versions\":{\"enabled\":"
+      << (textureVersions.enabled ? "true" : "false")
+      << ",\"verifying\":" << (textureVersions.verifying ? "true" : "false")
+      << ",\"version_hits\":" << textureVersions.version_hits
+      << ",\"verified_checks\":" << textureVersions.verified_checks
+      << ",\"verified_bytes\":" << textureVersions.verified_bytes
+      << ",\"proof_failures\":" << textureVersions.proof_failures << '}';
   out << ",\"font_memory\":{\"synchronized_copies\":"
       << (fontMemory.synchronized_copies ? "true" : "false")
       << ",\"read_bytes\":" << fontMemory.read_bytes

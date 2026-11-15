@@ -133,7 +133,7 @@ struct Backend::Impl {
         bool watched = false;
 #ifdef DCP_AOT
         std::array<uint8_t, CC_SHA256_DIGEST_LENGTH> digest{};
-        std::vector<uint8_t> snapshot;
+        std::shared_ptr<AotSnapshot> snapshot;
 #endif
     };
     std::unordered_map<uint64_t, Tex> texs;        // by T# + content hash
@@ -142,26 +142,26 @@ struct Backend::Impl {
     size_t snapshotBytes = 0;
     TextureStats textureStats;
     void releaseSnapshot(Tex& texture) {
-        snapshotBytes -= texture.snapshot.capacity();
-        std::vector<uint8_t>().swap(texture.snapshot);
+        if (texture.snapshot) snapshotBytes -= texture.snapshot->capacity();
+        texture.snapshot.reset();
     }
-    void retainSnapshot(Tex& texture, std::vector<uint8_t>& bytes) {
-        if (bytes.capacity() > snapshotBudget) {
+    void retainSnapshot(Tex& texture, std::shared_ptr<AotSnapshot>& bytes) {
+        if (bytes->capacity() > snapshotBudget) {
             ++textureStats.retention_misses;
             return;
         }
-        if (bytes.capacity() > snapshotBudget - snapshotBytes) {
+        if (bytes->capacity() > snapshotBudget - snapshotBytes) {
             for (auto& pair : texs) {
                 Tex& old = pair.second;
-                if (frame_no - old.last > 1 && !old.snapshot.empty()) {
+                if (frame_no - old.last > 1 && old.snapshot) {
                     releaseSnapshot(old);
                     ++textureStats.budget_evictions;
                 }
-                if (bytes.capacity() <= snapshotBudget - snapshotBytes) break;
+                if (bytes->capacity() <= snapshotBudget - snapshotBytes) break;
             }
         }
-        if (bytes.capacity() <= snapshotBudget - snapshotBytes) {
-            snapshotBytes += bytes.capacity();
+        if (bytes->capacity() <= snapshotBudget - snapshotBytes) {
+            snapshotBytes += bytes->capacity();
             texture.snapshot.swap(bytes);
             textureStats.peak_snapshot_bytes = std::max<uint64_t>(textureStats.peak_snapshot_bytes, snapshotBytes);
         } else
@@ -255,10 +255,19 @@ struct Backend::Impl {
         bool watched = early && texwatch::protect(base, tiled, &seq);
 #endif
 #ifdef DCP_AOT
-        if (it != texs.end() && it->second.snapshot.size() == tiled) {
-            ++textureStats.comparisons;
-            textureStats.comparison_span_bytes += tiled;
-            if (aot_capture_matches(base, it->second.snapshot.data(), size_t(tiled))) {
+        if (it != texs.end() && it->second.snapshot && it->second.snapshot->size() == tiled) {
+            const auto match = it->second.snapshot->matches(base);
+            if (match == AotSnapshotMatch::Version) {
+                ++textureStats.version_hits;
+                textureStats.version_matched_bytes += tiled;
+                it->second.last = frame_no;
+                return it->second.id;
+            }
+            if (match == AotSnapshotMatch::Content || match == AotSnapshotMatch::Different) {
+                ++textureStats.comparisons;
+                textureStats.comparison_span_bytes += tiled;
+            }
+            if (match == AotSnapshotMatch::Content) {
                 ++textureStats.comparison_hits;
                 textureStats.matched_span_bytes += tiled;
                 it->second.last = frame_no;
@@ -270,11 +279,11 @@ struct Backend::Impl {
 #ifdef DCP_AOT
         // Own a synchronized snapshot: hashing and detiling must observe the same
         // bytes even when a translated worker updates the texture concurrently.
-        std::vector<uint8_t> snapshot(size_t(tiled), uint8_t{});
-        if (!aot_capture_copy(base, snapshot.data(), snapshot.size())) return 0;
+        auto snapshot = aot_capture_snapshot(base, size_t(tiled));
+        if (!snapshot) return 0;
         ++textureStats.copies;
-        textureStats.copied_bytes += snapshot.size();
-        const uint8_t *texture_bytes = snapshot.data();
+        textureStats.copied_bytes += snapshot->size();
+        const uint8_t *texture_bytes = snapshot->data();
         // CommonCrypto uses the host's accelerated SHA implementation. Unlike
         // byte-serial FNV this remains affordable for a full UI atlas every
         // frame; every byte still participates in cache invalidation.
@@ -296,7 +305,7 @@ struct Backend::Impl {
             x.last = frame_no;
             if (!stale) {
 #ifdef DCP_AOT
-                if (x.snapshot.empty()) retainSnapshot(x, snapshot);
+                if (!x.snapshot) retainSnapshot(x, snapshot);
 #endif
                 return x.id;
             }
