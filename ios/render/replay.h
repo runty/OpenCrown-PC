@@ -20,6 +20,7 @@ public:
   bool present(int width, int height);
   bool suspend(bool value);
   uint64_t decoded_uploads() const;
+  render::TextureStats texture_stats() const;
 
 private:
   std::unique_ptr<render::Backend> backend_;

@@ -140,23 +140,32 @@ struct Backend::Impl {
 #ifdef DCP_AOT
     static constexpr size_t snapshotBudget = 192u << 20;
     size_t snapshotBytes = 0;
+    TextureStats textureStats;
     void releaseSnapshot(Tex& texture) {
         snapshotBytes -= texture.snapshot.capacity();
         std::vector<uint8_t>().swap(texture.snapshot);
     }
     void retainSnapshot(Tex& texture, std::vector<uint8_t>& bytes) {
-        if (bytes.capacity() > snapshotBudget) return;
+        if (bytes.capacity() > snapshotBudget) {
+            ++textureStats.retention_misses;
+            return;
+        }
         if (bytes.capacity() > snapshotBudget - snapshotBytes) {
             for (auto& pair : texs) {
                 Tex& old = pair.second;
-                if (frame_no - old.last > 1 && !old.snapshot.empty()) releaseSnapshot(old);
+                if (frame_no - old.last > 1 && !old.snapshot.empty()) {
+                    releaseSnapshot(old);
+                    ++textureStats.budget_evictions;
+                }
                 if (bytes.capacity() <= snapshotBudget - snapshotBytes) break;
             }
         }
         if (bytes.capacity() <= snapshotBudget - snapshotBytes) {
             snapshotBytes += bytes.capacity();
             texture.snapshot.swap(bytes);
-        }
+            textureStats.peak_snapshot_bytes = std::max<uint64_t>(textureStats.peak_snapshot_bytes, snapshotBytes);
+        } else
+            ++textureStats.retention_misses;
     }
 #endif
     uint64_t reuploads = 0;
@@ -193,6 +202,9 @@ struct Backend::Impl {
 
     // Device texture for a pixel-stage T#: a render target we own, or game texture memory (detiled, uploaded once).
     TexId texture(const uint32_t t[8]) {
+#ifdef DCP_AOT
+        ++textureStats.requests;
+#endif
         formats::GnfTexture g;
         std::memcpy(g.t.data(), t, 32);
         uint64_t base = (uint64_t(t[0]) | uint64_t(t[1] & 0xff) << 32) << 8;
@@ -216,7 +228,12 @@ struct Backend::Impl {
         // All draws in one replayed frame share the first synchronized texture
         // snapshot. Re-copying and hashing a whole atlas per glyph can block the
         // UI for seconds. A later frame always checks for guest writes again.
-        if (it != texs.end() && it->second.last == frame_no) return it->second.id;
+        if (it != texs.end() && it->second.last == frame_no) {
+#ifdef DCP_AOT
+            ++textureStats.same_frame_hits;
+#endif
+            return it->second.id;
+        }
 #ifndef DCP_AOT
         if (it != texs.end()) {  // watched pages avoid hashing across unchanged frames
             Tex& x = it->second;
@@ -238,10 +255,15 @@ struct Backend::Impl {
         bool watched = early && texwatch::protect(base, tiled, &seq);
 #endif
 #ifdef DCP_AOT
-        if (it != texs.end() && it->second.snapshot.size() == tiled &&
-            aot_capture_matches(base, it->second.snapshot.data(), size_t(tiled))) {
-            it->second.last = frame_no;
-            return it->second.id;
+        if (it != texs.end() && it->second.snapshot.size() == tiled) {
+            ++textureStats.comparisons;
+            textureStats.comparison_span_bytes += tiled;
+            if (aot_capture_matches(base, it->second.snapshot.data(), size_t(tiled))) {
+                ++textureStats.comparison_hits;
+                textureStats.matched_span_bytes += tiled;
+                it->second.last = frame_no;
+                return it->second.id;
+            }
         }
 #endif
         if (!watched && !readable(base, tiled)) return 0;
@@ -250,12 +272,15 @@ struct Backend::Impl {
         // bytes even when a translated worker updates the texture concurrently.
         std::vector<uint8_t> snapshot(size_t(tiled), uint8_t{});
         if (!aot_capture_copy(base, snapshot.data(), snapshot.size())) return 0;
+        ++textureStats.copies;
+        textureStats.copied_bytes += snapshot.size();
         const uint8_t *texture_bytes = snapshot.data();
         // CommonCrypto uses the host's accelerated SHA implementation. Unlike
         // byte-serial FNV this remains affordable for a full UI atlas every
         // frame; every byte still participates in cache invalidation.
         std::array<uint8_t, CC_SHA256_DIGEST_LENGTH> digest{};
         CC_SHA256(texture_bytes, CC_LONG(tiled), digest.data());
+        textureStats.hashed_bytes += tiled;
         uint64_t head = 0;
 #else
         const uint8_t *texture_bytes = reinterpret_cast<const uint8_t*>(base);
@@ -316,6 +341,7 @@ struct Backend::Impl {
             return 0;
         }
 #ifdef DCP_AOT
+        ++textureStats.uploads;
         if (it != texs.end()) releaseSnapshot(it->second);
 #endif
         texs[key] = {id, frame_no, seq, head, watched
@@ -923,5 +949,15 @@ bool Backend::present(int w, int h, Device::Overlay* overlay) const {
 }
 
 const char* Backend::device_name() const { return m_->dev ? m_->dev->name() : "none"; }
+TextureStats Backend::texture_stats() const {
+#ifdef DCP_AOT
+    auto stats = m_->textureStats;
+    stats.snapshot_bytes = m_->snapshotBytes;
+    stats.snapshot_budget_bytes = Impl::snapshotBudget;
+    return stats;
+#else
+    return {};
+#endif
+}
 
 }  // namespace dcp::render

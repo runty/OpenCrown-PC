@@ -12,6 +12,17 @@
 
 namespace dcp::render {
 
+// Render-thread counters. Byte counts describe logical spans, not measured
+// DRAM traffic; a failed comparison can stop before the end of its span.
+struct TextureStats {
+    uint64_t requests = 0, same_frame_hits = 0;
+    uint64_t comparisons = 0, comparison_span_bytes = 0;
+    uint64_t comparison_hits = 0, matched_span_bytes = 0;
+    uint64_t copies = 0, copied_bytes = 0, hashed_bytes = 0, uploads = 0;
+    uint64_t budget_evictions = 0, retention_misses = 0;
+    uint64_t snapshot_bytes = 0, peak_snapshot_bytes = 0, snapshot_budget_bytes = 0;
+};
+
 class Backend {
 public:
     Backend();
@@ -21,6 +32,7 @@ public:
     // Any device (make_gl_device / make_gpu_device); takes ownership. False if dev->init() fails.
     bool init(std::unique_ptr<Device> dev);
     const char* device_name() const;
+    TextureStats texture_stats() const;
     // Replays one frame into the game's render targets (one device texture per target address).
     void draw(const Frame& f);
     // The texture shown by the last frame (row 0 = top) and its size; 0 if nothing drawn yet.

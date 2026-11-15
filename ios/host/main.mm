@@ -2,6 +2,7 @@
 #include "scene-frame-timing.h"
 #include "render/capture.h"
 #include "render/replay.h"
+#include "render/texture-diagnostics.h"
 #import <Foundation/Foundation.h>
 #include <SDL3/SDL.h>
 #include <atomic>
@@ -169,6 +170,7 @@ int main(int argc, char **argv) {
       auto worker = std::async(std::launch::async,
                                [] { return std::string(dcp_cpu_report()); });
       std::unique_ptr<dcp::mobile::Replay> replay;
+      dcp::render::TextureStats textureStats;
       std::string hostError, guestText;
       uint64_t rendered = 0, consumed = 0, decoded = 0;
       uint64_t drawnFrames = 0, drawCalls = 0;
@@ -280,6 +282,7 @@ int main(int argc, char **argv) {
               nonuniformSeen |= varied;
             }
             decoded = replay->decoded_uploads();
+            textureStats = replay->texture_stats();
             if (!replay->suspend(true) && hostError.empty())
               hostError = "Metal GPU drain failed";
             replay.reset();
@@ -307,6 +310,7 @@ int main(int argc, char **argv) {
       }
       if (replay) {
         decoded = replay->decoded_uploads();
+        textureStats = replay->texture_stats();
         replay->suspend(true);
         replay.reset();
       }
@@ -343,6 +347,7 @@ int main(int argc, char **argv) {
                                [guest[@"checkpoint_settle_frames"] unsignedLongLongValue]);
       NSDictionary *report = @{
         @"settled_replay_timing" : timing ?: NSNull.null,
+        @"textures" : dcp::mobile::textureStatsDictionary(textureStats),
         @"success" : @(success),
         @"guest" : guest ?: NSNull.null,
         @"host_error" : string(hostError),

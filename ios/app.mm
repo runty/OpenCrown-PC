@@ -4,6 +4,7 @@
 #include "game/ime-services.h"
 #include "platform/platform.h"
 #include "render/replay.h"
+#include "render/texture-diagnostics.h"
 #include "storage/save-transactions.h"
 #include "storage/storage-core.h"
 #import "storage/storage-ui.h"
@@ -143,6 +144,7 @@ NSString *thermalName(NSProcessInfoThermalState state) {
   BOOL _needsPresent;
   int _presentWidth, _presentHeight;
   std::unique_ptr<dcp::mobile::Replay> _replay;
+  dcp::render::TextureStats _lastTextureStats;
   std::unique_ptr<dcp::storage::SaveTransactions> _saves;
   uint64_t _presentedFrames;
   uint64_t _replayedFrames;
@@ -423,6 +425,7 @@ UIButton *button(NSString *title, id target, SEL action) {
   _presentedFrames = _replayedFrames = _replayedDraws = 0;
   _peakFootprint = _peakResident = 0;
   _snapshotHasContent = NO;
+  _lastTextureStats = {};
   _gameIntervals = FrameIntervals{};
   _drawableIntervals = FrameIntervals{};
   _pumpDurations = _presentDurations = _heartbeatDurations = FrameIntervals{};
@@ -866,6 +869,8 @@ UIButton *button(NSString *title, id target, SEL action) {
   }
   if (_replay && !_replay->suspend(true))
     _hostError = @"Metal could not drain during shutdown.";
+  if (_replay)
+    _lastTextureStats = _replay->texture_stats();
   _replay.reset();
   if (_gameWindow) {
     SDL_DestroyWindow(_gameWindow);
@@ -1061,6 +1066,8 @@ UIButton *button(NSString *title, id target, SEL action) {
   char platformError[512]{};
   dcp_platform_copy_error(platformError, sizeof(platformError));
   const auto thermal = NSProcessInfo.processInfo.thermalState;
+  if (_replay)
+    _lastTextureStats = _replay->texture_stats();
   static NSDictionary *gameArtifact;
   static dispatch_once_t artifactOnce;
   dispatch_once(&artifactOnce, ^{
@@ -1136,6 +1143,8 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"metal" : _metalInfo ?: @{},
     @"thermal_state" : thermalName(thermal),
     @"thermal_state_raw" : @(thermal),
+    @"low_power_mode" : @(NSProcessInfo.processInfo.lowPowerModeEnabled),
+    @"textures" : dcp::mobile::textureStatsDictionary(_lastTextureStats),
     @"memory" : memory,
     @"launcher_status" : self.status.text ?: @""
   };

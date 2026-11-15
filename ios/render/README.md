@@ -105,6 +105,33 @@ The renderer submits a new upload only when the content changes. Guest code may
 write again immediately after the comparison or copy. Those writes become
 visible at the next frame's lookup.
 
+### Texture diagnostics
+
+Live/final iOS reports and the native runner's final report expose a `textures`
+object from `Replay::texture_stats()`. Counters belong to one renderer session;
+the frontend retains the last values before teardown. They are updated only on
+the render thread. The classic non-AOT backend returns unavailable/zero values.
+
+`requests` includes every texture lookup, including render targets and invalid
+entries. `same_frame_hits` counts retained textures already checked for that
+frame. `comparisons` and `comparison_span_bytes` count complete spans requested
+from the snapshot comparator; a failed comparison may stop early or reject an
+invalid range. `comparison_hits` and `matched_span_bytes` count successful full
+matches. These are logical byte counts, not measurements of DRAM traffic.
+
+`copies`, `copied_bytes` and `hashed_bytes` count successful synchronized copies
+and subsequent SHA input. `uploads` counts successful backend upload calls.
+`budget_evictions` counts snapshots removed for retention space;
+`retention_misses` counts snapshots the budget could not retain. Current/peak
+snapshot bytes use vector capacity, matching the existing 192 MiB limit.
+
+For session averages, use native `consumed_frames` or iOS
+`captured_game_frames`. Texture totals cover startup too; do not divide them by
+the separate settled-scene frame count. Deltas from live reports can isolate a
+steady interval. The new accessors require rebuilding the backend/replay archives
+and frontend together; an old archive fails linkage. Shader binaries and the
+translated game corpus do not change.
+
 When the SDL Metal device cannot sample BC1, BC2, BC3 or BC7, the mobile wrapper
 decodes blocks to RGBA8 before uploading. Partial edge blocks and unaligned input
 are handled. A forced-fallback option exercises that branch on a GPU that supports
