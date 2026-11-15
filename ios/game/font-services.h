@@ -7,7 +7,18 @@ struct DcpFontHooks {
   void *(*pointer)(void *context, uint64_t address, size_t bytes,
                    bool writing) = nullptr;
   void (*register_range)(void *context, void *address, size_t bytes) = nullptr;
+  // Supply all four for checked input/output and atomic max-coverage rows.
+  // Rasterization itself uses private host storage; no guest pointer escapes.
+  bool (*validate_memory)(void *, uint64_t, size_t, bool) = nullptr;
+  bool (*read_memory)(void *, uint64_t, void *, size_t) = nullptr;
+  bool (*write_memory)(void *, uint64_t, const void *, size_t) = nullptr;
+  bool (*max_memory)(void *, uint64_t, const uint8_t *, size_t) = nullptr;
 };
+struct DcpFontMemoryStats {
+  bool synchronized_copies = false;
+  uint64_t read_bytes = 0, write_bytes = 0, blend_bytes = 0, glyph_calls = 0;
+};
+DcpFontMemoryStats dcp_font_memory_stats();
 // Initialize/reset while all guest workers are idle. Font blobs are copied and
 // owned until reset, so FreeType never references released guest backing
 // storage.

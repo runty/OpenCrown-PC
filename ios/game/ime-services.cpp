@@ -22,9 +22,30 @@ void *pointer(uint64_t address, size_t bytes, bool writing) {
     throw std::runtime_error("IME invalid guest buffer");
   return p;
 }
+void validate(uint64_t address, size_t size, bool writing) {
+  if (!address ||
+      (hooks.validate_memory
+           ? !hooks.validate_memory(hooks.context, address, size, writing)
+           : !pointer(address, size, writing)))
+    throw std::runtime_error("IME invalid guest range");
+}
+void read_memory(uint64_t address, void *output, size_t size) {
+  if (hooks.read_memory) {
+    if (!address || !hooks.read_memory(hooks.context, address, output, size))
+      throw std::runtime_error("IME invalid guest read");
+  } else
+    std::memcpy(output, pointer(address, size, false), size);
+}
+void write_memory(uint64_t address, const void *input, size_t size) {
+  if (hooks.write_memory) {
+    if (!address || !hooks.write_memory(hooks.context, address, input, size))
+      throw std::runtime_error("IME invalid guest write");
+  } else
+    std::memcpy(pointer(address, size, true), input, size);
+}
 template <class T> T read(uint64_t address) {
   T value;
-  std::memcpy(&value, pointer(address, sizeof(T), false), sizeof(T));
+  read_memory(address, &value, sizeof(T));
   return value;
 }
 std::u16string text(uint64_t address, size_t limit) {
@@ -70,8 +91,7 @@ void apply_completion() {
     value.push_back(0);
     // Validate the entire write before publishing FINISHED. A failed access
     // leaves the request pending rather than reporting a successful name edit.
-    std::memcpy(pointer(buffer, value.size() * 2, true), value.data(),
-                value.size() * 2);
+    write_memory(buffer, value.data(), value.size() * 2);
   }
   end_status = accepted ? 0 : 1;
   status = 2;
@@ -80,6 +100,11 @@ void apply_completion() {
 } // namespace
 
 void dcp_ime_init(DcpImeHooks value) {
+  const unsigned copies = unsigned(value.validate_memory != nullptr) +
+                          unsigned(value.read_memory != nullptr) +
+                          unsigned(value.write_memory != nullptr);
+  if (copies && copies != 3)
+    throw std::runtime_error("IME memory callbacks must be supplied together");
   std::lock_guard<std::mutex> guard(lock);
   hooks = value;
   request = {};
@@ -118,13 +143,13 @@ bool dcp_ime_service(const char *name, const uint64_t a[6], uint64_t *result) {
       value = invalid;
     else {
       // Validate all fixed fields and the complete output capacity first.
-      pointer(a[0], 0x50, false);
+      validate(a[0], 0x50, false);
       uint32_t maximum = read<uint32_t>(a[0] + 0x24);
       uint64_t destination = read<uint64_t>(a[0] + 0x28);
       if (!maximum || maximum > 2048 || !destination)
         value = invalid;
       else {
-        pointer(destination, (size_t(maximum) + 1) * 2, true);
+        validate(destination, (size_t(maximum) + 1) * 2, true);
         DcpImeRequest next;
         next.max_units = maximum;
         next.text = sanitize(text(destination, maximum), maximum);
@@ -146,7 +171,7 @@ bool dcp_ime_service(const char *name, const uint64_t a[6], uint64_t *result) {
     if (status != 2)
       value = invalid_state;
     else if (a[0])
-      std::memcpy(pointer(a[0], 4, true), &end_status, 4);
+      write_memory(a[0], &end_status, 4);
   } else if (!std::strcmp(name, "sceImeDialogAbort")) {
     if (status == 1) {
       completed = false;
@@ -162,13 +187,15 @@ bool dcp_ime_service(const char *name, const uint64_t a[6], uint64_t *result) {
     status = 0;
   } else if (!std::strcmp(name, "sceImeDialogGetPanelSizeExtended")) {
     // Validate both outputs before writing either one.
-    auto *width = a[2] ? pointer(a[2], 4, true) : nullptr;
-    auto *height = a[3] ? pointer(a[3], 4, true) : nullptr;
+    if (a[2])
+      validate(a[2], 4, true);
+    if (a[3])
+      validate(a[3], 4, true);
     const uint32_t w = 793, h = 408;
-    if (width)
-      std::memcpy(width, &w, 4);
-    if (height)
-      std::memcpy(height, &h, 4);
+    if (a[2])
+      write_memory(a[2], &w, 4);
+    if (a[3])
+      write_memory(a[3], &h, 4);
   } else
     return false;
   if (result)

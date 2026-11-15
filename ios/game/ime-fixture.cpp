@@ -10,6 +10,8 @@
 namespace {
 std::array<uint8_t, 2048> memory;
 unsigned checks = 0;
+bool copying = false, reject_write = false;
+unsigned escapes = 0, copied_reads = 0, copied_writes = 0;
 void require(bool value) {
   ++checks;
   if (!value)
@@ -31,7 +33,35 @@ uint64_t service(const char *name, uint64_t first = 0, uint64_t third = 0,
   return result;
 }
 void seed(bool host = true, uint32_t maximum = 4) {
-  dcp_ime_init({nullptr, pointer, host});
+  reject_write = false;
+  DcpImeHooks hooks{
+      nullptr,
+      [](void *context, uint64_t address, size_t size, bool writing) {
+        ++escapes;
+        return pointer(context, address, size, writing);
+      },
+      host};
+  if (copying) {
+    hooks.validate_memory = [](void *context, uint64_t address, size_t size,
+                               bool writing) {
+      return pointer(context, address, size, writing) != nullptr;
+    };
+    hooks.read_memory = [](void *context, uint64_t address, void *output,
+                           size_t size) {
+      std::memcpy(output, pointer(context, address, size, false), size);
+      ++copied_reads;
+      return true;
+    };
+    hooks.write_memory = [](void *context, uint64_t address, const void *input,
+                            size_t size) {
+      if (reject_write)
+        return false;
+      std::memcpy(pointer(context, address, size, true), input, size);
+      ++copied_writes;
+      return true;
+    };
+  }
+  dcp_ime_init(hooks);
   memory.fill(0xa5);
   put<uint32_t>(0x25, maximum);
   put<uint64_t>(0x29, 0x10201);
@@ -53,7 +83,7 @@ std::u16string name() {
 }
 } // namespace
 
-int main() {
+void exercise() {
   seed();
   require(service("sceImeDialogGetStatus") == 0);
   require(service("sceImeDialogGetResult", 0x10401) == 0x80bc0004);
@@ -149,5 +179,51 @@ int main() {
     ui.join();
     require(okay && name() == u"Test");
   }
-  std::cout << "{\"checks\":" << checks << ",\"failed\":0,\"concurrent_completions\":100}\n";
+  seed();
+  const auto before = memory;
+  rejected = false;
+  try {
+    service("sceImeDialogGetPanelSizeExtended", 0, 0x10401, 0x107ff);
+  } catch (const std::runtime_error &) {
+    rejected = true;
+  }
+  require(rejected &&
+          memory == before); // Validate both outputs before either write.
+  if (copying) {
+    require(service("sceImeDialogInit", 0x10001) == 0);
+    require(dcp_ime_pending(&request));
+    require(dcp_ime_finish(request.id, &edited));
+    reject_write = true;
+    rejected = false;
+    try {
+      service("sceImeDialogGetStatus");
+    } catch (const std::runtime_error &) {
+      rejected = true;
+    }
+    require(rejected && name() == u"Old");
+    reject_write = false;
+    require(service("sceImeDialogGetStatus") == 2 && name() == u"A\U0001f600B");
+    DcpImeHooks partial;
+    partial.validate_memory = [](void *, uint64_t, size_t, bool) {
+      return true;
+    };
+    rejected = false;
+    try {
+      dcp_ime_init(partial);
+    } catch (const std::runtime_error &) {
+      rejected = true;
+    }
+    require(rejected);
+  }
+}
+int main() {
+  exercise();
+  require(escapes > 0);
+  escapes = 0;
+  copying = true;
+  exercise();
+  require(escapes == 0 && copied_reads > 0 && copied_writes > 0);
+  std::cout << "{\"checks\":" << checks
+            << ",\"failed\":0,\"concurrent_completions\":200,\"checked_"
+               "copies\":true}\n";
 }

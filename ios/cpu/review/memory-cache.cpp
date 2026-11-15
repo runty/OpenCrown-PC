@@ -660,6 +660,39 @@ void concurrent() {
   for (auto &thread : threads)
     thread.join();
 }
+void maximumCoverage() {
+  Memory memory;
+  std::array<uint8_t, 32> input{};
+  for (size_t i = 0; i < input.size(); ++i)
+    input[i] = uint8_t(i * 8);
+  const uint64_t destination = Memory::base + 4090;
+  guestFill(memory, destination, 127, input.size());
+  guestMaxBytes(memory, destination, input.data(), input.size());
+  std::array<uint8_t, 32> output{};
+  guestRead(memory, destination, output.data(), output.size());
+  for (size_t i = 0; i < input.size(); ++i)
+    check(output[i] == std::max<uint8_t>(127, input[i]),
+          "cross-page coverage max");
+  rejects(
+      [&] {
+        guestMaxBytes(memory, Memory::base + memory.bytes.size() - 2,
+                      input.data(), 3);
+      },
+      "coverage bounds");
+  addRegion(memory, memory.bytes.data(), memory.bytes.size());
+  input.fill(255);
+  guestMaxBytes(memory, address(memory.bytes.data() + 4090), input.data(),
+                input.size());
+  guestRead(memory, destination, output.data(), output.size());
+  check(output == input, "coverage native/synthetic alias");
+  std::vector<uint8_t> native(1u << 20, 1);
+  addRegion(memory, native.data(), native.size());
+  const uint64_t crossing =
+      ((address(native.data()) / (256u << 10)) + 1) * (256u << 10) - 16;
+  guestMaxBytes(memory, crossing, input.data(), input.size());
+  guestRead(memory, crossing, output.data(), output.size());
+  check(output == input, "coverage lock-band boundary");
+}
 } // namespace
 int main() {
   try {
@@ -669,6 +702,7 @@ int main() {
     boundaries();
     replacement();
     bridges();
+    maximumCoverage();
     outerAtomicExcludesContender();
     overlappingPages();
     boundPollSignals();

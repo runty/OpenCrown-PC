@@ -62,6 +62,11 @@ bool guestMatches(Memory &, uint64_t, const void *, size_t);
 void guestWrite(Memory &, uint64_t, const void *, size_t);
 void guestMove(Memory &, uint64_t destination, uint64_t source, size_t);
 void guestFill(Memory &, uint64_t destination, uint8_t value, size_t);
+// Font coverage publication from private immutable host bytes: update each
+// destination byte with max(old, input)
+// under the same checked access/guest LOCK exclusion as other native writes.
+void guestMaxBytes(Memory &, uint64_t destination, const uint8_t *input,
+                   size_t);
 uint64_t read64(Memory &, uint64_t);
 void write64(Memory &, uint64_t, uint64_t);
 extern "C" const char *dcp_cpu_report();

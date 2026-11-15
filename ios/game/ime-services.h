@@ -7,6 +7,9 @@ struct DcpImeHooks {
   void *context = nullptr;
   void *(*pointer)(void *, uint64_t, size_t, bool) = nullptr;
   bool host_present = false;
+  bool (*validate_memory)(void *, uint64_t, size_t, bool) = nullptr;
+  bool (*read_memory)(void *, uint64_t, void *, size_t) = nullptr;
+  bool (*write_memory)(void *, uint64_t, const void *, size_t) = nullptr;
 };
 struct DcpImeRequest {
   uint64_t id = 0;

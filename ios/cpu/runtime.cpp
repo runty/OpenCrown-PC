@@ -552,6 +552,15 @@ void guestFill(Memory &memory, uint64_t destination, uint8_t value,
   std::memset(output, value, size);
 }
 
+void guestMaxBytes(Memory &memory, uint64_t destination, const uint8_t *input,
+                   size_t size) {
+  auto output = checkedPointer(memory, destination, size);
+  AccessLock lock(output, input, size);
+  for (size_t i = 0; i < size; ++i)
+    if (input[i] > output[i])
+      output[i] = input[i];
+}
+
 // Remill's x86 rounding enum differs from Darwin arm64 FE_* constants.
 extern "C" int32_t __remill_fpu_get_rounding() {
   switch (std::fegetround()) {

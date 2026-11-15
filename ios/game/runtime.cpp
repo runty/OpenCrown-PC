@@ -1133,6 +1133,15 @@ extern "C" const char *dcp_cpu_report() {
     DcpFontHooks font;
     font.context = owner.get();
     font.pointer = files.pointer;
+    font.validate_memory = files.validate_memory;
+    font.read_memory = files.read_memory;
+    font.write_memory = files.write_memory;
+    font.max_memory = [](void *context, uint64_t address, const uint8_t *input,
+                         size_t size) {
+      guestMaxBytes(static_cast<Engine *>(context)->primary, address, input,
+                    size);
+      return true;
+    };
     font.register_range = [](void *context, void *address, size_t size) {
       addRegion(static_cast<Engine *>(context)->primary,
                 static_cast<uint8_t *>(address), size);
@@ -1141,6 +1150,9 @@ extern "C" const char *dcp_cpu_report() {
     DcpImeHooks ime;
     ime.context = owner.get();
     ime.pointer = files.pointer;
+    ime.validate_memory = files.validate_memory;
+    ime.read_memory = files.read_memory;
+    ime.write_memory = files.write_memory;
 #ifdef DCP_MOBILE_PLATFORM
     ime.host_present = engine().interactive;
 #endif
@@ -1257,6 +1269,7 @@ extern "C" const char *dcp_cpu_report() {
     error.clear();
   }
   const auto fileMemory = dcp_file_memory_stats();
+  const auto fontMemory = dcp_font_memory_stats();
   if (!joined)
     error = "guest workers failed to stop within timeout";
   else {
@@ -1319,6 +1332,12 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"fault_context\":" << jsonString(faultContext)
       << ",\"trace_hash\":\"" << traceHash << "\"";
   const auto cursor = engine().cursor.read();
+  out << ",\"font_memory\":{\"synchronized_copies\":"
+      << (fontMemory.synchronized_copies ? "true" : "false")
+      << ",\"read_bytes\":" << fontMemory.read_bytes
+      << ",\"write_bytes\":" << fontMemory.write_bytes
+      << ",\"blend_bytes\":" << fontMemory.blend_bytes
+      << ",\"glyph_calls\":" << fontMemory.glyph_calls << '}';
   out << ",\"file_memory\":{\"synchronized_copies\":"
       << (fileMemory.synchronized_copies ? "true" : "false")
       << ",\"read_bytes\":" << fileMemory.read_bytes
