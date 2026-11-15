@@ -1063,6 +1063,11 @@ extern "C" const char *dcp_cpu_report() {
       offline.input_read = [](void *, unsigned slot, DcpPlatformPad *pad) {
         dcp_platform_input_read(slot, pad);
       };
+    }
+    // Allow the same scripted walk to exercise the shipping audio path.
+    // Checkpoint runs default to the paced null sink on all platforms.
+    const char *checkpointAudio = std::getenv("DCP_CHECKPOINT_AUDIO");
+    if (engine().interactive || (checkpointAudio && std::string_view(checkpointAudio) == "platform")) {
       offline.audio_start = [](void *) { return dcp_platform_audio_start(); };
       offline.audio_stop = [](void *) { dcp_platform_audio_stop(); };
       offline.audio_submit = [](void *, const float *samples, size_t frames,

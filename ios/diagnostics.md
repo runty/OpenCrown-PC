@@ -152,4 +152,9 @@ environment. The route waits for the entrance transition, walks down the
 street and alternates directions. Check `checkpoint_complete`,
 `checkpoint_scene_changed == false`, the captured image, and
 `settled_replay_timing`. Read the actual decoder counts in
-`guest.native_crilayla`. These runs use paced null audio.
+`guest.native_crilayla`. The default scripted run uses paced null audio. On iOS, set
+`DCP_CHECKPOINT_AUDIO=platform` to submit the same game audio through the
+interactive platform sink while the script drives the pad. Check submitted
+and rendered frame counts, device rate, underruns and clipping in `audio`.
+The Simulator can exercise a muted sink. Use physical hardware for output
+and callback timing.
