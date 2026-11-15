@@ -1,5 +1,44 @@
 # Device port progress
 
+## 2026-11-15 — MOVBE executes, spoils complete, adventure saved
+
+Clean source `4d90913` runs the complete native Ancient Temple Ruins route,
+collects the quest bones and defeats the Harpy. The Adventure Results screen
+shows completion bonus 2,500, total score 7,873, two C-rank treasures and
+1,075 gold minus a 50-gold Continue charge. Stats levels Darrel to 2 with
+303 maximum HP and 902 EXP. A private read-only marker at the unique original
+MOVBE byte-swap operation records `20491ec3` executing at vblank 48,299.
+The game advances past the former fault to Appraise spoils. Both items are
+appraised for 370 / 407 gold and obtained; inventory count is two and gold
+is 248. The first is visibly named Crushing Axe Blade.
+
+The game returns to visible Town. Ordinary input enters Dragon's Haven Inn,
+chooses Report adventures, Data 1 and Yes, then shows Save completed. The new
+SAVE0.DAT SHA-256 is
+`728f0ecb5c92c57a833b731b9b2943bc059d2abd2383a043a280e6c8cf937bac`.
+The complete guided run renders 52,139 frames / 52,432 vblanks. Its
+1,699.077-second wall time includes public-API lifecycle pauses and is not
+sustained performance evidence. After the explicit save, an owned SIGINT
+requests shutdown: unload is acknowledged, host/guest errors are empty and
+shutdown grace does not expire. The harness's UNREACHED checkpoint is
+intentionally unmet, so its generic checkpoint-success boolean is false;
+this manual-stop result is not being counted as a checkpoint pass.
+
+The normal frozen core, without private input or execution observers, is used
+for separate native cold reloads. Packaged Simulator cold reloads use the clean
+SDK app. Working saves are seeded once per environment; no reseeding occurs
+between cold processes. Native runs 1 and 3 show visible Town at 303 HP,
+rendering 1,924 / 2,525 frames; both retain the exact new hash and pass their
+checkpoints with empty host/guest errors and clean unload. Run 2 retains the
+hash and passes its component checkpoint but ends with the loading overlay;
+it is retained as checkpoint-only evidence, not a visual Town pass. Run 3
+uses a 900-frame settle interval. Two packaged Simulator cold processes show
+visible Town at 303 HP, render 2,022 / 1,855 frames and retain the exact hash
+with empty runtime/frontend/save errors. Both resume the same isolated save
+session without reseeding. All Simulator reloads use the paced null sink. Physical fresh-character,
+adventure, controls/audio, sustained/thermal and cloud-provider gates remain
+open; neither physical device is installed or launched during this work.
+
 ## 2026-11-15 — Ruins combat, results and reward coverage
 
 Continuing from the earned guild-progress save, native Darrel passes the first
@@ -73,8 +112,11 @@ ASan/UBSan each pass 21,552 checks, including 48 checked-memory boundary checks;
 the shared backend remains unchanged during that proof. The patch is now in
 the ordered bootstrap and its review is an acceptance stage. All 50,464 translations are now relifted on the updated backend. The frozen
 Mac, iPhoneOS and Simulator cores report complete current and generation
-provenance, and retain native CRILAYLA/libc fast paths. Actual corrected
-reward-path execution and new SDK packaging remain pending.
+provenance, and retain native CRILAYLA/libc fast paths. Clean `4d90913` packages
+both icon-bearing SDK apps; iPhoneOS signing verifies without increased-memory
+or extended-VA entitlements. The next run actually executes the corrected
+instruction and completes rewards, Town return and an explicit new save as
+recorded below.
 
 The guided run pauses through the public lifecycle API between input batches.
 It modifies no guest scene, health, cursor or save fields. Its 2,926-second
