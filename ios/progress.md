@@ -1,5 +1,69 @@
 # Device port progress
 
+## 2026-11-15 — Versioned texture snapshots reduce native Town CPU cost
+
+Implementation `4741c15` adds immutable owned snapshots with versions bound to
+their exact bytes, registry and resolved host span. Only opted-in DirectMemory
+mappings can use version-only reuse. Ordinary/native-owned mappings and every
+page exposed through a mutable pointer use the full-content fallback. All
+checked scalar/floating/f80/CAS/bulk/glyph writes invalidate watched pages under
+the existing locks. Registration, aliases, reset and counter saturation are
+covered; no second global write lock or partial hash is introduced. The feature
+remains opt-in with `DCP_TEXTURE_VERSIONS=1`; stable pin stays `851c06b` pending
+device qualification. See [protocol and tests](cpu/review/snapshots.md).
+
+The snapshot fixture passes natively, under ASan/UBSan and under TSan, including
+concurrent capture/publication (check counts vary with scheduling), original
+LOCK exclusion, native/synthetic aliases, all writers, pre/post-capture escapes,
+native-owned overlaps, mapping/registry identity and session changes. A separate
+seven-count version limit proves saturation falls back; a private omitted-store
+negative control is detected and never enters a game. Verification mode also
+detects a deliberately unreported fixture write. The existing memory fixture
+passes all 267,130 checks per configuration. All six renderer fixtures are
+rebuilt for the new capture ABI and retain exact PNG hashes, 49,152 pixel
+channel checks, 36,864 saved RGB checks and 1,504 BC checks. A fresh shared Mac
+build passes all 14 CTest suites (44.14 seconds); CPU oracle is 1,206/1,206
+byte-exact, zero unplaceable/failed, with 37 original patch-site byte mismatches
+reported separately.
+
+The first real native R/Town walk audits every version hit against full bytes:
+44,141 checks covering 187,856,517,120 logical bytes, zero proof failures.
+Only eight ordinary comparisons remain; zero retention misses. It consumes
+2,823 frames, completes 1,200 settled vblanks, preserves exact `df59b068…` save
+bytes, unloads cleanly and has no guest/host error. The inspected image shows
+Town after walking. Audit mode still performs the extra full comparisons and
+is excluded from performance claims.
+
+Nine interleaved unverified native walks compare three runs each of the prior
+`e9369f1` build, new build with versions off, and new build with versions on.
+All use the same frozen corpus/current shaders, R save, committed walking route
+and 1,200 settled intervals, stay in Town without scene changes, preserve exact
+save bytes and finish with clean errors/unloads. Median checkpoint CPU time is
+33.080844 s prior / 33.286678 s off / 30.070929 s on: **9.10% less than prior**
+and **9.66% less than off**. Median replay work is 2.551 → 0.392834 ms (84.60%
+lower), p95 2.760417 → 0.510709 ms. Native pacing stays capped near 59.4 fps.
+This is measured native headroom, not a phone speedup, sustained/thermal result
+or combat qualification.
+
+Both SDK apps build from clean `4741c15` with icons, unchanged complete
+50,464-entry translation provenance, seven explicit native support overrides
+and rebuilt compatible backend/replay/capture archives. Physical signing
+verifies without extra memory entitlements; Simulator signing is disabled.
+The packaged iPhone Simulator independently audits 24,892 hits / 115,376,619,520
+logical bytes with zero failures, captures 2,138 frames and completes a
+600-vblank visible-Town checkpoint with empty runtime/frontend/save/platform
+errors. Exact R bytes survive; every old state file except the two global
+reports is preserved, input is restored and the silent launcher reopened.
+
+Private proof is `mobile-adventure-live/texture-version-candidate/`: snapshot
+and memory fixtures, renderer fixtures/provenance, `macos-ctest.log`,
+`core-verification.json`, `package-verification.json`, `town-runs/verified-walk/`,
+`town-comparison.json` and `simulator-town/`. Neither physical device is used
+or updated in this stage. Next is a silent same-package iPhone off/on comparison
+with thermal state recorded, followed by sustained Town/combat checks before
+default enablement or pin promotion. Keep the iPad excluded and the skipped
+manual save check deferred; normal/live-cloud saves remain untouched.
+
 ## 2026-11-15 — Font and IME guest output uses checked publication
 
 Implementation `e9369f1` routes font input, initialization, handles, layouts,

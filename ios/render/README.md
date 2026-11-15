@@ -201,6 +201,12 @@ channels/edges. Updated Mac, Simulator and iPhoneOS archives compile. Real-game
 performance measurements are recorded in the progress ledger; fixture timings
 alone do not establish gameplay frame rate.
 
+The opt-in [owned snapshot version path](../cpu/review/snapshots.md) can skip
+full comparisons for proven unchanged DirectMemory spans, with conservative
+content fallback and an independent full-content verification mode. Rebuild
+all native capture/renderer/frontend/fixture ABI callers together. Its measured
+native benefit and remaining device gates are in the progress ledger.
+
 The [texture writer audit](texture-coherence.md) records the measured remaining
 comparison work and the native pointer writers that must be covered before
 introducing a version-only cache hit.

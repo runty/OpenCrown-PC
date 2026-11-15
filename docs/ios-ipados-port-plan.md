@@ -77,6 +77,18 @@ UI helper completes teardown and exits 0 with one passing test. The guided
 route records a Simulator audio restart error, remains muted at the user's
 request and does not qualify sustained timing or audible recovery.
 
+The `4741c15` opt-in texture version path now passes native and packaged
+Simulator audits against every otherwise skipped full comparison, with zero
+proof failures. Nine interleaved native R/Town walks show 33.08 → 30.07 seconds
+of median checkpoint CPU time (9.10% less than the prior build), and replay
+work 2.551 → 0.393 ms. Native FPS remains capped near 59.4. Versions remain
+off by default and stable pin stays `851c06b`: next compare off/on on the
+available phone using the same package, thermal state and disposable save,
+then qualify sustained Town/combat. The iPad remains excluded. These native
+proxy/audit results do not close the physical P6 gate. See the
+[snapshot protocol](../ios/cpu/review/snapshots.md) and progress ledger for
+writer coverage, conservative fallback, package provenance and exact evidence.
+
 Continue without user input in this order:
 
 1. The [fresh touch-only route](../ios/touch-playthrough.md) now passes in packaged iPhone Simulator: edited name, simultaneous movement/action, potion/food, door/chest, Orc and new Town save. Three cold processes retain its exact hash; two qualify settled visible Town. First-use ordinary local Files folder browsing now passes in a separate-container QA harness; app-container rows and remote provider handoff/conflicts remain open. The player has released the iPhone for testing and explicitly excludes the physical iPad. Use only the iPhone for current device work, with `DCP_MUTE_AUDIO=1`; this keeps real audio callbacks/accounting while zeroing output buffers. Retain native full Ruins/Harpy/reward/save and tablet target/rotation evidence separately. The player confirms iPhone touch/menu and controller/reconnect/overlay behavior; the additional explicit save/foreground check is skipped at the player’s request and remains unqualified. Repeat the full fresh/adventure route, map/potion use and sustained timing on hardware. Keep the iPad unused until the player releases it. Never use normal player saves or live cloud progress for experiments.
