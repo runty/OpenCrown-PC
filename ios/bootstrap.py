@@ -624,8 +624,10 @@ def main():
         builder.append("--translated-libc-bulk")
     # Include the observed startup and gameplay entries and every distinct case
     # of the supported dump’s character-selection, edit-result, food and
-    # equipment-menu switches. The last has six signed relative entries at
-    # ELF 757ee4, guarded by an unsigned character index <= 5.
+    # equipment-menu switches, plus the paired status getter/setter switches
+    # reached in the Ruins interior. Equipment uses ELF 757ee4; status uses
+    # ELF 71822c/718244. Each has six signed relative entries with unsigned
+    # index <= 5; status preserves its zero-extended index through R15/stack.
     traces = game / "traces"
     required = (
         "300717e0", "30000000", "2054c690", "203d54a0", "2063b950",
@@ -633,6 +635,8 @@ def main():
         "203ae061", "203ae9f0", "203aea03", "203aea16",
         "202ab640", "202ab6b5", "202ab6fc", "202ab767", "202ab85e", "202ab8e7",
         "204cf906", "204cf937", "204cf95b", "204cf97c", "204cf99d", "204cf9be",
+        "202e0ca7", "202e0cc4", "202e0cda", "202e0cf4", "202e0d0a", "202e0d20",
+        "202e0e50", "202e0e5c", "202e0e68", "202e0e74", "202e0e80", "202e0e8c",
     )
     missing = [pc for pc in required if not (traces / (pc + ".ll")).is_file()]
     run("game-seed" if missing else "game-cache-check",
