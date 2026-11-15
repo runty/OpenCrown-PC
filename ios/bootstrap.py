@@ -635,6 +635,10 @@ def main():
     # Tables 75a648/75a674/75a638 have unsigned index bounds 10/14/3;
     # the middle table uses a zero-extended EAX index after decrement.
     # Include all 20 distinct targets across these three tables.
+    # Advancing past level-up reaches ELF 1cff0's three loop switches.
+    # Their preloaded RBX/R13 bases (645080/645060/645040) are retained;
+    # LEA-to-EAX subtracts 12 and zero extends before unsigned <=8/7/7
+    # guards. Cover all 19 distinct targets, including observed 1d410.
     traces = game / "traces"
     required = (
         "300717e0", "30000000", "2054c690", "203d54a0", "2063b950",
@@ -650,6 +654,10 @@ def main():
         "2051b779", "2051b81d", "2051b8a1", "2051b8ee", "2051b93b",
         "2051b95b", "2051b9bf", "2051ba23", "2051ba70", "2051baae",
         "2051bd81", "2051c06e", "2051c0a9", "2051c0ee", "2051c1d0",
+        "2001d0dd", "2001d0eb", "2001d0f8", "2001d0ff", "2001d106",
+        "2001d10e", "2001d120", "2001d2cd", "2001d2e0", "2001d2f0",
+        "2001d300", "2001d375", "2001d3cb", "2001d3d9", "2001d3e6",
+        "2001d3ed", "2001d3f4", "2001d3fc", "2001d410",
     )
     missing = [pc for pc in required if not (traces / (pc + ".ll")).is_file()]
     run("game-seed" if missing else "game-cache-check",

@@ -38,9 +38,23 @@ hash. All four indirect dispatches in ELF `519d70..51d520` are now inspected.
 The three nested tables at `75a648`, `75a674` and `75a638` have unsigned bounds
 10, 14 and 3 and twenty distinct destination instructions. These are added
 together in a frozen 50,445-entry core, which builds for all three targets.
-Executing the new result targets and returning with saved progress remain open.
-Neither a full adventure completion nor a newly earned adventure save is
-claimed from the boss defeat alone.
+The next native run executes formerly missing `2051c06e` at vblank 42,552,
+then thirteen more nested result targets. Adventure Results visibly shows a
+2,500-point completion bonus, 8,438 total score, 1,161 gold and two C-rank
+treasures. The subsequent Stats screen levels Darrel to 2 (303 maximum HP,
+896 EXP). Advancing past Stats stops at `2001d410`, before the next reward
+screen/return/save. The run renders 43,966 frames and unloads cleanly with
+empty host error; its prior guild-save hash remains unchanged. Rewards and
+new adventure-save persistence remain open despite the verified results and
+level-up screens.
+
+Original ELF `1cff0..1d5c0` contains that new missing target inside three
+loop switches. Preloaded RBX/R13 table bases `645080` / `645060` / `645040`
+are retained through their loops and ordinary preserved-register calls.
+LEA-to-EAX subtracts 12 and zero extends before unsigned bounds 8 / 7 / 7.
+All nineteen distinct target instructions are verified and required by
+bootstrap. The frozen 50,464-entry core builds on all three targets; actual reward-target
+execution remains pending.
 
 The guided run pauses through the public lifecycle API between input batches.
 It modifies no guest scene, health, cursor or save fields. Its 2,926-second
