@@ -1,5 +1,56 @@
 # Device port progress
 
+## 2026-11-15 — Fresh touch-only tutorial, door/chest and earned-save reloads
+
+Clean packaged `280b856a08eb7447102c8ace8285ff03fbbd2baf`, with the unchanged
+50,464-entry frozen core, completes a fresh Fighter tutorial through actual
+UIKit touches in the owned iPhone Simulator. The game keyboard edits the name
+to `R`; this does not exercise the native IME adapter. All movement/basic/aerial/
+guard/Power Smash/crossbow lessons pass, followed by potion selection/use
+(three → two), food (300 → 330 HP), a direct tap on the locked door and another
+on the chest. Rannie unlocks both. Ordinary controls defeat the Orc and the
+character returns through the Inn to recognizable Town at 300 HP / 100 gold.
+Leaving the Inn writes new save `df59b068…`, from empty-save `625651e2…`.
+No guest scene, cursor or save fields are patched. See the repeatable
+[touch acceptance route](touch-playthrough.md).
+
+A held two-finger Move-right/Square read-only snapshot has raw buttons `0x8000`,
+left X/Y `239/127` and all four physical pads disconnected. The private helper
+now synthesizes multi-touch with the app's actual interface orientation; the
+earlier hardcoded-portrait attempt remains excluded. A private shim only
+suppresses Mac-forwarded controllers and is not shipped. An earlier attempt
+ends during potion work with SIGBUS; its crash report says the mapped backing
+vnode was force-unmounted, and another Simulator game process fails at the same
+time. The owned Simulator restarts without replacing saves. Its empty file is
+unchanged; the successful new process recreates the character in that same root.
+
+The completed run captures 45,844 frames / 34,132 cursor samples with zero
+cursor read errors and empty runtime/frontend/save errors. Repeated audio
+restarts also record AVFAudio `-10851` and 5,632 underrun frames. This guided run
+is not audio, thermal or sustained performance qualification. At the user's
+request the existing Simulator mute setting is enabled during this run and
+retained on all later launches. Real stream consumption/accounting continues.
+
+Three cold processes reopen the same new working save without reseeding. All
+show `R` at LV1 / 100 gold and retain exact SHA-256
+`df59b0681ff021bf4609361f0abb8d6b50f895a9902db701d09cda91bccb1fb4`.
+The first qualifies visible Inn; its early Town capture is a transition image
+and is excluded from visual Town acceptance. The next two wait for settled,
+recognizable Town, capture 6,076 / 6,962 frames, stop through Pause → Stop Game
+and retain empty runtime/frontend/save/platform errors. Both remain muted and
+count zero underruns/clipping, without an audibility claim. The input helper
+terminates the owned game and finishes teardown: xcodebuild exits 0 with one
+test, zero failures and `TEST SUCCEEDED`. The private helper now has a real
+host window and returns Home after termination. This successful teardown does
+not retroactively qualify earlier interrupted suites.
+
+The private proof is `cursor-investigation/touch-tutorial-driver/`, including
+`touch-tutorial-final.json`, `cold-{1,2,3}-final.json`, screenshots, input proofs,
+command journal and immutable earned-save copy. Physical devices, normal
+player saves and live cloud progress remain untouched. Physical fresh-character/
+adventure/save, controller/reconnect, audio recovery, 30-minute performance/
+thermal and first-use/remote-provider handoff gates remain open.
+
 ## 2026-11-15 — Full-screen pointing survives touchpad edges and rotation
 
 Runtime `7bc7603362bbf4ae75cee96689dd1385a1265442`, packaged from clean

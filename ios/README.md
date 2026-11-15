@@ -70,6 +70,9 @@ during real reward processing, including partial registers, flags and boundaries
 
 ## Isolated interactive diagnostics
 
+The [fresh touch-only route](touch-playthrough.md) records character creation,
+tutorial interactions, Town saving and cold-reload acceptance with disposable saves.
+
 `--diagnostic-interactive-startup` starts timed normal game execution with real
 platform audio/input, but keeps saves/checkpoints and captured PNGs in a fresh
 `Documents/DiagnosticSessions/<UUID>` folder. It supplies no automatic controller
