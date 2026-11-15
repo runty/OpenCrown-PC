@@ -1136,6 +1136,7 @@ UIButton *button(NSString *title, id target, SEL action) {
     @"metal" : _metalInfo ?: @{},
     @"thermal_state" : thermalName(thermal),
     @"thermal_state_raw" : @(thermal),
+    @"low_power_mode" : @(NSProcessInfo.processInfo.lowPowerModeEnabled),
     @"memory" : memory,
     @"launcher_status" : self.status.text ?: @""
   };
