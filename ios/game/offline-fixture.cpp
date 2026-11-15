@@ -109,6 +109,27 @@ int main(int argc, char **argv) {
   hooks.audio_submit = submit;
   hooks.savedata_transaction = transaction;
   dcp_offline_init(hooks);
+  // Unaligned guest buffers and truncated destinations must be handled without
+  // touching neighboring data. The FILETIME epoch is 1601-01-01.
+  constexpr size_t date = 203, stamp = 701;
+  c.bytes[date - 1] = c.bytes[date + 16] = 0xab;
+  assert(call("sceRtcGetCurrentClockLocalTime", date) == 0);
+  assert(get<uint16_t>(c, date) >= 1970 && get<uint16_t>(c, date + 2) >= 1 &&
+         get<uint16_t>(c, date + 2) <= 12 && get<uint32_t>(c, date + 12) < 1000000);
+  assert(c.bytes[date - 1] == 0xab && c.bytes[date + 16] == 0xab);
+  assert(call("sceRtcGetCurrentClockLocalTime", 0) == error(0x80b50002));
+  assert(call("sceRtcGetCurrentClockLocalTime", c.bytes.size() - 15) == error(0x80b50002));
+  std::memset(c.bytes.data() + date, 0, 16);
+  put<uint16_t>(c, date, 1970);
+  put<uint16_t>(c, date + 2, 1);
+  put<uint16_t>(c, date + 4, 1);
+  put<uint32_t>(c, date + 12, 42);
+  assert(call("sceRtcGetWin32FileTime", date, stamp) == 0);
+  assert(get<uint64_t>(c, stamp) == UINT64_C(116444736000000420));
+  assert(call("sceRtcGetWin32FileTime", date, c.bytes.size() - 7) == error(0x80b50002));
+  put<uint16_t>(c, date + 2, 13);
+  assert(call("sceRtcGetWin32FileTime", date, stamp) == error(0x80b50002));
+  assert(get<uint64_t>(c, stamp) == UINT64_C(116444736000000420));
   assert(call("scePadOpen", 1000) == 1);
   c.pad.connected = 1;
   c.pad.buttons = 0x4008;

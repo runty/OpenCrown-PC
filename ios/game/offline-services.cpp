@@ -1,6 +1,7 @@
 // Headless save/pad/audio services, following linux-port/src/hle counterparts.
 #include "offline-services.h"
 #include "../../linux-port/src/hle/kernel/pure.h"
+#include "../../linux-port/src/hle/rtc.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -692,6 +693,29 @@ bool dcp_offline_service(const char *name, const uint64_t a[6],
     // pointers. This offline runtime never publishes presence, so clearing the
     // already absent value is idempotent and performs no network or guest I/O.
     *result = 0;
+    return true;
+  }
+  if (named(name, "sceRtcGetCurrentClockLocalTime")) {
+    std::array<uint16_t, 8> date{};
+    void *out = a[0] ? pointer(a[0], sizeof(date), true) : nullptr;
+    const auto status = dcp::hle::rtc_local_clock(out ? date.data() : nullptr);
+    if (!status)
+      std::memcpy(out, date.data(), sizeof(date));
+    *result = result32(status);
+    return true;
+  }
+  if (named(name, "sceRtcGetWin32FileTime")) {
+    std::array<uint16_t, 8> date{};
+    const void *src = a[0] ? pointer(a[0], sizeof(date), false) : nullptr;
+    void *out = a[1] ? pointer(a[1], sizeof(uint64_t), true) : nullptr;
+    uint64_t fileTime = 0;
+    if (src)
+      std::memcpy(date.data(), src, sizeof(date));
+    const auto status = dcp::hle::rtc_file_time(src ? date.data() : nullptr,
+                                                out ? &fileTime : nullptr);
+    if (!status)
+      std::memcpy(out, &fileTime, sizeof(fileTime));
+    *result = result32(status);
     return true;
   }
   static const char *save_calls[] = {
