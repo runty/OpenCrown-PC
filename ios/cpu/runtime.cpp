@@ -21,7 +21,10 @@ static thread_local GuestScalarThread scalarThread{};
 void bindScalarThread(Memory &memory) { memory.scalarThread = &scalarThread; }
 namespace {
 constexpr size_t stripeCount = 64;
-constexpr uintptr_t pageSize = 4096;
+constexpr uintptr_t pageSize = 4096; // validation granularity
+// Guest atlas comparisons are multi-megabyte reads. A 4 KiB lock band
+// turned each into a global lock even for workers on unrelated mappings.
+constexpr uintptr_t stripeBytes = 256 * 1024;
 #ifdef __APPLE__
 struct StripeMutex {
   os_unfair_lock value = OS_UNFAIR_LOCK_INIT;
@@ -43,18 +46,18 @@ thread_local std::shared_ptr<std::vector<Memory::Region>> registryOwner;
 
 // All aliases of the same host page use the same stripe, including a fixture
 // page addressed through both the synthetic guest base and a native mapping.
-unsigned stripeForPage(uintptr_t page) {
+unsigned stripeForBand(uintptr_t page) {
   return (page ^ (page >> 6) ^ (page >> 12)) % stripeCount;
 }
 uint64_t spanMask(const void *pointer, size_t size) {
-  const uintptr_t first = reinterpret_cast<uintptr_t>(pointer) / pageSize;
-  if (size > stripeCount * pageSize)
+  const uintptr_t first = reinterpret_cast<uintptr_t>(pointer) / stripeBytes;
+  if (size > stripeCount * stripeBytes)
     return UINT64_MAX;
-  const size_t offset = reinterpret_cast<uintptr_t>(pointer) % pageSize;
-  const size_t extra = size ? (offset + size - 1) / pageSize : 0;
+  const size_t offset = reinterpret_cast<uintptr_t>(pointer) % stripeBytes;
+  const size_t extra = size ? (offset + size - 1) / stripeBytes : 0;
   uint64_t mask = 0;
   for (size_t i = 0; i <= extra; ++i)
-    mask |= uint64_t(1) << stripeForPage(first + i);
+    mask |= uint64_t(1) << stripeForBand(first + i);
   return mask;
 }
 class AccessLock {
@@ -63,8 +66,8 @@ public:
     if (depth)
       return;
     const uintptr_t address = reinterpret_cast<uintptr_t>(pointer);
-    if (size <= pageSize - address % pageSize) {
-      single_ = &stripes[stripeForPage(address / pageSize)].mutex;
+    if (size <= stripeBytes - address % stripeBytes) {
+      single_ = &stripes[stripeForBand(address / stripeBytes)].mutex;
       single_->lock();
     } else
       acquire(spanMask(pointer, size));

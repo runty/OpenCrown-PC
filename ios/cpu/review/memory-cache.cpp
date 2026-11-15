@@ -215,11 +215,13 @@ void boundExecution() {
 
 void overlappingPages() {
   Memory memory;
+  // Include an alias crossing the 256 KiB synchronization boundary.
+  memory.bytes.resize(512 * 1024);
   // Register the backing a second way. Alternate between a low guest address
   // and its host alias in the middle of an unaligned, two-page write.
   addRegion(memory, memory.bytes.data(), memory.bytes.size());
   const auto base = address(memory.bytes.data());
-  const size_t offset = 4096 - (base % 4096) - 1;
+  const size_t offset = 256 * 1024 - (base % (256 * 1024)) - 1;
   const uint64_t low = Memory::base + offset, high = base + offset;
   constexpr uint64_t first = 0x1122334455667788ULL, second = ~first;
   write64(memory, low, first);
