@@ -1,5 +1,12 @@
 # Texture comparison optimization: writer audit
 
+`4741c15` now implements opt-in owned snapshot versions for admitted
+DirectMemory mappings, with conservative content fallback for unknown/native-
+owned ranges. Native and packaged Simulator audits check every version hit
+against full bytes; measured native results are in the progress ledger.
+The requirements below remain the invariants for extending tracking to more
+mappings. See the [implemented protocol](../cpu/review/snapshots.md).
+
 The `ee59b0c` instrumentation preserves the existing full-content comparison,
 snapshot, hash and upload behavior. It does not implement a version cache.
 The first native Town run compares 187,525,429,248 logical bytes across 2,825
