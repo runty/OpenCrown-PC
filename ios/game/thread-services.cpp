@@ -322,8 +322,8 @@ bool dcp_thread_service(const char *name, const uint64_t a[6],
       burst = 0;
       since = now;
     }
-    if (++burst >= 8) {
-      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    if (++burst >= 2) {
+      std::this_thread::sleep_for(std::chrono::microseconds(200));
       burst = 0;
       since = Clock::now();
     } else {

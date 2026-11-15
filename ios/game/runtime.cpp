@@ -36,6 +36,7 @@
 #include <sstream>
 #include <string_view>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <thread>
 #include <unistd.h>
 
@@ -109,6 +110,7 @@ struct Engine {
   bool sceneInputEnabled = false;
   std::atomic<uint64_t> checkpointVblank{0}, checkpointFlip{0};
   std::atomic<uint64_t> checkpointStartNs{0}, checkpointElapsedNs{0};
+  std::atomic<uint64_t> checkpointCpuStartUs{0}, checkpointCpuElapsedUs{0};
   std::string inputScriptHash;
   uint64_t heapTrace = 0;
   std::chrono::steady_clock::time_point epoch =
@@ -207,6 +209,13 @@ void recordEvent(const std::string &value) {
   if (++engine().eventCounts[value] == 1)
     engine().events.push_back(value);
 }
+uint64_t processCpuMicroseconds() {
+  rusage usage{};
+  if (getrusage(RUSAGE_SELF, &usage) != 0)
+    return 0;
+  return uint64_t(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) * 1000000 +
+         usage.ru_utime.tv_usec + usage.ru_stime.tv_usec;
+}
 void recordComponent(const char *name, const char *stage) {
   bool changed;
   {
@@ -221,6 +230,7 @@ void recordComponent(const char *name, const char *stage) {
     if (engine().headless.scene == name && !engine().checkpointSeen.load()) {
       engine().checkpointVblank = engine().vblanks.load();
       engine().checkpointFlip = dcp_gnm_stats().flips;
+      engine().checkpointCpuStartUs = processCpuMicroseconds();
       engine().checkpointStartNs = elapsedNanoseconds();
       // Publish only after both anchors are initialized for vblank readers.
       engine().checkpointSeen.store(true);
@@ -481,6 +491,10 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
         frame >= engine().checkpointVblank.load() + engine().headless.settle_frames &&
         dcp_gnm_stats().flips >= engine().checkpointFlip.load() + engine().headless.settle_frames) {
       engine().checkpointElapsedNs = elapsedNanoseconds() - engine().checkpointStartNs.load();
+      const uint64_t cpuEnd = processCpuMicroseconds();
+      const uint64_t cpuStart = engine().checkpointCpuStartUs.load();
+      if (cpuStart && cpuEnd >= cpuStart)
+        engine().checkpointCpuElapsedUs = cpuEnd - cpuStart;
       engine().booted = true;
       throw std::runtime_error("boot checkpoint complete");
     }
@@ -1224,6 +1238,7 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"checkpoint_observed_vblank\":" << engine().checkpointVblank.load()
       << ",\"checkpoint_observed_flip\":" << engine().checkpointFlip.load()
       << ",\"checkpoint_elapsed_ns\":" << engine().checkpointElapsedNs.load()
+      << ",\"checkpoint_process_cpu_us\":" << engine().checkpointCpuElapsedUs.load()
       << ",\"checkpoint_scene_changed\":" << (engine().checkpointSceneChanged ? "true" : "false")
       << ",\"input_script_sha256\":" << jsonString(engine().inputScriptHash)
       << ",\"checkpoint_complete\":"
