@@ -1,5 +1,57 @@
 # Device port progress
 
+## 2026-11-15 — Native file output uses checked memory publication
+
+Implementation `fe8f18a` supplies non-escaping validation and synchronized
+copy callbacks to the file adapter. File reads publish through `guestWrite`;
+file input, paths and stat results also use checked copies. Transfers stage
+at most 256 KiB while retaining 64 MiB validation windows, descriptor locking
+and save-service admission. Guest locks are not held across blocking file I/O.
+Native CRILAYLA range checks use `guestValidate` rather than borrowing a mutable
+pointer; its output still publishes through `guestWrite`. The original CPU
+lock geometry and full-content texture checks remain unchanged. See
+[the protocol and regression command](game/file-memory.md).
+
+The new real-memory/file fixture passes 114 checks natively, with ASan/UBSan
+and with TSan. It covers chunk/64 MiB boundaries, EOF tails, positioned I/O,
+invalid/rejected access, errno/stat output, callback configuration, reset and
+original guest LOCK exclusion. A deliberately unlocked publication callback
+correctly fails the functional assertion; negative code is fixture-only and
+never enters a game archive. The existing memory fixture passes 267,095 checks
+in all three configurations. Save integration passes 216 checks across both
+callback paths and eight relaunches, including interrupted-write recovery;
+quiescence passes 30 checks across both paths. Storage retains its 149 checks.
+
+Four native support objects are rebuilt for Mac/iPhoneOS/Simulator in separate
+archives, with source/header/command hashes recorded. The frozen 50,464-entry
+translated corpus, trace hash and original archives remain unchanged. Both
+SDK packages compile with icons and complete translation provenance. The
+iPhoneOS signature verifies without extra memory entitlements; Simulator
+signing is disabled. Native override provenance is explicit in each package.
+
+The real native game reaches inspected R/Town, consumes 2,822 frames, completes
+its 1,200-vblank checkpoint and unloads without guest/host error. Final
+`file_memory` diagnostics prove the new path executes: 277,512,802 bytes copied
+into guest memory and 79 bytes read from it (including path/stat copies).
+Native CRILAYLA still executes 91 fast calls / three fallbacks. The packaged
+iPhone Simulator independently reaches inspected R/Town, captures 2,151 frames
+and completes a 600-vblank checkpoint with 277,394,038 checked output bytes,
+empty runtime/frontend/save/platform errors and counters retained after unload.
+Both preserve exact disposable R bytes `df59b068…`. Simulator installation/run
+preserves every pre-existing state file except the two global reports, restores
+the original input and returns to the silent launcher.
+
+Private proof is `mobile-adventure-live/native-memory-candidate/`, including
+`file-tests-final/verification.json`, `memory-tests/`,
+`final-service-verification.json`, `core-verification.json`,
+`package-verification.json`, `native-town/` and `simulator-town/`.
+This closes the file writer escape on the production path, not the remaining
+font/IME/offline/service escapes or texture version tracking. No speedup or
+sustained hardware qualification is claimed. Neither physical device is used,
+the stable pin remains `851c06b`, and the player-skipped manual save test stays
+deferred. Next work is native font/service publication and conservative version
+tracking with the full-content fallback retained.
+
 ## 2026-11-15 — Texture scan counters identify repeated unchanged comparisons
 
 Implementation `ee59b0c` adds render-thread texture request, comparison, copy,
