@@ -44,13 +44,24 @@ Ruins. The explicit threshold assertion proves the late walking fallback runs.
 Existing Simulator state is preserved except global reports and input restored
 after every attempt. This is input-only fixture work, without guest-field edits.
 
-The phone remains on `bb540ac` while cooling after its failed long Town test.
-Next compare this candidate on the phone at matched thermal/low-power state,
-with muted real audio and new disposable saves, before integration/default/pin
-promotion. The iPad remains excluded and the manual save check stays skipped.
+The subsequent physical iPhone comparison does not establish a benefit.
+Four short cache-on walks run in 256/64/64/256 KiB order, all sampled thermal
+states nominal, Low Power Mode off, exact R bytes and clean muted 256-frame
+audio/errors. Median checkpoint CPU is 30.819987 seconds at 256 KiB versus
+32.229454 at 64 KiB (4.573% higher in this small series); median rendered fps is
+59.4508 versus 59.1590. The native 14.305% proxy gain does not carry to these
+phone samples. Do not adopt this experiment on that basis.
+
+The candidate installs preserving all 81 prior non-asset files byte-for-byte;
+the original `bb540ac` app is then restored, preserving all 88 files present
+after testing. Original input and silent normal launcher are restored after
+each run. The main branch/default/pipeline pin remain unchanged; next profile
+the cache-enabled phone before choosing further lock changes. The iPad remains
+excluded and the manual save check stays skipped.
 Private proof: `mobile-adventure-live/snapshot-lock-band-candidate/`, including
 memory/snapshot results, `native-comparison.json`, native Town/Ruins,
-`simulator-ruins{,-late-walk,-fallback}/`, package and core provenance.
+`simulator-ruins{,-late-walk,-fallback}/`, package/core provenance,
+`phone-comparison-summary.json` and install/test/restore preservation reports.
 
 ## 2026-11-15 — Guarded cache reaches the iPhone and the Ruins
 
