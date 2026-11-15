@@ -12,6 +12,8 @@ esac
 mkdir -p "$out"
 clang++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread "$source_dir/core.cpp" "$source_dir/probe.cpp" -o "$out/core-probe"
 "$out/core-probe" | tee "$out/core-result.txt"
+clang++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread "$source_dir/core.cpp" "$source_dir/pointer-probe.cpp" -o "$out/pointer-probe"
+"$out/pointer-probe" | tee "$out/pointer-result.txt"
 for sdk in iphoneos iphonesimulator; do
   target=arm64-apple-ios18.0
   if [ "$sdk" = iphonesimulator ]; then target=$target-simulator; fi

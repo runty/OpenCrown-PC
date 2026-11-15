@@ -83,14 +83,51 @@ void InputState::touch(const DcpPlatformPad &p) {
 void InputState::active(bool active) {
   std::lock_guard<std::mutex> lock(mutex_);
   active_ = active;
-  if (!active)
+  if (!active) {
     touch_ = neutral();
+    pointer_ = {};
+  }
 }
 void InputState::reset() {
   std::lock_guard<std::mutex> lock(mutex_);
   physical_.fill(neutral(false));
   touch_ = neutral(false);
   active_ = false;
+  pointer_ = {};
+  cursorSequence_ = 0;
+  cursorX_ = cursorY_ = 0;
+}
+void InputState::pointer_press(float x, float y) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!active_ || !std::isfinite(x) || !std::isfinite(y)) {
+    pointer_ = {};
+    return;
+  }
+  pointer_.press(std::clamp(x, -960.f, 960.f), std::clamp(y, -540.f, 540.f));
+}
+void InputState::pointer_move(float x, float y) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!std::isfinite(x) || !std::isfinite(y)) {
+    pointer_ = {};
+    return;
+  }
+  pointer_.move(std::clamp(x, -960.f, 960.f), std::clamp(y, -540.f, 540.f));
+}
+void InputState::pointer_release(bool tap) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  pointer_.release(tap);
+}
+void InputState::pointer_cancel() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  pointer_ = {};
+}
+void InputState::pointer_cursor(uint32_t sequence, float x, float y) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  cursorSequence_ = std::isfinite(x) && std::isfinite(y) &&
+                            std::fabs(x) <= 960 && std::fabs(y) <= 540
+                        ? sequence : 0;
+  cursorX_ = cursorSequence_ ? x : 0;
+  cursorY_ = cursorSequence_ ? y : 0;
 }
 DcpPlatformPad InputState::read(unsigned slot) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -120,6 +157,26 @@ DcpPlatformPad InputState::read(unsigned slot) {
       }
     }
   }
-  return active_ ? p : neutral(p.connected);
+  if (!active_)
+    return neutral(p.connected);
+  if (slot == 0) {
+    if (touch_.touch_count || (p.buttons & 0x100000)) {
+      // Explicit raw touchpad input (including Map) wins and cancels any
+      // queued screen tap, so it cannot interact later after Map closes.
+      pointer_ = {};
+    } else if (pointer_.active()) {
+      const auto point = pointer_.read(cursorSequence_ != 0, cursorX_, cursorY_,
+                                       cursorSequence_);
+      p.touch_count = point.finger ? 1 : 0;
+      if (point.finger) {
+        p.tx[0] = point.x;
+        p.ty[0] = point.y;
+        p.tid[0] = point.id & 127;
+      }
+      if (point.button)
+        p.buttons |= 0x100000;
+    }
+  }
+  return p;
 }
 } // namespace dcp::mobile

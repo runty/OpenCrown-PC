@@ -39,6 +39,9 @@ void dcp_platform_attach_touch_overlay(void *view);
 /* Optional custom frontend. Replaces the virtual slot-zero state. */
 void dcp_platform_input_set_touch(const DcpPlatformPad *pad);
 void dcp_platform_input_read(unsigned slot, DcpPlatformPad *pad);
+/* Guest-thread read-only feedback for direct screen pointing. Sequence 0
+ * means no sample. Coordinates are centred 1920x1080 game pixels, y down. */
+void dcp_platform_input_cursor(uint32_t sequence, float x, float y);
 
 /* May run on guest threads; input is interleaved float stereo at 48 kHz.
  * Submit paces the producer. A short return means timeout, pause, or stop;

@@ -1,5 +1,6 @@
 #pragma once
 #include "platform.h"
+#include "../../linux-port/tools/dcp_run/touch_math.h"
 #include <array>
 #include <atomic>
 #include <mutex>
@@ -34,6 +35,11 @@ public:
   void touch(const DcpPlatformPad &pad);
   void active(bool active);
   void reset();
+  void pointer_press(float x, float y);
+  void pointer_move(float x, float y);
+  void pointer_release(bool tap);
+  void pointer_cancel();
+  void pointer_cursor(uint32_t sequence, float x, float y);
   DcpPlatformPad read(unsigned slot);
 
 private:
@@ -41,5 +47,8 @@ private:
   std::array<DcpPlatformPad, 4> physical_{};
   DcpPlatformPad touch_ = neutral();
   bool active_ = true;
+  dcp::touch::TouchLoop pointer_;
+  uint32_t cursorSequence_ = 0;
+  float cursorX_ = 0, cursorY_ = 0;
 };
 } // namespace dcp::mobile

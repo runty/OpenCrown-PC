@@ -3,6 +3,7 @@
 #include "crilayla-native.h"
 #endif
 #include "direct-memory.h"
+#include "cursor-readback.h"
 #include "file-services.h"
 #include "font-services.h"
 #include "ime-services.h"
@@ -91,6 +92,8 @@ struct Engine {
   std::chrono::nanoseconds pausedTime{0};
   dcp::game::VblankClock vblankClock;
   std::atomic<bool> interactive{false};
+  dcp::game::CursorReadback cursor;
+  std::atomic<uint64_t> cursorReadErrors{0};
   alignas(128) std::atomic<uint64_t> steps{0};
   alignas(128) std::atomic<uint64_t> vblanks{0};
   uint64_t directCursor = 0;
@@ -1066,6 +1069,10 @@ extern "C" const char *dcp_cpu_report() {
 #ifdef DCP_MOBILE_PLATFORM
     if (engine().interactive) {
       offline.input_read = [](void *, unsigned slot, DcpPlatformPad *pad) {
+        if (!slot) {
+          const auto cursor = engine().cursor.read();
+          dcp_platform_input_cursor(cursor.sequence, cursor.x, cursor.y);
+        }
         dcp_platform_input_read(slot, pad);
       };
     }
@@ -1292,6 +1299,10 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"current_scene\":" << jsonString(currentScene)
       << ",\"fault_context\":" << jsonString(faultContext)
       << ",\"trace_hash\":\"" << traceHash << "\"";
+  const auto cursor = engine().cursor.read();
+  out << ",\"cursor_readback\":{\"sequence\":" << cursor.sequence
+      << ",\"x\":" << cursor.x << ",\"y\":" << cursor.y
+      << ",\"read_errors\":" << engine().cursorReadErrors << '}';
 #if DCP_NATIVE_CRILAYLA
   const auto codec=dcp_crilayla_stats();
   out << ",\"native_crilayla\":{\"compiled\":true,\"fast_calls\":" << codec.fast
@@ -1349,6 +1360,26 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
   if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
   const uint64_t observedPC = canonical(pc);
+  // Original Cursor_Update (ELF 39ad80) computes the player's pad id before
+  // calling 45850 at 39b0f8. At that entry RSI is the pad id, R12 still holds
+  // the cursor, and its position has not yet been updated for this frame.
+  // Read the game's already-computed slot selection; never invoke extra guest
+  // getters or modify guest state for pointer feedback.
+  if (observedPC == 0x20045850 && !state.gpr.rsi.qword) {
+    try {
+      if (canonical(read64(*currentMemory, state.gpr.rsp.qword)) == 0x2039b0fd) {
+        const uint64_t cursor = state.gpr.r12.qword;
+        if (canonical(read64(*currentMemory, cursor)) == 0x20b10c08) {
+          uint64_t xy = 0;
+          guestRead(*currentMemory, cursor + 0xabc, &xy, sizeof xy);
+          if (!engine().cursor.publish(xy))
+            ++engine().cursorReadErrors;
+        }
+      }
+    } catch (const std::runtime_error &) {
+      ++engine().cursorReadErrors;
+    }
+  }
   if (observedPC >= 0x20000000 && observedPC < 0x30000000) {
     const auto &r = state.gpr;
     const uint64_t args[6] = {r.rdi.qword, r.rsi.qword, r.rdx.qword,

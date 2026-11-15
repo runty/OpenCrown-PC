@@ -168,6 +168,9 @@ struct TouchCapture {
 @implementation DcpTouchOverlay {
   std::vector<TouchCapture> _captures;
   uint8_t _nextID;
+  UITouch *_pointerTouch;
+  CGPoint _pointerOrigin;
+  NSTimeInterval _pointerStarted;
 }
 - (instancetype)initWithFrame:(CGRect)frame {
   if ((self = [super initWithFrame:frame])) {
@@ -272,6 +275,12 @@ struct TouchCapture {
   [super layoutSubviews];
   [self setNeedsDisplay];
 }
+- (CGPoint)gamePoint:(CGPoint)point {
+  float x = 0, y = 0;
+  dcp::touch::window_to_game(point.x, point.y, self.bounds.size.width,
+                             self.bounds.size.height, &x, &y);
+  return CGPointMake(x, y);
+}
 - (void)publish {
   auto pad = neutral();
   if (self.bounds.size.width <= 0 || self.bounds.size.height <= 0) {
@@ -282,16 +291,6 @@ struct TouchCapture {
                             0x8000, 0x400, 0x800,  0x8,    0x100000,
                             0,      0x100, 0x200,  0x2,    0x4};
   CGFloat u = self.unit;
-  CGRect content = self.bounds;
-  if (content.size.width / content.size.height > 16.0 / 9) {
-    CGFloat width = content.size.height * 16 / 9;
-    content.origin.x = (content.size.width - width) / 2;
-    content.size.width = width;
-  } else {
-    CGFloat height = content.size.width * 9 / 16;
-    content.origin.y = (content.size.height - height) / 2;
-    content.size.height = height;
-  }
   // The game distinguishes Town Map from the character menu by the first
   // touchpad contact. Match the Mac adapter's left-half click gesture and
   // publish that contact first, even when another screen touch is held.
@@ -306,8 +305,10 @@ struct TouchCapture {
       continue;
     CGPoint p = [capture.touch locationInView:self];
     if (capture.control < 0) {
-      touch_point(pad, (p.x - content.origin.x) / content.size.width,
-                  (p.y - content.origin.y) / content.size.height, capture.id);
+      if (capture.touch == _pointerTouch) {
+        CGPoint target = [self gamePoint:p];
+        input.pointer_move(target.x, target.y);
+      }
     } else if (capture.control < 2) {
       CGPoint centre = [self centre:capture.control];
       float x = (p.x - centre.x) / u, y = (p.y - centre.y) / u;
@@ -350,13 +351,9 @@ struct TouchCapture {
     return;
   for (UITouch *touch in touches) {
     CGPoint p = [touch locationInView:self];
-    if (_touchpadOnly) {
-      _captures.push_back({touch, -1, uint8_t(_nextID++ & 127)});
-      continue;
-    }
     NSInteger selected = -1;
     CGFloat nearest = CGFLOAT_MAX;
-    for (NSInteger c = 0; c < 15; ++c) {
+    for (NSInteger c = 0; !_touchpadOnly && c < 15; ++c) {
       CGPoint centre = [self centre:c];
       CGFloat distance = std::hypot(p.x - centre.x, p.y - centre.y);
       CGFloat radius = self.unit * (c < 2 ? 1.15 : (c == 10 ? .8 : .63));
@@ -369,8 +366,15 @@ struct TouchCapture {
     for (const auto &capture : _captures)
       if (selected >= 0 && capture.control == selected)
         occupied = true;
-    if (!occupied)
+    if (!occupied) {
       _captures.push_back({touch, selected, uint8_t(_nextID++ & 127)});
+      if (selected < 0 && !_pointerTouch) {
+        _pointerTouch = touch;
+        _pointerOrigin = [self gamePoint:p];
+        _pointerStarted = touch.timestamp;
+        input.pointer_press(_pointerOrigin.x, _pointerOrigin.y);
+      }
+    }
   }
   [self publish];
 }
@@ -379,8 +383,20 @@ struct TouchCapture {
   (void)event;
   [self publish];
 }
-- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-  (void)event;
+- (void)finishTouches:(NSSet<UITouch *> *)touches cancelled:(BOOL)cancelled {
+  if (_pointerTouch && [touches containsObject:_pointerTouch]) {
+    CGPoint target = [self gamePoint:[_pointerTouch locationInView:self]];
+    const bool tap = !cancelled && _pointerTouch.timestamp - _pointerStarted < .25 &&
+        std::fabs(target.x - _pointerOrigin.x) +
+            std::fabs(target.y - _pointerOrigin.y) < 40;
+    if (cancelled)
+      input.pointer_cancel();
+    else {
+      input.pointer_move(target.x, target.y);
+      input.pointer_release(tap);
+    }
+    _pointerTouch = nil;
+  }
   _captures.erase(std::remove_if(_captures.begin(), _captures.end(),
                                  [&](const TouchCapture &c) {
                                    return [touches containsObject:c.touch];
@@ -388,12 +404,19 @@ struct TouchCapture {
                   _captures.end());
   [self publish];
 }
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  (void)event;
+  [self finishTouches:touches cancelled:NO];
+}
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches
                withEvent:(UIEvent *)event {
-  [self touchesEnded:touches withEvent:event];
+  (void)event;
+  [self finishTouches:touches cancelled:YES];
 }
 - (void)clear {
   _captures.clear();
+  _pointerTouch = nil;
+  input.pointer_cancel();
   input.touch(neutral());
 }
 @end
@@ -680,6 +703,9 @@ extern "C" void dcp_platform_input_set_touch(const DcpPlatformPad *p) {
 extern "C" void dcp_platform_input_read(unsigned slot, DcpPlatformPad *p) {
   if (p)
     *p = input.read(slot);
+}
+extern "C" void dcp_platform_input_cursor(uint32_t sequence, float x, float y) {
+  input.pointer_cursor(sequence, x, y);
 }
 extern "C" int dcp_platform_audio_start() {
   if (!initialized)

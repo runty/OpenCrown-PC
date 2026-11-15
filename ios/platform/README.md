@@ -50,10 +50,21 @@ releases held touches. The screen still accepts game touchpad
 input, including on controllers without a touchpad. The separate Pause button
 remains available. Disconnecting the last supported gamepad restores the
 on-screen controls immediately. Multiple captured touches combine movement/actions.
-Unclaimed touches become up to two game touchpad points over a centred 16:9 game
-rectangle. If presentation crops or uses another viewport, replace that transform
-or supply your own pad via `dcp_platform_input_set_touch`. The custom setter
+The first unclaimed screen finger steers the game cursor toward its position
+over the centred 16:9 picture, using the Mac adapter's relative-touch loop.
+A short tap interacts once the cursor arrives; dragging moves it without a
+click. A second unclaimed finger is ignored while that gesture is captured;
+other fingers can still hold movement or action controls. The runtime supplies
+read-only pad-zero cursor feedback with `dcp_platform_input_cursor`; sequence
+zero means no sample. Map/raw touchpad input, pause, cancellation and controller
+layout changes cancel a queued screen interaction. Physical controller touchpad
+points remain native unless a screen pointer gesture is active.
+If presentation crops or uses another viewport, replace that transform or
+supply your own raw pad via `dcp_platform_input_set_touch`. The custom setter
 replaces the same virtual pad as the overlay; use one frontend at a time.
+`build-check.sh` also runs the pointer/cursor probe: convergence at four game
+sensitivities, tap/drag, combined input, Map priority, cancellation/pause/reset,
+nonfinite/boundary rejection and coherent concurrent cursor snapshots.
 The controls are a functional development overlay and still need visual/device UX
 tuning, accessibility actions, and controller/touch preference UI.
 
