@@ -1,5 +1,60 @@
 # Device port progress
 
+## 2026-11-15 — Fresh tutorial clear and earned-save reloads
+
+A fresh Fighter, Darrel, completes the introductory tutorial in the native
+arm64 AOT harness: movement, attacks, guard, Power Smash, crossbow encounter,
+item lesson, apple consumption, locked door, chest and tutorial Orc boss. He
+then reaches visible Town with the Adventurers Guild objective. The bounded
+1,800-second run renders 106,758 frames and ends with empty host/guest errors,
+acknowledged unload and no shutdown-grace expiry. This is a tutorial clear,
+not a successful Ancient Temple Ruins adventure.
+
+Short right-stick pulses aim the finger cursor and ordinary L1 selects the
+door/chest. Earlier long holds drove the cursor to the screen boundary. A
+private read-only observer confirms the original input conversion and cursor
+coordinates; it does not write scene, cursor, health or save fields. The
+successful run uses ordinary pad input with live timing adjustments. Its
+collected input history is not yet a repeatable unattended acceptance route.
+The touch contact experiment did not establish absolute screen pointing.
+Touch-only door/chest interaction and potion consumption remain open.
+
+The game writes Darrel's new progress with SAVE0.DAT SHA-256
+`5c03436b3c67ae0ce543ac4c206412fe8c881795c93e1a2647c038e731a8a81d`.
+Two separate native cold processes reopen the same working save without
+reseeding, show Darrel in Town and retain that exact hash. A copy is then
+placed once in a new isolated iPhone Simulator diagnostic save session.
+Two cold launches of packaged build `34e4a0b` resume that same session without
+reseeding, reach checked and visible Town, render 1,890 / 1,842 frames and
+retain the exact newly earned save hash. Original Simulator player saves and
+seeds are untouched. The Simulator reload checks use paced null audio.
+
+Real platform audio on this dedicated Simulator aborts before the first frame
+with an AURemoteIO Cleanup RPC timeout while obtaining AVAudioEngine's main
+mixer. A separate minimal UIKit/AVAudioEngine app reproduces the same abort
+without the game runtime. The Simulator audio-startup failure remains under
+investigation; null-audio save checks do not qualify audio recovery or output.
+After standalone audio configuration tests, three unchanged baseline probe
+launches complete. Two cold game launches then reach Town with real platform
+audio callbacks and retain the exact Darrel save hash. They render 1,809 /
+2,020 frames; the first counts 1,280 underrun frames and the second zero, with
+no clipping. Simulator output is muted after consuming the real ring. The
+intermittent earlier timeout is retained; its cause is not established and
+this does not qualify audible output or interruption recovery.
+
+Continuing Darrel's normal quest reaches the guild, repairs the sword at
+Morgan's shop and accepts the entry exam. Opening the equipment menu then
+stops at missing trace `204cf906`, after 34,354 frames, with all workers
+unloaded and the prior tutorial save intact. The original function at ELF
+`4cf860` guards the six-character index with unsigned `<= 5`, then loads
+signed relative targets from table `757ee4`. All six destination instructions
+are verified, and bootstrap now requires their translation. The new coverage
+still needs a rebuilt-runtime replay.
+
+Both physical devices remain released for the other chat. Full fresh-character
+play on each device, an adventure clear, touch/controller acceptance, audio
+interruptions/routes, sustained thermal play and cloud handoff remain open.
+
 ## 2026-11-14 — Manual save copies through Files
 
 The stopped-game launcher now offers Transfer Save with Files. Export creates
