@@ -249,7 +249,7 @@ void validate_manifest(const fs::path &root,
           "Unsupported or incomplete file: " + item.path);
     if (!item.sha256.empty())
       check(digest(file.value) == item.sha256,
-            "Unsupported executable hash: " + item.path);
+            "File checksum mismatch: " + item.path);
     if (item.cpk)
       validate_cpk(file.value);
   }
