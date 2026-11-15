@@ -10,8 +10,8 @@ XCTest automation prompt. App output remains explicitly muted. A later Home
 Screen capture and live report show guest workers paused and the real audio
 stream stopped/paused with empty runtime/frontend/save/platform errors. That
 image is excluded from visual overlay proof; overlay behavior is player-confirmed.
-The foreground save/Stop Game check is pending, and the phone session is left
-alone for it. The physical iPad remains excluded from this work window.
+The player declines the additional Report adventures / Stop Game check, so
+that check is skipped and is not counted as physical save qualification. The physical iPad remains excluded from this work window.
 
 An earlier `851c06b` sustained Town attempt exposes a real acceptance failure.
 The corrected route reaches Town and walks there for 416 observed seconds
