@@ -41,7 +41,11 @@ buttons. Remaining controllers compact into available slots. No special Bluetoot
 permission or custom pairing flow is used.
 
 Touch controls provide two sticks, D-pad, four face buttons, shoulders, triggers,
-stick clicks, Menu and Pad. Multiple captured touches combine movement/actions.
+stick clicks, Menu and Pad. Connecting a supported extended gamepad hides those
+controls and releases held touches. The screen still accepts game touchpad
+input, including on controllers without a touchpad. The separate Pause button
+remains available. Disconnecting the last supported gamepad restores the
+on-screen controls immediately. Multiple captured touches combine movement/actions.
 Unclaimed touches become up to two game touchpad points over a centred 16:9 game
 rectangle. If presentation crops or uses another viewport, replace that transform
 or supply your own pad via `dcp_platform_input_set_touch`. The custom setter

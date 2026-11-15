@@ -157,6 +157,7 @@ void updateActive();
 // A single overlay keeps per-touch captures so movement, attacks and menus
 // combine.
 @interface DcpTouchOverlay : UIView
+@property(nonatomic) BOOL touchpadOnly;
 - (void)clear;
 @end
 struct TouchCapture {
@@ -229,8 +230,18 @@ struct TouchCapture {
     return CGPointMake(right - 1.4 * u, bottom + 1.2 * u);
   }
 }
+- (void)setTouchpadOnly:(BOOL)touchpadOnly {
+  if (_touchpadOnly == touchpadOnly)
+    return;
+  [self clear];
+  _touchpadOnly = touchpadOnly;
+  self.accessibilityLabel = touchpadOnly ? @"Game touchpad" : @"Game touch controls";
+  [self setNeedsDisplay];
+}
 - (void)drawRect:(CGRect)rect {
   (void)rect;
+  if (_touchpadOnly)
+    return;
   NSArray<NSString *> *labels = @[
     @"MOVE", @"LOOK", @"×", @"○", @"△", @"□", @"L1", @"R1", @"MENU", @"PAD",
     @"D-PAD", @"L2", @"R2", @"L3", @"R3"
@@ -328,6 +339,10 @@ struct TouchCapture {
     return;
   for (UITouch *touch in touches) {
     CGPoint p = [touch locationInView:self];
+    if (_touchpadOnly) {
+      _captures.push_back({touch, -1, uint8_t(_nextID++ & 127)});
+      continue;
+    }
     NSInteger selected = -1;
     CGFloat nearest = CGFLOAT_MAX;
     for (NSInteger c = 0; c < 15; ++c) {
@@ -460,6 +475,7 @@ void refreshControllers() {
         };
     publishController(controller);
   }
+  overlay.touchpadOnly = controllers.count > 0;
 }
 void updateActive() {
   bool next = initialized && !manualPause && !interrupted &&
@@ -642,6 +658,7 @@ extern "C" void dcp_platform_attach_touch_overlay(void *view) {
     UIView *parent = (__bridge UIView *)view;
     DcpTouchOverlay *next =
         [[DcpTouchOverlay alloc] initWithFrame:parent.bounds];
+    next.touchpadOnly = controllers.count > 0;
     [parent addSubview:next];
     overlay = next;
   }
