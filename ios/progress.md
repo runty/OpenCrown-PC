@@ -49,7 +49,40 @@ unloaded and the prior tutorial save intact. The original function at ELF
 `4cf860` guards the six-character index with unsigned `<= 5`, then loads
 signed relative targets from table `757ee4`. All six destination instructions
 are verified, and bootstrap now requires their translation. The new coverage
-still needs a rebuilt-runtime replay.
+builds as a frozen 50,409-entry core for Mac, iPhoneOS and Simulator. Both SDK
+apps package cleanly from `3276ecb`; device signature and entitlement checks
+pass without increased-memory or extended-VA entitlements. All six symbols
+and the archive hashes verify on each target. Headless checks pass: input
+141 native / 141 ASan-UBSan, configuration 42, vblank timing 1,006, and actual
+runtime rejection/budget checks 32 across eight cases.
+
+Darrel now opens the Equipment screen after repairing his sword in the native
+run. An independently edited Feli save also opens Equipment in the packaged
+iPhone Simulator. That bounded test captures 6,829 frames / 6,896 flips, stops
+with empty runtime/frontend/save errors and retains its exact `9069666…` save.
+A compressed quest replay missed a navigation trigger and is not qualified;
+the native check uses live guidance and the Simulator uses a focused menu route.
+
+Continuing Darrel accepts the entry exam and unlocks the Gate. Merely visiting
+and leaving the Inn did not write these quest changes. The Inn's Report
+Adventures command saves Data 1 explicitly: its displayed gold changes from
+100 to 0 after the sword repair, and the game reports Save completed. The new
+SAVE0.DAT SHA-256 is
+`04855ccd81cf2b90ea19a4ecf4f8495c74df2e353912f2b5e3d776d9ed84a3de`.
+The 1,200-second native run finishes with 70,634 frames, empty host/guest
+errors, acknowledged unload and no grace expiry. Two native cold launches
+then reopen the same working folder without reseeding: each renders 1,923
+frames, passes the Town checkpoint and retains that exact new hash. After one
+copy into a new isolated Simulator save session, two packaged cold launches
+render 1,841 / 1,859 frames, reach visible Town and retain the same hash without
+reseeding between them. Their new narration concerns proving the character's
+mettle, rather than the earlier arrival introduction. Simulator reloads use
+null audio. The icon-bearing SDK apps retain the same qualified source/core.
+
+The game's Game Options 3 screen identifies the default touchpad cursor mode
+as Relative position. Absolute screen pointing remains unqualified; do not
+infer it from right-stick cursor success. Town-map touchpad input also needs
+separate qualification.
 
 Both physical devices remain released for the other chat. Full fresh-character
 play on each device, an adventure clear, touch/controller acceptance, audio
