@@ -1,5 +1,72 @@
 # Device port progress
 
+## 2026-11-15 — Physical controls pass; sustained iPhone pacing remains below target
+
+The player confirms actual iPhone touch movement/menu use, controller movement/
+menu use, touch controls hiding/returning, and disconnect/reconnect with continued
+input. This is interactive `110904c`, with no scripted pad input, resuming only
+the disposable R save. The player also confirms muted system volume and no
+XCTest automation prompt. App output remains explicitly muted. A later Home
+Screen capture and live report show guest workers paused and the real audio
+stream stopped/paused with empty runtime/frontend/save/platform errors. That
+image is excluded from visual overlay proof; overlay behavior is player-confirmed.
+The foreground save/Stop Game check is pending, and the phone session is left
+alone for it. The physical iPad remains excluded from this work window.
+
+An earlier `851c06b` sustained Town attempt exposes a real acceptance failure.
+The corrected route reaches Town and walks there for 416 observed seconds
+before an intentional early stop. Its final 61-second window averages
+**37.62 fps** in serious thermal state, with one **256-frame audio underrun**
+and zero clipping; output is muted throughout. There is no 30-minute pass.
+The collector is interrupted deliberately and restores the input file/launcher;
+this is not a clean-unload qualification. Its first attempt stays at the Inn
+and is excluded. The corrected route remains in Town, with empty live frontend/
+save/platform errors. Private proof is
+`phone-input-peek/town-soak-confirm-851c06b/intentional-stop.json`.
+
+Twelve interleaved native Town runs compare 64/128/256/512 KiB memory lock
+regions, retaining the original 64 locks and identical frozen 50,464-entry
+corpus/current mobile renderer. Every run preserves exact R bytes and completes
+without runtime/render error. The 64 KiB variant uses 29.09 versus 33.24 seconds
+of median checkpoint CPU time (12.48% lower) while rendered pacing stays around
+59 fps. This is native proxy evidence, with considerable variation, not a
+phone speedup. An initial run against an older renderer cache is excluded.
+A separate native combat macro ends in Inn options; it provides no accepted
+combat comparison and preserves the prior save exactly.
+
+Experimental branch `codex/ios-lock-band-candidate` / `110904c` changes only
+that region size and adds a low-power-mode diagnostic. Both SDK packages build,
+with icons, complete unchanged translation provenance and valid physical signing
+without extra memory entitlements. The memory fixture passes 267,095 checks
+natively, under ASan/UBSan and under TSan. On the phone, consecutive same-save/
+same-input walks measure **50.74 fps** for `851c06b` in fair thermal state and
+**38.99 fps** for `110904c` in serious thermal state. That is not a controlled
+temperature comparison. After two nominal readings, the experimental app repeats
+at **57.59 fps**, ending fair; low power mode is false. All three runs preserve
+R's exact hash and have empty runtime/frontend/save/platform errors, zero audio
+underruns/clipping and muted real callbacks. The experiment remains unaccepted;
+the stable pipeline pin stays `851c06b`. The phone temporarily carries `110904c`
+for the player controls/save check.
+
+A separate host-only prototype expands the memory-lock table while preserving
+ascending acquisition, checked access and full original LOCK exclusion. Its
+267,095-check fixture and mixed scalar/bulk stress pass natively and under both
+sanitizer configurations. Stress alone does not detect a deliberately omitted
+upper-lock-word regression. A separate functional exclusion test does: zero of
+256 writers finish inside the original LOCK for the correct prototype, versus
+192 premature writes for the broken control. The broken code never enters a
+game archive. Nine native runs compare the legacy table, the generalized table
+at the old size, and 256 locks; the larger table alone shows no convincing gain.
+Six further runs combine 256 locks with 64 KiB regions: median checkpoint CPU
+31.71 → 28.09 seconds (11.39% lower), with similar capped pacing and exact save
+hashes. These separate series do not establish an additional benefit over the
+simpler experiment. No expanded table is installed or promoted.
+
+Private evidence is under `cursor-investigation/{lock-band-review,stripe-count-review,phone-input-peek}/`.
+Hardware fresh-character/adventure creation, audio/output recovery, physical
+Files/remote sync and sustained Town/combat acceptance remain open. All normal
+player saves, live cloud progress and the physical iPad stay untouched.
+
 ## 2026-11-15 — First-use local Files transfer and portable silent testing
 
 Separate private provider/consumer QA apps exercise the unchanged production
