@@ -1,5 +1,30 @@
 # Device port progress
 
+## 2026-11-15 — Touch Town Map and destination travel
+
+Source `d1da89a` changes the development overlay's Pad control to Map. The
+original game requires a touchpad click with its first contact on the left
+half; a bare click opens the character menu. The Mac adapter already supplies
+the matching `(300,471)` contact. Mobile now publishes that left-half contact
+first while Map is held and releases it with the touch. Menu retains the
+ordinary Options input. No guest scene or cursor fields are changed.
+
+Both SDK adapter compile/link checks and core input/audio probes pass; both
+SDK apps package from clean source with the existing frozen 50,464-entry core.
+Device signing verifies without memory entitlements. The dedicated iPhone
+Simulator uses actual XCTest touch events and a separate disposable copy of
+the adventure save; Mac-forwarded gamepads are suppressed only in that private
+UI test. Touch loads Data 1 at LV2 / 248 gold, enters Town, opens Map, selects
+Adventurers Guild with the virtual D-pad and confirms travel into the guild.
+The post-adventure dialogue advances. A second Map opening selects Canaan
+Temple and confirms travel into that facility. The public Pause → Stop Game
+flow returns to the launcher with 18,457 captured frames and empty runtime,
+frontend and save errors. Its isolated save still has exact `728f0ec…` bytes.
+The input test body acknowledges all commands; XCTest teardown is tracked
+separately and is not an official suite-pass claim. Touch-only finger-pointer
+door/chest use and physical map/control qualification remain open. No physical
+device or normal/live-cloud save is touched.
+
 ## 2026-11-15 — MOVBE executes, spoils complete, adventure saved
 
 Clean source `4d90913` runs the complete native Ancient Temple Ruins route,
