@@ -25,10 +25,21 @@ the Mac-forwarded controller and exercise the shipping touch overlay.
 The arm64 combat route also passed the spoils exit and RTC call, reached the
 Town scene checkpoint after GOBLIN and wrote a changed SAVE0.DAT
 (`affc24e12f718663174ec55860521458eb1a1fcf7b766c6146c03755c50a5e36`).
-Its final captured image was still black during transition. This qualifies
-the scene observer and save write. Visual Town arrival, reopening the earned
-save, a successful adventure clear and the same sequence on physical devices
-remain open. Both physical devices are released for another chat.
+Its final captured image was still black during transition. A separate iPad
+Simulator working folder received a copy of that native save. Two cold launches
+retained its exact hash, reopened Felix and reached visible Town. The save was
+produced on the Mac runtime. A successful adventure clear and the complete
+combat-to-save sequence on physical devices remain open.
+
+A separate clone of the armor-edit save also passed Simulator recovery.
+Felix was changed from Burnished Bronze to Divine Gold. Leaving the Inn
+published the real save journal. An external watcher stopped and killed
+only that Simulator game process while the journal existed, before guest
+data changed. Relaunch cleared the journal, kept an interrupted checkpoint
+and restored the exact prior SAVE0.DAT hash. The editor visibly showed
+Burnished Bronze. This qualifies the prewrite interruption boundary.
+Termination after partial replacement and physical interruption remain open.
+Both physical devices are released for another chat.
 
 ## 2026-11-14 — iPhone Town, existing-save reload and Simulator lifecycle
 
