@@ -59,9 +59,9 @@ for notices in "$game_output/ThirdPartyNotices" "$renderer/ThirdPartyNotices"; d
 done
 app_icon_name=""
 if [[ -n ${DCP_APP_ICON:-} ]]; then
-    icon_options=()
+    icon_options=("$DCP_APP_ICON" "$output/Source/Assets.xcassets")
     if [[ ${DCP_APP_ICON_ALLOW_UPSCALE:-0} == 1 ]]; then icon_options+=(--allow-upscale); fi
-    python3 "$source_root/ios/make-app-icon.py" "$DCP_APP_ICON" "$output/Source/Assets.xcassets" "${icon_options[@]}"
+    python3 "$source_root/ios/make-app-icon.py" "${icon_options[@]}"
     app_icon_name=AppIcon
 fi
 revision=$(git -C "$source_root" rev-parse HEAD)
