@@ -45,6 +45,7 @@ PATCHES = [
     "remill-sse41-rounding.patch",
     "remill-confirmed-packed-float.patch",
     "remill-confirmed-packed-integer.patch",
+    "remill-movbe-stores.patch",
 ]
 
 
@@ -596,7 +597,7 @@ def main():
         [SOURCE / "ios/game/test-thread-cancel.sh", root / "thread-cancel-probe"],
     )
     run("ime", [SOURCE / "ios/game/test-ime.sh", root / "ime-probe"])
-    for review in ["rounding", "confirmed-packed"]:
+    for review in ["rounding", "confirmed-packed", "movbe"]:
         run(
             review,
             [

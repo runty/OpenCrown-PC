@@ -64,6 +64,8 @@ unaligned load/store, direct/indirect translated calls, AVX bitwise operations,
 guest FS/TLS on two workers, checked memory boundaries and unresolved targets.
 The memory bridges record errors without unwinding through Remill's nounwind
 intrinsics. These fixtures precede the real-module and broader P1 CPU tests.
+The [MOVBE review](cpu/review/movbe.md) covers the byte-swapping store found
+during real reward processing, including partial registers, flags and boundaries.
 
 
 ## Isolated interactive diagnostics

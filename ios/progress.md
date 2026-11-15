@@ -1,6 +1,6 @@
 # Device port progress
 
-## 2026-11-15 — Ruins status coverage and Harpy Continue dispatch
+## 2026-11-15 — Ruins combat, results and reward coverage
 
 Continuing from the earned guild-progress save, native Darrel passes the first
 encounter, pit vipers, spiders, bats, the waterfall corridor and lizardmen,
@@ -28,7 +28,8 @@ verified against the supported ELF. Source `cc12a9c` requires the complete
 switch. Its frozen 50,425-entry core builds for Mac, iPhoneOS and Simulator;
 all ten archive symbols and library hashes verify. Both icon-bearing SDK
 apps package from clean source; iPhoneOS signing verifies without increased
-memory or extended-VA entitlements. A second native run visibly defeats the Harpy. Read-only probes record
+memory or extended-VA entitlements. A second native run visibly defeats the
+Harpy. Read-only probes record
 `20519de5` at vblank 39,918 and `2051a17d` at 40,099, so the first repaired
 state target is now executed. Victory also reaches this owner: the evidence
 does not identify it as an exclusively Continue-specific routine. The run
@@ -53,8 +54,27 @@ loop switches. Preloaded RBX/R13 table bases `645080` / `645060` / `645040`
 are retained through their loops and ordinary preserved-register calls.
 LEA-to-EAX subtracts 12 and zero extends before unsigned bounds 8 / 7 / 7.
 All nineteen distinct target instructions are verified and required by
-bootstrap. The frozen 50,464-entry core builds on all three targets; actual reward-target
-execution remains pending.
+bootstrap. The frozen 50,464-entry core builds on all three targets. Its next
+native run executes `2001d410` and six other reward targets at vblank 43,072.
+Normal paid continuation also resurrects the character; Adventure Results
+records the 50-gold charge, leaving 1,060 gold. The run then stops at an
+unsupported instruction at `20491ec3`, before the next reward screen. It
+renders 42,318 frames and unloads cleanly, preserving the original guild-save
+hash. This closes the observed reward-target coverage gap, while reward-flow
+completion, return and a new adventure save remain open.
+
+The original instruction is `movbe qword ptr [rcx],rdx`, inside ELF
+`491c20..492080`. Remill already implements byte swaps for the load forms but
+omits the store registrations. A patch adds all three memory-store widths
+without changing the shared semantics or arithmetic flags. The isolated
+[review](cpu/review/movbe.md) tests 24 synthetic routines on 64 vectors against
+Rosetta and independent expected bytes/registers/flags. Native arm64 and
+ASan/UBSan each pass 21,552 checks, including 48 checked-memory boundary checks;
+the shared backend remains unchanged during that proof. The patch is now in
+the ordered bootstrap and its review is an acceptance stage. All 50,464 translations are now relifted on the updated backend. The frozen
+Mac, iPhoneOS and Simulator cores report complete current and generation
+provenance, and retain native CRILAYLA/libc fast paths. Actual corrected
+reward-path execution and new SDK packaging remain pending.
 
 The guided run pauses through the public lifecycle API between input batches.
 It modifies no guest scene, health, cursor or save fields. Its 2,926-second
