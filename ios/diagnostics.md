@@ -164,3 +164,12 @@ For a return trip, `DCP_CHECKPOINT_AFTER=GOBLIN` together with
 Town. The first outbound Town visit keeps using the boot input script.
 The completed report records the prerequisite and whether it was observed.
 Validate the saved slot separately after a cold process restart.
+
+To reproduce the first encounter from the retained Felix slot, stage
+`ios/host/routes/felix-to-ruins.txt` as the diagnostic boot script. It
+loads the slot, walks around the obstruction by the castle, enters the
+magic gate and selects Ancient Temple Ruins. Select the GOBLIN checkpoint,
+use `ios/host/routes/ruins-first-encounter.txt` as the scene-relative pad
+script and measure 600 settle frames. Boot and fight use the same guest
+pad service as the original Town route. Inspect score, enemy/damage pixels,
+Ruins scenery, audio counters and completed replay intervals.

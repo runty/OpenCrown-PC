@@ -1,5 +1,28 @@
 # Device port progress
 
+## 2026-11-14 — First Ancient Temple Ruins fight on both physical devices
+
+The same Felix slot and scripted pad route reached TITLE, INN, Town, the
+magic gate and the first goblin encounter on the physical iPad mini (A20 Pro)
+and iPhone 17 Pro Max. A gate capture on the arm64 host shows the stage
+selection by name. Device images show the Ruins, sword attacks, the caged or
+freed fairy and score gains. The phone showed 365 points and the iPad 245.
+The iPad recorded 215 active enemy-component updates and a visible damage
+number. These short windows cover the first room.
+
+| Device and signed build | Replay intervals | Rendered fps | Median | p95 | p95 host replay work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| iPad mini, `bb1d95a` | 600 | 59.40 | 16.67 ms | 16.90 ms | 3.14 ms |
+| iPhone 17 Pro Max, `6b0302b` | 599 | 54.28 | 16.70 ms | 33.13 ms | 7.60 ms |
+
+Neither device skipped a guest flip between its first and last measured
+replays. Real 48 kHz platform output ran on both, with 256-frame callbacks
+and zero counted underruns or clipping across the complete runs. A separate
+3,000-frame Town walk on iPad with real audio measured 59.42 fps and 16.83 ms
+p95. The iPhone Simulator also reached the encounter. The external arm64 route
+continued through Roland, snakes, spiders, adventurer bones and lizardmen.
+The tested input routes and launch settings are in [diagnostics](diagnostics.md).
+
 ## 2026-11-14 — Town frame budget on iPad mini
 
 Signed build `c8b7c9f` completed two consecutive 3,000-frame walks on the
