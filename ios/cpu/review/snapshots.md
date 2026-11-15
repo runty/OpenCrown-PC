@@ -59,6 +59,14 @@ The capture hook and texture stats interfaces changed: rebuild native capture,
 backend/replay, frontend and all AOT fixture callers together. Do not mix old
 archives or objects with these headers.
 
+The interfaces now enforce that rebuild at link time: initialization uses
+`AotCaptureHooksV2` / `initialize_aot_capture_v2`, and both statistics accessors
+use `texture_stats_v2`. An old archive cannot satisfy these symbols and silently
+return a smaller statistics record. `ios/render/test-cache-abi.py` links/runs
+new callers with the current cache and requires capture/backend/replay callers
+to fail against both pre-version and pre-guard caches. It never installs or
+runs an incompatible app on a device.
+
 Reports separate `textures.version_hits` / `version_matched_bytes` from actual
 content-comparison attempts. The guest's `texture_versions` reports the enabled
 and verification modes, version-hit count, verified checks/bytes and proof

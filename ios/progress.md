@@ -1,5 +1,47 @@
 # Device port progress
 
+## 2026-11-15 — Mixed capture/statistics cache ABIs are rejected before launch
+
+Implementation `bb540ac` gives the changed by-value hook type/initializer and
+statistics getters explicit V2 symbols. Previously an older renderer could
+satisfy the getter name while returning the smaller old record. Current
+capture/backend/replay probes link and execute with the rebuilt cache, and all
+three fail against both a pre-version cache and the pre-guard version cache
+for the expected missing V2 symbol. Old archives remain unchanged. Every AOT
+caller is updated and rebuilt; no snapshot or game logic changes here.
+
+All six rebuilt renderer fixtures retain their exact image hashes and checks.
+Seven native support objects and compatible renderer archives are rebuilt for
+Mac/iPhoneOS/Simulator with the unchanged complete 50,464-entry corpus and
+explicit source/command/override provenance. Both clean SDK packages build with
+icons; physical signature verifies without extra memory entitlements, while
+Simulator signing is disabled.
+
+The real native Town walk consumes 2,825 frames, completes 1,200 settled
+intervals and audits 44,026 hits / 187,377,842,176 logical bytes with zero proof
+failures, clean unload/errors and exact `df59b068…` R bytes. Packaged iPhone
+Simulator independently captures 2,125 frames, completes 600 settled vblanks
+and audits 24,862 hits / 115,733,399,552 bytes with zero failures and empty
+runtime/frontend/save/platform errors. Both final images are inspected as
+recognizable Town. Existing Simulator state is preserved except global reports,
+input is restored and the silent launcher reopened. These are correctness
+audits, not a repeat of the earlier unverified nine-run performance comparison.
+
+The connected iPhone is locked (`passcodeRequired=true`), so an unlock request
+is pending. Its old paused `110904c` session is left unchanged; no app install
+or launch occurs. All 64 non-asset files are backed up read-only (201 MiB) before
+any future update. Next, once unlocked, install this same guarded package and
+compare versions off/on silently with a new disposable R UUID, recorded thermal
+state and real audio accounting. The earlier native 9.10% CPU result remains
+proxy evidence; no phone speedup or sustained pass is claimed. The stable pin
+stays `851c06b`, the physical iPad remains excluded, and the player-skipped
+manual save check stays deferred.
+
+Private proof: `mobile-adventure-live/texture-cache-abi-candidate/`, including
+`abi-tests{,-preversions}/verification.json`, renderer fixtures,
+`core-verification.json`, `package-verification.json`, native/Simulator Town
+reports and the read-only phone backup/lock-state records.
+
 ## 2026-11-15 — Versioned texture snapshots reduce native Town CPU cost
 
 Implementation `4741c15` adds immutable owned snapshots with versions bound to

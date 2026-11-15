@@ -43,7 +43,7 @@ Initialize capture on the fully loaded, hash-verified eboot image before startin
 workers:
 
 ```cpp
-dcp::render::initialize_aot_capture(eboot, image_size,
+dcp::render::initialize_aot_capture_v2(eboot, image_size,
     {context, checked_memory, copy_guest_memory});
 ```
 
@@ -108,7 +108,7 @@ visible at the next frame's lookup.
 ### Texture diagnostics
 
 Live/final iOS reports and the native runner's final report expose a `textures`
-object from `Replay::texture_stats()`. Counters belong to one renderer session;
+object from `Replay::texture_stats_v2()`. Counters belong to one renderer session;
 the frontend retains the last values before teardown. They are updated only on
 the render thread. The classic non-AOT backend returns unavailable/zero values.
 
