@@ -1,5 +1,76 @@
 # Device port progress
 
+## 2026-11-15 — Guarded cache reaches the iPhone and the Ruins
+
+The player unlocks the only authorized physical iPhone. Clean `bb540ac`
+installs and all 64 pre-existing non-asset files remain byte-identical before
+first launch. Normal roots, the skipped interactive save session and live
+cloud progress are retained. Tests use a new disposable R UUID, restore the
+original input after each run and reopen the normal launcher silently.
+
+Four interleaved 1,200-settled-interval Town walks use this same signed package,
+frozen corpus, R save and committed input route: off/on/on/off. Every sampled
+thermal state is nominal and Low Power Mode is off. Median results:
+
+| Metric | Versions off | Versions on |
+| --- | ---: | ---: |
+| Checkpoint CPU | 45.637113 s | 28.686214 s |
+| Rendered fps | 54.4643 | 59.3998 |
+| Frame p95 | 33.3087 ms | 16.8196 ms |
+| Replay work p50 | 4.49327 ms | 0.396583 ms |
+
+That is 37.14% less checkpoint CPU and 9.06% higher rendered fps in these short
+matched walks. The two enabled runs are 59.35/59.45 fps, versus 55.33/53.60
+off. All retain exact `df59b068…` bytes and report empty guest/frontend/save/
+platform errors, zero audio underruns/clipping and real muted 48 kHz/256-frame
+callbacks. This is a device result, distinct from the earlier native 9.10%
+proxy; neither series establishes sustained 60 or heavy-action headroom.
+
+A separate physical full-content audit covers 25,286 hits / 114,880,665,600
+logical bytes with zero proof failures, exact R bytes and the same clean audio
+accounting. Auditing does the extra full comparisons and is excluded from the
+timing comparison. A longer Town run completes 2,015.13 observed Town seconds /
+1,933.08 walking seconds and 110,697 frames before clean scheduled shutdown.
+It fails sustained performance: rolling approximately minute-long windows have
+median 55.14 fps, minimum 43.22 and final 52.99; final p95 is 33.34 ms in serious
+thermal state. One observed burst adds 12,800 underrun frames (266.7 ms) at
+1,122.35 Town seconds; clipping remains zero. This is muted real audio
+accounting, not an audible-output check. Sampled peak footprint is
+2,362,724,184 bytes (heartbeat samples, not an OS high-water mark). Guest/
+frontend/save/platform errors remain empty, exact R bytes survive, input is
+restored and the silent launcher is reopened. The retained `result.json`
+explicitly records `performance_pass=false`; the original test correctly rejects
+the underruns. Neither sustained 60 nor clean audio passes. Stable pin/default
+remain `851c06b`/versions off pending qualification.
+
+Native `bb540ac` also reaches the Ruins first goblin encounter from the
+qualified Darrel adventure save: 7,272 consumed frames, 720 settled intervals,
+143,773 audited hits / 553,213,425,664 logical bytes, zero mismatches, 145
+uploads, four budget evictions, clean unload/errors and exact `728f0ec…` bytes.
+The final image shows score 430 and GO after that first encounter. This is not
+a complete adventure-clear pass on the new cache.
+
+The first packaged Simulator route stays in Inn Options and is excluded from
+combat acceptance. An independent INN checkpoint shows Leave tavern selected;
+the route's last confirmation was too early. Late Cross pulses at 1,680/1,860/
+2,040/2,220 allow that menu to become ready before Town movement. The corrected
+route captures 7,027 frames, reaches GOBLIN, completes 720 settled intervals,
+audits 143,347 hits / 545,942,306,816 bytes with zero failures and has 145
+uploads/seven budget evictions. Exact Darrel bytes survive, errors are empty,
+and existing Simulator state is preserved except global reports, input restored
+and silent launcher reopened. The inspected final image shows the live Ruins
+encounter with an enemy still present; no encounter-clear claim there. Simulator
+checkpoint audio uses the paced null sink, not physical audio qualification.
+
+The committed adventure-save route records the extra confirmations. The fresh
+R save is separately observed in the first-town Guild introduction, so its
+attempt is intentionally stopped and excluded from adventure acceptance. The
+physical iPad remains excluded and the manual save check remains skipped.
+Evidence: `mobile-adventure-live/texture-cache-abi-candidate/` under
+`phone-comparison/`, `phone-install-preservation.json`,
+`ruins-adventure-save-audit/`, `simulator-inn-route/`,
+`simulator-ruins-confirmed/` and the retained unsuccessful-route observations.
+
 ## 2026-11-15 — Mixed capture/statistics cache ABIs are rejected before launch
 
 Implementation `bb540ac` gives the changed by-value hook type/initializer and

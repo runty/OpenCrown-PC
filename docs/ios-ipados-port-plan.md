@@ -89,10 +89,36 @@ proxy/audit results do not close the physical P6 gate. See the
 [snapshot protocol](../ios/cpu/review/snapshots.md) and progress ledger for
 writer coverage, conservative fallback, package provenance and exact evidence.
 
+`bb540ac` also makes mixed capture/statistics cache ABIs fail at link time.
+Current capture/backend/replay callers link and execute with rebuilt archives;
+all three reject both pre-version and pre-guard caches. Both SDK packages and
+native/packaged Simulator Town audits pass with these guards. After the player
+unlocks the phone, the guarded package installs while preserving all 64
+existing non-asset files byte-for-byte. Four interleaved same-package R/Town
+walks, all nominal with Low Power Mode off, measure median 54.46 fps off versus
+59.40 on and 37.14% less checkpoint CPU. Real muted 256-frame audio callbacks
+report zero underruns/clipping/errors. An independent phone full-content audit
+checks 25,286 hits / 114.88 GB of logical spans with zero mismatches. These are
+short-run results: the subsequent 33.59-minute Town run (32.22 walking) fails
+sustained acceptance. Rolling minute windows have median 55.14 fps, minimum
+43.22 and final 52.99 in serious thermal state; one 12,800-frame audio underrun
+burst occurs at 18.71 Town minutes. Shutdown/errors/save preservation are clean,
+but sustained 60 and clean audio remain open. The earlier
+installed `110904c` experiment changes lock geometry and is not the baseline.
+
+The same guarded cache now passes native and packaged Simulator Town → world
+map → Ruins first-encounter audits, with zero proof failures across new uploads
+and cache evictions. The [adventure-save route](../ios/host/routes/ruins-from-adventure-save.txt)
+adds late Cross confirmations for the observed Inn menu; the earlier route
+could begin movement before Leave tavern became ready and later open Options.
+This route requires the qualified adventure save, not the fresh R save whose
+Guild introduction is still pending. Simulator success does not qualify device
+combat, a complete adventure or real platform-audio recovery.
+
 Continue without user input in this order:
 
 1. The [fresh touch-only route](../ios/touch-playthrough.md) now passes in packaged iPhone Simulator: edited name, simultaneous movement/action, potion/food, door/chest, Orc and new Town save. Three cold processes retain its exact hash; two qualify settled visible Town. First-use ordinary local Files folder browsing now passes in a separate-container QA harness; app-container rows and remote provider handoff/conflicts remain open. The player has released the iPhone for testing and explicitly excludes the physical iPad. Use only the iPhone for current device work, with `DCP_MUTE_AUDIO=1`; this keeps real audio callbacks/accounting while zeroing output buffers. Retain native full Ruins/Harpy/reward/save and tablet target/rotation evidence separately. The player confirms iPhone touch/menu and controller/reconnect/overlay behavior; the additional explicit save/foreground check is skipped at the player’s request and remains unqualified. Repeat the full fresh/adventure route, map/potion use and sustained timing on hardware. Keep the iPad unused until the player releases it. Never use normal player saves or live cloud progress for experiments.
-2. Retain the 50,292-entry save-dialog baseline and use the 50,464-entry character-selection/edit/food/equipment/status/results/reward build with a matched save/input route to compare Town changes. The signed build uses the native CRILAYLA decoder for 91 of 94 observed calls. Texture counters at `ee59b0c` show about 66.38 MB of successful unchanged comparisons per consumed native frame across startup plus Town, with no retention misses; the packaged Simulator independently confirms the repeated work. `fe8f18a` publishes native file output through checked memory copies. `e9369f1` adds checked font/IME guest output, exact original-renderer glyph comparisons and functional original-LOCK proof, with real native/Simulator font setup. Town invokes no dynamic glyphs; that path remains fixture evidence. Follow the [writer audit](../ios/render/texture-coherence.md): implement snapshot-bound versions with conservative fallback for opaque native-owned objects and remaining service escapes. Cover exact snapshot/mapping identity, all tracked stores and concurrency before enabling version-only reuse. Preserve full-content fallback, bounds checks, cancellation and original guest LOCK behavior. Treat lock geometry experiments separately; these prerequisites and short device runs do not prove sustained 60 fps.
+2. Retain the 50,292-entry save-dialog baseline and use the 50,464-entry character-selection/edit/food/equipment/status/results/reward build with a matched save/input route to compare Town changes. The signed build uses the native CRILAYLA decoder for 91 of 94 observed calls. Texture counters at `ee59b0c` show about 66.38 MB of successful unchanged comparisons per consumed native frame across startup plus Town, with no retention misses; the packaged Simulator independently confirms the repeated work. `fe8f18a` publishes native file output through checked memory copies. `e9369f1` adds checked font/IME guest output, exact original-renderer glyph comparisons and functional original-LOCK proof, with real native/Simulator font setup. Town invokes no dynamic glyphs; that path remains fixture evidence. Snapshot-bound versions at `4741c15` now implement the [writer audit](../ios/render/texture-coherence.md), with conservative full-content fallback for opaque native-owned objects and escaped/unknown mappings, exact snapshot/mapping identity, all tracked stores and concurrency coverage. ABI guards at `bb540ac` prevent mixed old caches from linking. Next audit scene transitions/combat, then compare the same guarded package off/on on the phone before default enablement or pin promotion. Preserve bounds checks, cancellation and original guest LOCK behavior. Treat lock geometry experiments separately; native proxy gains and short device runs do not prove sustained 60 fps.
 3. The iPad has twice cold-reopened its existing diagnostic working save with Felix visible and no reseeding. The iPad Simulator has also saved and twice cold-reloaded a new armor change. The native tutorial-earned Darrel save reopens twice in packaged iPhone Simulator. The new native adventure save now survives two native and two packaged Simulator visible-Town cold processes with exact hashes. The current iPhone also cold-reopens the new Simulator touch-earned R save twice with exact hashes and recognizable Town. Fresh-character/earned-progress creation on hardware remains open. Never use normal player roots or live cloud progress for these experiments.
 4. Investigate the dedicated Simulator's AVAudioEngine startup RPC timeout, also reproduced in a minimal app without game code. Qualify current real input/audio/lifecycle and performance on the available iPhone. Do not use the physical iPad during this window; retain its earlier results separately until the player releases it. Simulator success does not substitute for either device.
 5. Finish disposable cloud-provider handoff/conflict cases and sustained gameplay measurements before enabling live progress writes or declaring the port complete.
