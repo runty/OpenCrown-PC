@@ -1,5 +1,19 @@
 # Device port progress
 
+## 2026-11-16 — Real Simulator Files-picker local handoff
+
+A uniquely named Simulator QA app exercises the production save-transfer
+controller through the real Files picker: export a synthetic save into that
+app’s own local container, change the synthetic current save, then import
+and verify the exported copy. XCTest passes; separate filesystem checks
+confirm both checkpoint contents, current/exported/source bytes and an
+unrelated marker. The runner refuses an export without selecting its unique
+QA container. Earlier local-root assumptions failed and are retained as
+negative evidence; no cloud or real save was involved. This does not qualify
+iCloud, physical Files UI, interruption, or game-generated saves. The player
+is using the iPad and was not interrupted. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/files-picker-simulator-final-qa4/`.
+
 ## 2026-11-16 — Simulator local save-transfer round trip
 
 The `--scenario transfer` runner builds a uniquely named Simulator QA app

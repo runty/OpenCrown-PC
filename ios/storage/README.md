@@ -188,6 +188,11 @@ controller and local file coordinator using synthetic saves. It verifies import,
 checkpoint validation and restoration into a separate folder, then a rejected
 import that preserves the current save and checkpoint inventory. This does
 not exercise the Files picker, a cloud provider, or game-generated saves.
+`files-qa/run.py` additionally drives the actual Simulator Files picker to
+export and import a synthetic save in a uniquely named QA app’s own local
+container. The test refuses to export unless that container is selected, then
+checks the exported and restored bytes, both checkpoints and a marker. It
+does not qualify iCloud, a physical device, or game-generated save contents.
 
 ## Save write sessions
 
