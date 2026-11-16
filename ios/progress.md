@@ -1,5 +1,34 @@
 # Device port progress
 
+## 2026-11-16 — Prototype masked FPSR-to-MXCSR status mapping
+
+Isolated `codex/ios-mxcsr-mapping` at `cbac3c2` maps five ARM FPSR sticky bits
+to the corresponding x86 MXCSR bits and back for a simulated status load.
+It preserves unrelated FPSR bits and the virtual x86 denormal bit but cannot
+detect a new denormal operand. This helper is not connected to STMXCSR/LDMXCSR,
+HLE or any app; exception traps, control modes and compiler ordering are not
+implemented or qualified.
+
+A 24-case masked scalar matrix uses the actual reviewed lifted operations and
+an x86-64 Rosetta reference. Result and status match in 22; two denormal-input
+cases have the correct value but miss MXCSR bit 1. The strict status result
+remains failed. Pure mapping (256 checks), actual Mac FPSR load/clear (128)
+and two-thread TSan (4,000) pass. Native and ASan/UBSan bit/register tests pass;
+both mobile SDKs compile register tests syntax-only. A separate translated
+invalid-add / native-boundary / guest-callback divide-by-zero sequence stores
+`1f85`, matching Rosetta, with native overflow isolated. This is not actual
+STMXCSR/LDMXCSR, general HLE or game integration.
+
+An unmasked invalid-trap reference cannot be obtained here: Rosetta reads back
+`1f80` after loading `1f00`, forcing the mask on, and the trap probe exits
+without the expected signal. Its nonzero exit is retained; no trap pass or
+physical AMD behavior is inferred. [Fixture and limits](https://github.com/runty/OpenCrown-PC/blob/cbac3c2/ios/cpu/review/mxcsr-mapping/README.md)
+and private evidence `sse-nan-candidate/mxcsr-mapping/qualified/` record the
+inputs and raw failures. Denormal priority, DAZ/FTZ, unmasked traps, compiler
+reordering, packed lanes, actual game integration, performance and physical
+validation remain open. Stable pin, device restrictions, skipped manual save
+and all P4–P6 gates remain unchanged.
+
 ## 2026-11-16 — Exercise experimental fenv boundaries in real runtime
 
 Isolated `codex/ios-fenv-runtime` at `9108301` places the prototype behind
