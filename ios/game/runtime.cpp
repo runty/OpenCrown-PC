@@ -1624,12 +1624,12 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     // follows initialization; mode0 excludes the tutorial Goblin variants.
     // GOBLIN denotes component activity, not stage identity, pixels or a hit.
     if (uint8_t(state.gpr.rsi.qword) == 0xa4 && phase == 0xa4) {
-      if (town)
-    #if DCP_SCALAR_PROFILE
-    dcp::cpu::profile::start_town();
+      if (town) {
+#if DCP_SCALAR_PROFILE
+        dcp::cpu::profile::start_town();
 #endif
-    recordComponent("TOWN", "active_update");
-      else if (mode == 0) {
+        recordComponent("TOWN", "active_update");
+      } else if (mode == 0) {
         ++engine().goblinReadyUpdates;
         recordComponent("GOBLIN", "plain_enemy_active_update");
       }
