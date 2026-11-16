@@ -114,3 +114,53 @@ removed produced a different full object hash, although the `__text` bytes and
 1,382 normalized text-relocation rows matched the audited object. This is not
 full-object identity; both hashes and the distinction are recorded in
 `result.json`.
+
+## Sixteen-element chunk and contention study
+
+`batch-chunk-runtime.cpp` is a further isolated experiment. Instead of holding
+both full-buffer stripes for the entire loop, it locks corresponding source and
+destination chunks, defaulting to 16 elements, and releases at each boundary.
+It retains the signal-cache gate, original fallback and unlock-before-slow-poll
+behavior. This still changes allowed interleavings relative to the original
+per-scalar locking; the size is a research choice, not a production setting.
+
+`contention.cpp` runs a deliberately aggressive synthetic observer alongside
+20,000 256-element worker calls. The observer repeatedly reads the destination
+and takes the global guest atomic lock every 32 reads. In four alternating pairs
+on a busy Mac, median observed reader p99 was approximately 1.0 µs for the
+original versus 333.4 µs for the earlier whole-buffer batch. In a separate
+four-pair run, the original/16-element chunk medians were about 1.0/4.6 µs;
+32- and 64-element chunks had higher observed tails. The worker and observer
+rates/sample counts differ greatly between variants; these are stressed host
+observations, not statistically controlled phone latency, general fairness or
+an audio-underrun prediction. The whole-buffer result is a negative reason not
+to promote that version, and the shorter version still needs contention and
+interleaving qualification.
+
+The 16-element variant matches the selected 32,778-case AMD matrix and 19
+full-State/memory cases from the previous audit. It also passes 18 cases at
+chunk/256 KiB stripe boundaries with disjoint and overlapping buffers, and ten
+reentrant signal-change cases at either side of chunk boundaries. Relevant
+ASan/UBSan and TSan fixtures pass; the original translated object remains
+uninstrumented. iPhoneOS and Simulator SDK syntax checks pass. An uncontended
+registered-memory Mac microbenchmark measured median original/chunk calls of
+856.4/579.5 ns for 96 elements and 2,271.7/1,525.0 ns for 256 elements across
+six alternating pairs. This is not an overall-game or device speedup.
+
+A private Mac Town audit used the chunk fast path 20,784 times, passed 24,469
+full-content texture checks and retained the disposable save. A separate muted
+Simulator QA build reached the first Ruins/GOBLIN encounter in 7,095 frames,
+with 82,312 fast calls, no fallback, 141,516 verified texture checks, zero proof
+failures and the unchanged Darrel save. Its original Simulator app, tracked
+files and diagnostic input were restored. Archive member hashes show only
+`memory.o` differs from the prior private batch archives. No physical device or
+skipped manual save check was used.
+
+Run `run-chunk-host.sh` and `run-chunk-sanitizers.sh` with the same arguments as
+the prior batch drivers. `archive-diff.py` compares BSD ar member contents;
+`simulator-chunk16-ruins.py` is the machine-specific QA driver and must be
+inspected before reuse. Evidence is under the sibling `scale-contention-study`,
+`scale-chunk-game`, `scale-chunk-simulator` and `simulator-chunk16-ruins`
+directories; the summary is `scale-contention-study/result.json`. Full game
+performance, long-run contention, FP/status, observer coverage, all races and
+physical-device behavior remain open. This is not enabled in a shipping app.
