@@ -1,4 +1,8 @@
 #include "runtime.h"
+#include "scalar-profile.h"
+#if DCP_SCALAR_PROFILE
+#include "scalar-profile.inc"
+#endif
 #include <cfenv>
 #include <cstring>
 #include <limits>
@@ -18,9 +22,17 @@ struct RegionCache {
 struct GuestScalarThread {
   RegionCache cache{};
   unsigned exclusiveDepth = 0;
+#if DCP_SCALAR_PROFILE
+  dcp::cpu::profile::Thread *profile = nullptr;
+#endif
 };
 static thread_local GuestScalarThread scalarThread{};
-void bindScalarThread(Memory &memory) { memory.scalarThread = &scalarThread; }
+void bindScalarThread(Memory &memory) {
+  memory.scalarThread = &scalarThread;
+#if DCP_SCALAR_PROFILE
+  scalarThread.profile = dcp::cpu::profile::thread();
+#endif
+}
 namespace {
 constexpr size_t stripeCount = 64;
 constexpr uintptr_t pageSize = 4096; // validation granularity
@@ -514,7 +526,17 @@ template <typename T, bool lifted = false>
 static T loadScalar(Memory &memory, uint64_t address) {
   auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
   const auto *pointer = scalarPointer<T>(memory, address, thread);
+#if DCP_SCALAR_PROFILE
+  const auto native = reinterpret_cast<uintptr_t>(pointer);
+  const auto stripe = sizeof(T) <= stripeBytes - native % stripeBytes
+      ? stripeForBand(native / stripeBytes) : 64;
+  auto sample = dcp::cpu::profile::scalar(thread.profile, lifted, false,
+      sizeof(T), pointer, stripe, thread.exclusiveDepth != 0);
+#endif
   AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
+#if DCP_SCALAR_PROFILE
+  sample.acquired();
+#endif
   T value;
   std::memcpy(&value, pointer, sizeof(value));
   return value;
@@ -523,7 +545,17 @@ template <typename T, bool lifted = false>
 static void storeScalar(Memory &memory, uint64_t address, T value) {
   auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
   auto *pointer = scalarPointer<T>(memory, address, thread);
+#if DCP_SCALAR_PROFILE
+  const auto native = reinterpret_cast<uintptr_t>(pointer);
+  const auto stripe = sizeof(T) <= stripeBytes - native % stripeBytes
+      ? stripeForBand(native / stripeBytes) : 64;
+  auto sample = dcp::cpu::profile::scalar(thread.profile, lifted, true,
+      sizeof(T), pointer, stripe, thread.exclusiveDepth != 0);
+#endif
   AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
+#if DCP_SCALAR_PROFILE
+  sample.acquired();
+#endif
   changed(pointer, sizeof(T));
   std::memcpy(pointer, &value, sizeof(value));
 }

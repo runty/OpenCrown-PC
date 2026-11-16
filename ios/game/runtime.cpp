@@ -27,6 +27,7 @@
 #include <cfenv>
 #include <chrono>
 #include <condition_variable>
+#include "../cpu/scalar-profile.h"
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
@@ -732,6 +733,9 @@ Memory *service(State &state, uint64_t pc, Memory *memory) {
 uint64_t invoke(uint64_t pc, Memory &memory, uint64_t a = 0, uint64_t b = 0,
                 uint64_t c = 0) {
   State state{};
+#if DCP_SCALAR_PROFILE
+  dcp::cpu::profile::StateScope profileState(&state.gpr.rip.qword);
+#endif
   const uint32_t rounding = __remill_fpu_get_rounding();
   state.x87.fxsave.cwd.flat = uint16_t(0x037f | (rounding << 10));
   state.x87.fxsave.mxcsr.flat = 0x1f80 | (rounding << 13);
@@ -950,6 +954,9 @@ extern "C" const char *dcp_cpu_report() {
   engine().enteredEboot = false;
   tlsBlocks[0] = tlsBlocks[1] = errorSlot = engine().heapTrace = mainThread = 0;
   Memory &memory = engine().primary;
+#if DCP_SCALAR_PROFILE
+  dcp::cpu::profile::reset();
+#endif
   configureGuestSnapshots(
       std::getenv("DCP_TEXTURE_VERSIONS") &&
           std::string_view(std::getenv("DCP_TEXTURE_VERSIONS")) == "1",
@@ -1422,6 +1429,21 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"fill_calls\":" << bulk.fill_calls
       << ",\"bytes\":" << bulk.bytes << "}";
 #endif
+#if DCP_SCALAR_PROFILE
+  out << ",\"scalar_profile\":" << dcp::cpu::profile::report(joined);
+  if (joined) {
+    out << ",\"scalar_profile_modules\":[";
+    bool firstModule = true;
+    for (const auto &module : engine().modules) {
+      if (!firstModule) out << ',';
+      firstModule = false;
+      out << "{\"canonical\":" << module.canonical
+          << ",\"actual\":" << reinterpret_cast<uint64_t>(module.data.data())
+          << ",\"size\":" << module.data.size() << '}';
+    }
+    out << ']';
+  }
+#endif
   out << ",\"error\":" << jsonString(error) << ",\"events\":[";
   bool first = true;
   std::lock_guard<std::mutex> eventsLock(engine().eventLock);
@@ -1464,6 +1486,9 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
   if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
   const uint64_t observedPC = canonical(pc);
+#if DCP_SCALAR_PROFILE
+  dcp::cpu::profile::trace(observedPC);
+#endif
   // Original Cursor_Update (ELF 39ad80) computes the player's pad id before
   // calling 45850 at 39b0f8. At that entry RSI is the pad id, R12 still holds
   // the cursor, and its position has not yet been updated for this frame.
@@ -1600,7 +1625,10 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
     // GOBLIN denotes component activity, not stage identity, pixels or a hit.
     if (uint8_t(state.gpr.rsi.qword) == 0xa4 && phase == 0xa4) {
       if (town)
-        recordComponent("TOWN", "active_update");
+    #if DCP_SCALAR_PROFILE
+    dcp::cpu::profile::start_town();
+#endif
+    recordComponent("TOWN", "active_update");
       else if (mode == 0) {
         ++engine().goblinReadyUpdates;
         recordComponent("GOBLIN", "plain_enemy_active_update");
