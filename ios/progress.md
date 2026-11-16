@@ -1,5 +1,53 @@
 # Device port progress
 
+## 2026-11-15 — Exact renderer-entry filtering does not establish phone headroom
+
+Isolated `b5d4fe5` on `codex/ios-trace-hooks` derives the native installation
+metadata, exact inline AOT entry filter and direct dispatch from one shared
+20-hook list. Addresses, handlers, displaced instruction lengths, branch flags,
+installation order and comments remain identical. Ordinary traces avoid SysV
+argument materialization and observer calls; all original scene/cursor,
+cancellation, budget and LOCK behavior remains. All 15,482,921 checked offsets
+match the original hook set, including high-bit/truncation negatives.
+
+Six fresh renderer fixtures retain exact PNGs; the shared Mac build passes all
+14 CTest suites in 22.29 seconds. A real native Town walk verifies 43,588 hits /
+184,376,729,600 logical bytes with zero mismatches, exact R bytes and clean
+unload/errors. Both SDK apps have compiled icons, paired renderer/core metadata,
+complete backend provenance and verified device signing without additional
+memory entitlements. All 50,472 non-overridden archive members per SDK remain
+byte-identical to the frozen baseline, including all 50,464 translated entries.
+
+Six interleaved native walks show median CPU 32.143833 / 31.016121 seconds
+(reference/filter), 3.51% less for the prototype, with overlapping run ranges.
+The physical iPhone series does not support promotion: four nominal cache-on
+R/Town walks in reference/filter/filter/reference order use 29.651809 /
+33.254249 / 28.177188 / 28.685302 CPU seconds. Median reference/filter is
+29.168556 / 30.715719 seconds (5.30% more for the filter in this small series).
+Rendered fps is 59.3991 / 59.0101 / 59.4488 / 59.3029. All sampled thermal states
+are nominal, Low Power Mode is off, real muted 48 kHz/256-frame audio has zero
+underruns/clipping, errors are empty and R bytes remain exact. Neither series
+establishes a sustained or heavy-action gain. The prototype stays isolated;
+`bb540ac` is restored, stable pin `851c06b` and default-off versions unchanged.
+
+The packaged Simulator deliberately suppresses early walking and observes the
+Ruins/GOBLIN after vblank 8,800: 9,649 captured frames, 217,762 full-verified
+hits / 774,088,222,720 logical bytes, zero mismatches, exact Darrel bytes,
+empty errors and prior-state/input preservation. The inspected final image
+shows the Ruins, score 460 and the first chest. This checkpoint uses null audio
+and is not a device, full-adventure or performance qualification.
+
+Candidate phone installation preserves all 97 existing non-asset files before
+first launch; restoration preserves all 104 then-present files exactly. Tests
+use a new disposable R UUID, restore original input and reopen the normal
+launcher muted. Existing normal/cloud/manual-session progress and the physical
+iPad remain untouched; the manual save check remains explicitly skipped.
+Private proof: `mobile-adventure-live/trace-hooks-candidate/`, including hook
+preservation/equivalence, renderer/core/package provenance, full archive-member
+comparison, native/phone summaries, preservation and inspected images. Next
+investigate measured scalar synchronization or trace bookkeeping costs rather
+than assuming that fewer observer calls provide actual device headroom.
+
 ## 2026-11-15 — Fresh cache-enabled phone profile identifies remaining overhead
 
 An attached Time Profiler capture of the restored `bb540ac` iPhone app records
