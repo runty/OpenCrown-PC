@@ -74,3 +74,25 @@ and their final frames were inspected. These are correctness checks, not
 performance or full-adventure qualification. Neither mobile package was
 installed on a physical device; the iPad player session remains untouched.
 Evidence: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-mobile/`.
+
+## Simulator background and muted-audio audit
+
+A separate QA app uses the exact candidate Simulator CPU archive and the
+existing `ios/platform/review/background-counter-qa.patch` to keep the app
+runnable briefly while independently sampling guest counters. It is not a
+release build. After entering Town, backgrounding stops muted platform audio;
+15 background samples spanning 7.887 seconds report the guest paused, with
+steps, flips and vblanks unchanged after settling. Returning to the same
+session advances frames and resumes muted audio. The run finishes with 2,748
+frames, 41,720 full-content texture checks, no proof failures or reported
+underruns/clipping, unchanged disposable save and protected QA inventory, and
+restored input. The final frame was inspected. The sampler's background task
+changes normal OS suspension behavior: this does not qualify real device
+suspension, audible quality, route changes or performance.
+
+The first private QA package failed to link because `Source` and `source`
+collided on the case-insensitive filesystem; its log is retained. A fresh
+`background-qa2` package separates `patch-source` from `Source`, applies the
+unchanged QA patch, and passes. Provenance and results are under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-mobile/background-run/`.
+No physical device was contacted, and this remains an unpromoted experiment.
