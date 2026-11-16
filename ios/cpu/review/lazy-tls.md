@@ -113,3 +113,20 @@ acknowledged. The harness intentionally stops on SIGINT with exit 1 because its
 measurement. The private helpers are not release code, and the TLS candidate
 remains unpromoted. Evidence:
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-guided/`.
+
+## Extended guided Harpy and results
+
+A second private native run used the same candidate binary and a fresh copy of
+the disposable save. After the recorded route, the QA driver used input-only
+attack and Continue commands, adjusted between steps after inspecting captured
+frames; actual commands and screenshots are preserved. The Harpy was defeated
+and the Stats screen shows score 8,074 and 925 EXP. The run ended on that
+screen; it did not exercise rewards or an adventure save. It rendered 41,908
+frames and verified 998,111 full-content texture checks with zero proof
+failures. Host and guest errors were empty, unload was acknowledged, and both
+the copied and source saves stayed byte-identical. The intentional SIGINT exit
+is 1 because the configured HARPY checkpoint remained unmet while the scene
+identifier stayed GOBLIN; this is not a generic checkpoint pass. Evidence is
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-harpy-extended/`.
+No physical device was contacted. The candidate remains unpromoted: this is
+correctness coverage, not evidence of an iOS performance gain.
