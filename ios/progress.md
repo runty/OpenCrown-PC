@@ -1,5 +1,53 @@
 # Device port progress
 
+## 2026-11-15 — Fresh cache-enabled phone profile identifies remaining overhead
+
+An attached Time Profiler capture of the restored `bb540ac` iPhone app records
+25.968692 seconds and 40,927 target-process samples. The trace explicitly
+identifies the iPhone 17 Pro Max / iOS 27.2.1 (24B156), PID 53564, Time Profiler
+and time-limit completion. The PID is independently listed alive immediately
+before attachment. Eleven surrounding heartbeats show running Town, nominal
+thermal state and muted real 48 kHz/256-frame audio. Versions are enabled,
+verification disabled and original 256 KiB geometry retained. This instrumented
+capture is not an FPS qualification or a timing comparison.
+
+| Inclusive sample group | Weight share |
+| --- | ---: |
+| Lock / wake / wait paths | 44.3448% |
+| Guest scalar memory helpers | 40.1275% |
+| Trace-entry work | 12.8448% |
+| Thread-local lookup | 4.2344% |
+| Snapshot matching | 0.2175% |
+| Full-content comparison | 0.0880% |
+
+These are statistical sample weights, not measured CPU-duration percentages;
+groups overlap and must not be added. Renderer entry observation is 6.6338%
+inclusive / 0.6597% self, within trace-entry work. The profile confirms full
+texture comparisons are no longer a major hot path; it does not establish how
+much valid rendering work can be removed. System-PC names are reused from the
+earlier capture only when binary UUIDs match; current symbols are retained.
+
+Next investigate trace bookkeeping and repeated renderer observer lookup before
+another lock-geometry experiment. `dcp_trace_enter` currently materializes six
+register arguments and calls the 20-entry observer lookup for every game trace;
+an exact hook-entry filter may avoid irrelevant calls. Any prototype must keep
+all real hooks, scene/cursor observers, cancellation, bounds checks and original
+LOCK semantics, and demonstrate a phone benefit before promotion. No such new
+optimization is claimed here.
+
+The first capture attempt pauses before TITLE while unlocked and is excluded;
+its local reader also races an in-place diagnostic-file transfer, then gains a
+retry. A second short diagnostic completes cleanly but Instruments cannot find
+its target; no profile data is claimed. A longer timer-driven Town session
+allows the verified PID attachment above. It stops cleanly with exact R bytes,
+empty runtime/frontend/save/platform errors, zero audio underruns/clipping,
+original input restored and silent normal launcher reopened. PROFILE is an
+intentionally unobserved timer target, not a completed component checkpoint.
+Private proof: `texture-cache-abi-candidate/phone-cache-profile-3/`, including
+record intent/liveness/exit, trace, TOC, samples, attribution and diagnostic
+reports. Earlier excluded attempts are retained separately. The physical iPad
+and skipped manual save test remain untouched; the full port goal stays active.
+
 ## 2026-11-15 — Native lock-band gain does not reproduce on the iPhone
 
 The separate `48bc60b` 64 KiB experiment retains original LOCK behavior and
