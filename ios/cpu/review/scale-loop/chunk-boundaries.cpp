@@ -21,7 +21,7 @@ int main(){
     for(auto fn:{sub_20619220,scale_prototype}){
       std::memset(bytes,0,total);
       for(unsigned i=0;i<40;++i){float f=float(i+1)/8;std::memcpy(reinterpret_cast<void*>(src+i*4),&f,4);}
-      State s{};s.gpr.rsi.qword=src;s.gpr.rdi.qword=dst;s.gpr.rdx.qword=count;s.gpr.rsp.qword=base+3*band;
+      State s{};s.x87.fxsave.mxcsr.flat=0x1f80;s.gpr.rsi.qword=src;s.gpr.rdi.qword=dst;s.gpr.rdx.qword=count;s.gpr.rsp.qword=base+3*band;
       float a=0.5f,b=1.5f;std::memcpy(&s.vec[0],&a,4);std::memcpy(&s.vec[1],&b,4);
       m.fault.clear();m.returns=0;write64(m,s.gpr.rsp.qword,0xfeedface);
       fn(s,0x20619220,&m);

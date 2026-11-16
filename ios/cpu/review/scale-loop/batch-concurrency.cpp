@@ -21,7 +21,7 @@ int main(){
   std::atomic<uint64_t> generation{1};Memory::SignalCache cache{generation};
   cache.lastClear.store(1);worker.signalCache=&cache;worker.stopOnFault=true;
   write64(worker,base+0xff00,0xfeedface);
-  State state{};state.gpr.rdi.qword=base+0x4000;state.gpr.rsi.qword=base+0x1000;
+  State state{};state.x87.fxsave.mxcsr.flat=0x1f80;state.gpr.rdi.qword=base+0x4000;state.gpr.rsi.qword=base+0x1000;
   state.gpr.rdx.qword=256;state.gpr.rsp.qword=base+0xff00;
   float one=1;std::memcpy(&state.vec[0],&one,4);std::memcpy(&state.vec[1],&one,4);
   std::atomic<bool> attempted{false},done{false},failed{false};

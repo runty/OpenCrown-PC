@@ -15,7 +15,7 @@ static bool callback() {
   return false;
 }
 static int child(Lifted fn) {
-  alarm(2);Memory m;State s{};context=&m;
+  alarm(2);Memory m;State s{};s.x87.fxsave.mxcsr.flat=0x1f80;context=&m;
   s.gpr.rdi.qword=Memory::base+0x200;s.gpr.rsi.qword=Memory::base+0x100;
   s.gpr.rdx.qword=1;s.gpr.rsp.qword=Memory::base+0xff00;
   float a=1,b=2;std::memcpy(&s.vec[0],&a,4);std::memcpy(&s.vec[1],&b,4);

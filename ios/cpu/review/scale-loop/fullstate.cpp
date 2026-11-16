@@ -15,7 +15,7 @@ int main(){
   for(unsigned which=0;which<19;++which){
     Outcome out[2];unsigned mode=0;
     for(auto fn:{sub_20619220,scale_prototype}){
-      Memory m;State s{};m.stopOnFault=true;
+      Memory m;State s{};s.x87.fxsave.mxcsr.flat=0x1f80;m.stopOnFault=true;
 #ifdef DCP_BATCH_TEST
       std::atomic<uint64_t> generation{1};Memory::SignalCache cache{generation};
       cache.lastClear.store(1);

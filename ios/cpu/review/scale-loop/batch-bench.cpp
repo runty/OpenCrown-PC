@@ -9,7 +9,7 @@ extern "C" Memory *scale_prototype(State &, uint64_t, Memory *);
 extern "C" void dcp_trace_enter(State &, uint64_t) {}
 Memory *dispatch(State &, uint64_t, Memory *) {throw std::runtime_error("unexpected dispatch");}
 static double trial(Lifted fn, unsigned repeats, unsigned count) {
-  Memory m;State s{};std::vector<uint8_t> backing(65536);
+  Memory m;State s{};s.x87.fxsave.mxcsr.flat=0x1f80;std::vector<uint8_t> backing(65536);
   addRegion(m,backing.data(),backing.size());bindScalarThread(m);
   std::atomic<uint64_t> generation{1};Memory::SignalCache cache{generation};
   cache.lastClear.store(1);m.signalCache=&cache;

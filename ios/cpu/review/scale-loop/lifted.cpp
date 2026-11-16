@@ -11,7 +11,7 @@ Memory *dispatch(State &, uint64_t, Memory *) {
 int main() {
   for(unsigned i=0;i<case_count;++i) {
     SampleCase cse=sample_at(i);
-    Memory m;State s{};
+    Memory m;State s{};s.x87.fxsave.mxcsr.flat=0x1f80 | (cse.rounding<<13);
 #ifdef DCP_BATCH_TEST
     std::atomic<uint64_t> generation{1};Memory::SignalCache cache{generation};
     cache.lastClear.store(1);m.signalCache=&cache;

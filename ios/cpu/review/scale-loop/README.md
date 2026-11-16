@@ -164,3 +164,27 @@ inspected before reuse. Evidence is under the sibling `scale-contention-study`,
 directories; the summary is `scale-contention-study/result.json`. Full game
 performance, long-run contention, FP/status, observer coverage, all races and
 physical-device behavior remain open. This is not enabled in a shipping app.
+
+## Guard and host floating-point status investigation
+
+The experimental chunk path now falls back to the original trace for denormal
+handling modes, unmasked exceptions, reserved MXCSR bits, and unavailable or
+stale signal caches. All four rounding modes and existing sticky bits remain
+eligible. Eleven targeted guard cases, the selected 32,778-case matrix,
+full-state and chunk/reentry tests, and the existing sanitizer and SDK checks
+passed. The original trace object was not instrumented by sanitizers. In a
+disposable Mac Town run, all 20,864 calls took the fast path and 26,362 texture
+checks passed; the save hash was unchanged. This is not a device benchmark.
+
+`fp-status.cpp` is a deliberately failing investigative probe: on this Mac,
+2,680 of 4,096 single-element operand combinations produced different ARM host
+FPSR status bits between the original and the prototype. In the all-zero case,
+the original produced invalid status and the prototype did not. An independent
+run linking the original production memory object reproduced that original
+status. The original object contains a two-lane `fdiv`, which may explain the
+extra host exception, but this has not been isolated or matched against x86
+exception semantics. Host FPSR is not equivalent to guest MXCSR. This result
+does not establish a game-visible bug, but the difference remains unqualified;
+the guard does not fix it and the optimization must not be promoted on these
+results. No physical device or skipped save test was used. Evidence is in
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-guard-study/`.

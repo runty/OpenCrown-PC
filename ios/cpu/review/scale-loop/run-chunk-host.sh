@@ -45,6 +45,8 @@ PY
 "$out/chunk-boundaries" > "$out/chunk-boundaries.txt"
 "$cxx" "${common[@]}" -O2 "$source_dir/chunk-reentry.cpp" "$out/hook.o" "$original" -o "$out/chunk-reentry"
 "$out/chunk-reentry" > "$out/chunk-reentry.txt"
+"$cxx" "${common[@]}" -O2 "$source_dir/guard.cpp" "$out/hook.o" "$original" -o "$out/guard"
+"$out/guard" > "$out/guard.txt"
 "$cxx" "${common[@]}" -O2 -pthread "$source_dir/contention.cpp" "$out/memory.o" "$original" -o "$out/contention"
 "$out/contention" 20000 > "$out/contention.txt"
 "$cxx" "${common[@]}" -O2 "$source_dir/batch-bench.cpp" "$out/memory.o" "$original" -o "$out/bench"

@@ -21,6 +21,8 @@ common=(-target arm64-apple-macos15 -std=c++20 -O1 -g -frounding-math -ffp-contr
 "$out/chunk-boundaries-asan" > "$out/chunk-boundaries-asan.txt"
 "$cxx" "${common[@]}" -fsanitize=address,undefined "$src/chunk-reentry.cpp" "$out/hook-asan.o" "$original" -o "$out/chunk-reentry-asan"
 "$out/chunk-reentry-asan" > "$out/chunk-reentry-asan.txt"
+"$cxx" "${common[@]}" -fsanitize=address,undefined "$src/guard.cpp" "$out/hook-asan.o" "$original" -o "$out/guard-asan"
+"$out/guard-asan" > "$out/guard-asan.txt"
 "$cxx" "${common[@]}" -fsanitize=thread -c "$src/batch-chunk-runtime.cpp" -o "$out/memory-tsan.o"
 "$cxx" "${common[@]}" -fsanitize=thread -pthread "$src/batch-concurrency.cpp" "$out/memory-tsan.o" "$original" -o "$out/concurrency-tsan"
 "$out/concurrency-tsan" > "$out/concurrency-tsan.txt"

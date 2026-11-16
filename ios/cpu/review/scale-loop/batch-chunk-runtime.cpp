@@ -72,6 +72,14 @@ extern "C" uint64_t dcp_batch_element_count() { return batch_elements.load(std::
 extern "C" Memory *scale_prototype(State &s,uint64_t,Memory *m) {
   uint32_t count=s.gpr.rdx.dword;
   DCP_BATCH_INC(batch_calls,1);
+  // Only masked exceptions with DAZ/FTZ disabled have been exercised. Preserve
+  // the original trace for other guest MXCSR controls, including reserved bits.
+  const uint32_t mxcsr=s.x87.fxsave.mxcsr.flat;
+  if ((mxcsr & 0xffff0000u) || (mxcsr & 0x8040u) ||
+      (mxcsr & 0x1f80u) != 0x1f80u) {
+    DCP_BATCH_INC(batch_fallback,1);
+    return DCP_SCALE_FALLBACK(s,0x20619220,m);
+  }
   // Generic callbacks are allowed to reenter guest memory and run outside
   // the stripe locks. Only take the fast path when the same signal cache
   // that makes the original check a no-op is already clear.

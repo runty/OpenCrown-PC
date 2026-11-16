@@ -17,7 +17,7 @@ extern "C" void dcp_batch_test_poll(unsigned phase,unsigned index){
 int main(){
   alarm(10);unsigned cases=0,failures=0;
   for(unsigned index:{0u,15u,16u,31u,32u})for(unsigned phase:{0u,1u}){
-    Memory m;State s{};std::atomic<uint64_t> gen{1};Memory::SignalCache cache{gen};cache.lastClear.store(1);
+    Memory m;State s{};s.x87.fxsave.mxcsr.flat=0x1f80;std::atomic<uint64_t> gen{1};Memory::SignalCache cache{gen};cache.lastClear.store(1);
     m.signalCache=&cache;context=&m;generation=&gen;trigger=index;which_phase=phase;changes=callbacks=current=0;
     s.gpr.rdi.qword=Memory::base+0x300;s.gpr.rsi.qword=Memory::base+0x100;s.gpr.rdx.qword=33;s.gpr.rsp.qword=Memory::base+0xff00;
     float one=1;for(unsigned k=0;k<33;++k)std::memcpy(m.bytes.data()+0x100+k*4,&one,4);

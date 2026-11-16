@@ -37,7 +37,7 @@ static bool trial(const char *name,Lifted fn,unsigned iterations,unsigned serial
     }
   });
   while(!ready.load(std::memory_order_acquire))std::this_thread::yield();
-  State s{};bindScalarThread(worker);const float a=1,b=1;
+  State s{};s.x87.fxsave.mxcsr.flat=0x1f80;bindScalarThread(worker);const float a=1,b=1;
   start.store(true,std::memory_order_release);auto begin=Clock::now();
   try {
     for(unsigned i=0;i<iterations;++i){

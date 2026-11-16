@@ -20,7 +20,7 @@ extern "C" void dcp_batch_test_poll(unsigned phase,unsigned index) {
   if(phase==1 && index==0 && !changes++) generation->store(2,std::memory_order_release);
 }
 int main(){
-  alarm(5);Memory m;State s{};context=&m;
+  alarm(5);Memory m;State s{};s.x87.fxsave.mxcsr.flat=0x1f80;context=&m;
   std::atomic<uint64_t> gen{1};generation=&gen;Memory::SignalCache cache{gen};
   cache.lastClear.store(1);m.signalCache=&cache;
   s.gpr.rdi.qword=Memory::base+0x200;s.gpr.rsi.qword=Memory::base+0x100;
