@@ -1,5 +1,19 @@
 # Device port progress
 
+## 2026-11-16 — Verify launcher fixes with the real Simulator game
+
+Clean source `3b546d0`, with the coordinated-read, picker and pending-
+presentation fixes, was linked into a separate icon-bearing Simulator QA
+app against the audited `bb540ac` game/runtime/renderer artifacts. A muted
+Town run reaches 2,128 frames with 23,631 full-content texture checks; a
+separate disposable combat run reaches the first Ruins encounter in 9,917
+frames with 171,052 texture checks. Both report no errors or proof failures;
+protected QA save/checkpoint inventories and both disposable save hashes
+remain unchanged. Captured Town and Ruins frames were inspected. These runs
+do not exercise Files-provider UI, an in-game save, iCloud, real audio,
+sustained device performance or physical devices. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/launcher-fixes-game-qa/`.
+
 ## 2026-11-16 — Physical AMD reference for denormal status and trap
 
 Isolated `codex/ios-denormal-audit` at `6997438` adds a bounded classifier for
