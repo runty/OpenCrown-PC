@@ -135,3 +135,24 @@ continue. App diagnostics report the source node's captured output mode as
 This does not change system volume or qualify audible quality. The setting is
 read when the audio graph starts or restarts. The older `DCP_SIM_MUTE_AUDIO=1`
 alias and `audio.simulator_muted` field remain supported only in Simulator.
+
+### Muted Simulator audio lifecycle audit (2026-11-16)
+
+The NaN-candidate Simulator package ran the real platform audio path with
+`DCP_CHECKPOINT_AUDIO=platform` and `DCP_MUTE_AUDIO=1`. In a disposable-save
+Town session it rendered 1,375,232 source frames before backgrounding, stopped
+and reported paused in the background, and rendered 1,600,000 cumulative
+frames after foregrounding the same session. A 5,138-frame run finished with
+4,442,624 cumulative rendered audio frames, zero reported underruns or clipped
+samples, an unchanged disposable save, restored input and no changes to other
+preexisting Simulator files. Full-content texture verification passed 119,588
+checks. The audit does not test audio interruption notifications, route changes,
+audibility, real devices, game-save writing or sustained performance.
+
+The retained private driver is `review/simulator-audio-lifecycle.py`. It is a
+session-specific reproduction script: it uses the existing dedicated iPhone
+Simulator, reinstalls its candidate package, temporarily changes the diagnostic
+input, backs up existing files, and restores that input and launcher in a
+`finally` block. Its absolute paths and seed are specific to the recorded
+machine; inspect them before reuse. Evidence is in
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/simulator-audio-lifecycle`.
