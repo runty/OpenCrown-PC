@@ -55,3 +55,22 @@ with all three disposable-save files unchanged. The atomic counters alter
 performance and scheduling, so that run is not a timing sample. The generator
 `lazy-tls-instrument.py` reproduces the private counter source byte-for-byte.
 The uninstrumented Town results above still show no established gain.
+
+## Private mobile package and Simulator gameplay
+
+`lazy-tls-package.py` builds private iPhoneOS and Simulator archives from the
+audited texture-cache reference, verifies every reference library hash, and
+records the experimental support revision and exact compile command. Each
+50,479-member archive differs from its reference only in `memory.o`; generated
+traces and the reference archives remain untouched. Source at `2152b65` built
+icon-bearing Simulator and signed iPhoneOS apps. The app manifests explicitly
+mark the support override as research-only and not physically qualified.
+
+With a separate muted Simulator QA app and disposable saves, Town reaches
+2,176 frames / 24,243 full-content texture checks and the first Ruins encounter
+reaches 9,919 frames / 174,647 checks. Both have zero reported proof failures,
+preserve their disposable save bytes and existing protected QA inventories,
+and their final frames were inspected. These are correctness checks, not
+performance or full-adventure qualification. Neither mobile package was
+installed on a physical device; the iPad player session remains untouched.
+Evidence: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-mobile/`.
