@@ -7,7 +7,9 @@
 #include <cstring>
 #include <random>
 #include <thread>
+#ifndef DCP_EXTERNAL_DISPATCH
 Memory *dispatch(State &,uint64_t,Memory *m){return m;}
+#endif
 static bool try_read256(Memory &m,uint64_t address,uint32_t (&out)[8]) {
   auto *cache=m.signalCache;
   if(!cache)return false;
