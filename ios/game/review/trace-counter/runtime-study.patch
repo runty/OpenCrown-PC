@@ -1,0 +1,129 @@
+--- a/ios/game/runtime.cpp
++++ b/ios/game/runtime.cpp
+@@ -11,6 +11,7 @@
+ #include "gnm-services.h"
+ #include "headless-config.h"
+ #include "vblank-clock.h"
++#include "review/trace-counter/counter.h"
+ #include <CommonCrypto/CommonDigest.h>
+ #ifdef DCP_NATIVE_LIBC_BULK
+ #include "libc-bulk.h"
+@@ -95,6 +96,12 @@
+   dcp::game::CursorReadback cursor;
+   std::atomic<uint64_t> cursorReadErrors{0};
+   alignas(128) std::atomic<uint64_t> steps{0};
++  TraceCounterStudy traceCounters;
++  bool traceSharded = false;
++#ifdef DCP_QA_TRACE_SHARDS_VERIFY
++  std::atomic<uint64_t> traceShadow{0};
++#endif
++  uint64_t totalSteps() const noexcept { return steps.load(std::memory_order_relaxed) + traceCounters.total(); }
+   alignas(128) std::atomic<uint64_t> vblanks{0};
+   uint64_t directCursor = 0;
+   bool userLogged = false;
+@@ -132,6 +139,7 @@
+ DcpGameHostHooks configuredHost{};
+ bool configuredWaiting = false, configuredCancelled = false;
+ thread_local Engine *currentEngine = nullptr;
++thread_local TraceCounterStudy::Token currentTraceToken = nullptr;
+ thread_local Memory *currentMemory = nullptr;
+ thread_local uint64_t rootStack = 0;
+ thread_local uint64_t tlsBlocks[2]{};
+@@ -844,9 +852,11 @@
+   local.signalCache = &localSignals;
+   bindScalarThread(local);
+   auto *previousEngine = currentEngine;
++  auto previousTraceToken = currentTraceToken;
+   auto *previousMemory = currentMemory;
+   const auto previousStack = rootStack;
+   currentEngine = &target;
++  currentTraceToken = target.traceSharded ? (nested && previousTraceToken ? previousTraceToken : target.traceCounters.acquire()) : nullptr;
+   currentMemory = nested ? previousMemory : &local;
+   rootStack = 0;
+   if (!nested) {
+@@ -867,6 +877,7 @@
+     }
+     if (!nested)
+       releaseHeldMutexes();
++    currentTraceToken = previousTraceToken;
+     currentEngine = previousEngine;
+     currentMemory = previousMemory;
+     rootStack = previousStack;
+@@ -883,6 +894,7 @@
+     }
+     stopEngine(target);
+     releaseHeldMutexes();
++    currentTraceToken = previousTraceToken;
+     currentEngine = previousEngine;
+     currentMemory = previousMemory;
+     rootStack = previousStack;
+@@ -932,6 +944,14 @@
+   }
+   engine().interactive = std::getenv("DCP_GAME_MODE") &&
+                          std::string(std::getenv("DCP_GAME_MODE")) == "play";
++  engine().traceSharded = engine().interactive.load();
++#ifdef DCP_QA_TRACE_SHARDS
++  // Private QA only: headless checkpoint runs have an external watchdog and
++  // deliberately skip the exact trace budget while this override is active.
++  if (const char *qa = std::getenv("DCP_QA_TRACE_SHARDS"))
++    engine().traceSharded = engine().traceSharded || std::string_view(qa) == "1";
++#endif
++  currentTraceToken = engine().traceSharded ? engine().traceCounters.acquire() : nullptr;
+   engine().modules.clear();
+   engine().allocations.clear();
+   engine().events.clear();
+@@ -1330,6 +1350,10 @@
+     dcp_ime_init({});
+     dcp::render::shutdown_aot_capture();
+   }
++#ifdef DCP_QA_TRACE_SHARDS_VERIFY
++  if (joined && engine().traceShadow.load(std::memory_order_relaxed) != engine().totalSteps())
++    error = "trace counter verification mismatch";
++#endif
+   const auto textureVersions = guestSnapshotDiagnostics();
+   if (textureVersions.proof_failures)
+     error = "texture version proof disagrees with full content";
+@@ -1337,7 +1361,11 @@
+   const auto directMemory = engine().directMemory.stats();
+   std::ostringstream out;
+   out << "{\"backend\":\"Remill AOT real modules\",\"stage\":\"" << stage
+-      << "\",\"steps\":" << engine().steps
++      << "\",\"steps\":" << engine().totalSteps()
++      << ",\"trace_sharded\":" << (engine().traceSharded ? "true" : "false")
++#ifdef DCP_QA_TRACE_SHARDS_VERIFY
++      << ",\"trace_shadow\":" << engine().traceShadow.load(std::memory_order_relaxed)
++#endif
+       << ",\"booted\":" << (checkpointComplete ? "true" : "false")
+       << ",\"game_code_executed\":"
+       << (engine().enteredEboot ? "true" : "false")
+@@ -1440,6 +1468,7 @@
+     std::lock_guard<std::mutex> lock(engineLifetime);
+     activeEngine = nullptr;
+   }
++  currentTraceToken = nullptr;
+   currentEngine = nullptr;
+   currentMemory = nullptr;
+   if (!joined)
+@@ -1461,7 +1490,12 @@
+ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
+   if (pollRuntime())
+     throw std::runtime_error("bootstrap stopped");
+-  if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
++#ifdef DCP_QA_TRACE_SHARDS_VERIFY
++  engine().traceShadow.fetch_add(1, std::memory_order_relaxed);
++#endif
++  if (currentTraceToken)
++    TraceCounterStudy::increment(currentTraceToken);
++  else if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
+     throw std::runtime_error("guest trace budget exceeded");
+   const uint64_t observedPC = canonical(pc);
+   // Original Cursor_Update (ELF 39ad80) computes the player's pad id before
+@@ -1666,7 +1700,7 @@
+   if (!target)
+     return 0;
+   output->running = 1;
+-  output->steps = target->steps.load();
++  output->steps = target->totalSteps();
+   output->vblanks = target->vblanks.load();
+   output->workers = target->workersStarted.load();
+   output->libc_checks = target->libcChecks.load();
