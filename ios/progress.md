@@ -1,5 +1,34 @@
 # Device port progress
 
+## 2026-11-16 — Simulator lifecycle passes; masked invalid status remains wrong
+
+Packaged isolated candidate `a3e07c2` reaches Town on the dedicated iPhone
+Simulator with a fresh disposable R copy. Launching Settings backgrounds the
+running game; the guest reports paused at captured frame 1,700, and remains
+at 1,700 across a five-second hold. Returning to OpenCrown resumes the same
+session and reaches frame 1,939. The run completes 5,237 frames with 118,612
+full texture checks / 464,702,838,784 logical bytes and zero mismatches. The
+save hash stays `df59b0681ff021bf4609361f0abb8d6b50f895a9902db701d09cda91bccb1fb4`;
+existing Simulator data and input are preserved. Simulator audio was muted and
+reported paused throughout, so no audio-interruption recovery is established.
+Physical-device lifecycle and sustained performance remain open.
+
+A separate bounded CPU probe executes masked `ADDSS` on positive and negative
+infinity. An x86-64 binary under Rosetta produces `ffc00000` and MXCSR `1f81`;
+the actual translated candidate produces the same result but MXCSR `1f80`,
+missing the sticky invalid-operation flag. Source object hashes and outputs are
+retained in `mobile-adventure-live/sse-nan-candidate/mxcsr-probe/result.json`.
+A real libc trace at canonical `0x30071f70` reads MXCSR status; static presence
+does not prove gameplay executes it. This reproduces one specific flag gap,
+not unmasked-trap behavior or every floating-point exception. No fix or full
+CPU qualification is claimed; the candidate remains isolated and uninstalled.
+
+The host was running unrelated Steam, indexing and another game workload during
+this period, so no matched performance benchmark was attempted. Private lifecycle
+proof is in `mobile-adventure-live/sse-nan-candidate/simulator-lifecycle/`.
+The physical iPad, skipped manual save and normal/cloud progress remain untouched.
+Stable pin `851c06b`, default-off versions and remaining P4–P6 gates stay open.
+
 ## 2026-11-16 — Isolated NaN-result candidate reaches Town and Ruins
 
 Candidate `a3e07c2` on `codex/ios-sse-nan` corrects masked binary SSE/AVX
