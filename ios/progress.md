@@ -1,5 +1,36 @@
 # Device port progress
 
+## 2026-11-16 — Physical AMD reference for denormal status and trap
+
+Isolated `codex/ios-denormal-audit` at `6997438` adds a bounded classifier for
+masked 32-bit scalar ADD/SUB/MUL/DIV denormal-operand status. A real AMD Ryzen
+7 7840HS Linux x86-64 host and M5 Max Rosetta produce identical values and
+MXCSR in 4,096 sampled operand-class / DAZ / FTZ cases. The classifier predicts
+status bit 1 in all 4,096 cases, including NaN and divide-by-zero priority,
+with native and ASan/UBSan runs. This is sampled scalar status classification,
+not exhaustive FP or DAZ/FTZ result emulation.
+
+Combined manually with the experimental FPSR mapping, actual lifted operations
+match the AMD reference on 24 masked, nearest-rounding, DAZ/FTZ-off cases,
+including the two earlier denormal mismatches. Normal and ASan/UBSan runs pass;
+both mobile SDKs compile the fixture syntax-only. This does not use actual
+STMXCSR/LDMXCSR, integrate the HLE boundary, or qualify an app/device.
+
+The same AMD host catches unmasked invalid as SIGFPE in a child process; the
+Mac Rosetta process forces the invalid mask on, so the earlier Rosetta trap
+probe remains failed. The physical host is Zen 4, not the PS4's Jaguar: one
+trap case does not establish full equivalence or a translated trap solution.
+Captures, source hashes and compiler/system identity are recorded in
+`mobile-adventure-live/sse-nan-candidate/mxcsr-mapping/denormal-qualified-v2/`
+and adjacent files. The [fixture](https://github.com/runty/OpenCrown-PC/blob/6997438/ios/cpu/review/denormal/README.md)
+does not authenticate arbitrary supplied captured files.
+
+The prototype remains isolated and uninstalled. DAZ/FTZ result behavior,
+64-bit and packed lanes, unmasked trap translation, compiler ordering, actual
+register-instruction integration, game performance and device acceptance are
+open. No physical iPad, skipped manual save, or normal/cloud progress was used.
+Stable pin and P4–P6 gates stay unchanged.
+
 ## 2026-11-16 — Prototype masked FPSR-to-MXCSR status mapping
 
 Isolated `codex/ios-mxcsr-mapping` at `cbac3c2` maps five ARM FPSR sticky bits
