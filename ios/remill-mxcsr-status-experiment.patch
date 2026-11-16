@@ -1,0 +1,84 @@
+--- a/lib/Arch/X86/Semantics/BINARY.cpp
++++ b/lib/Arch/X86/Semantics/BINARY.cpp
+@@ -116,10 +116,26 @@
+   return memory;
+ }
+ 
++// Prototype for masked scalar 32-bit arithmetic only. Guest loads reject
++// DAZ, FTZ and unmasked exceptions before reaching the fixture.
++ALWAYS_INLINE static bool DcpDenormal32(float32_t lhs, float32_t rhs, bool divide) {
++  uint32_t l, r;
++  __builtin_memcpy(&l, &lhs, sizeof(l));
++  __builtin_memcpy(&r, &rhs, sizeof(r));
++  l &= 0x7fffffffu; r &= 0x7fffffffu;
++  const bool ld = l && l < 0x00800000u;
++  const bool rd = r && r < 0x00800000u;
++  if (l > 0x7f800000u || r > 0x7f800000u || (divide && ld && !r))
++    return false;
++  return ld || rd;
++}
++
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(ADDSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
++  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), false))
++    state.x87.fxsave.mxcsr.flat |= 2;
+   auto sum = X86SSEAdd(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, sum);
+   FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+@@ -209,6 +225,8 @@
+ DEF_SEM(SUBSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
++  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), false))
++    state.x87.fxsave.mxcsr.flat |= 2;
+   auto sum = X86SSESub(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, sum);
+   FWriteV32(dst, res);
+@@ -411,6 +429,8 @@
+ DEF_SEM(MULSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
++  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), false))
++    state.x87.fxsave.mxcsr.flat |= 2;
+   auto mul = X86SSEMul(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, mul);
+   FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+@@ -611,6 +631,8 @@
+ DEF_SEM(DIVSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
++  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), true))
++    state.x87.fxsave.mxcsr.flat |= 2;
+   auto quot = X86SSEDiv(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, quot);
+   FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2136,11 +2136,16 @@
+  */
+ 
+ 
++extern "C" void __dcp_experimental_mxcsr_load(uint32_t);
++extern "C" uint32_t __dcp_experimental_mxcsr_store(uint32_t);
++
+ namespace {
+ 
+ DEF_SEM(LDMXCSR, M32 src) {
+   auto &csr = state.x87.fxsave.mxcsr;
+-  csr.flat = Read(src);
++  const auto incoming = Read(src);
++  __dcp_experimental_mxcsr_load(incoming);
++  csr.flat = incoming;
+ 
+   FPURoundingControl rounding_mode;
+   if (!csr.rp && !csr.rn) {
+@@ -2183,6 +2188,7 @@
+       break;
+   }
+ 
++  csr.flat = __dcp_experimental_mxcsr_store(csr.flat);
+   Write(dst, csr.flat);
+ 
+   return memory;
