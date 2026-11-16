@@ -180,3 +180,23 @@ under `simulator-route-audit` and `simulator-route-audit-retry` in the private
 `sse-nan-candidate` build directory. Posting a notification does not reproduce
 an actual hardware route change, a system interruption, audible quality or
 physical-device behavior.
+
+### Simulated interruption notifications (2026-11-16)
+
+A private iOS 27.2 Simulator QA app posted synthetic system-deactivation and
+should-resume notifications, with test context objects, while Town ran through
+the real muted platform audio path. The guest reported paused; audio stopped
+at 1,521,664 rendered frames and flushed 1,536 queued frames. After the resume
+notification, audio resumed and reached 1,617,408 rendered frames. The full
+5,145-frame session finished with 4,254,720 rendered audio frames, zero
+reported underruns or clipped samples, 119,902 full-content texture checks,
+unchanged disposable save and restored input and tracked files. The original
+Simulator app was reinstalled.
+
+The QA-only zero-context injection patch is
+`review/interruption-notification-qa.patch`, applied with
+`git apply --unidiff-zero`, and its session-specific driver is
+`review/simulator-interrupt-audit.py`. Private evidence is in
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/simulator-interrupt-audit`.
+These are fake notification contexts and do not validate real OS interruption
+delivery, other OS versions, physical devices, audio quality or route changes.

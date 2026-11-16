@@ -1,0 +1,49 @@
+--- a/ios/app.mm
++++ b/ios/app.mm
+@@ -16,0 +17 @@
++#import <AVFoundation/AVFoundation.h>
+@@ -26,0 +28,17 @@
++
++#if TARGET_OS_SIMULATOR
++// Synthetic contexts exercise notification dispatch without pretending that
++// the operating system actually interrupted this session.
++@interface DCPTestDeactivationContext : NSObject
++- (NSInteger)source;
++@end
++@implementation DCPTestDeactivationContext
++- (NSInteger)source { return 2; }
++@end
++@interface DCPTestResumptionContext : NSObject
++- (NSInteger)recommendation;
++@end
++@implementation DCPTestResumptionContext
++- (NSInteger)recommendation { return 1; }
++@end
++#endif
+@@ -355,0 +374,26 @@
++#if TARGET_OS_SIMULATOR
++  if (std::getenv("DCP_AUDIO_INTERRUPT_QA")) {
++    [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *) {
++      NSString *trigger = [documents() stringByAppendingPathComponent:@"interrupt-test.trigger"];
++      if (![NSFileManager.defaultManager fileExistsAtPath:trigger]) return;
++      [NSFileManager.defaultManager removeItemAtPath:trigger error:nil];
++      if (@available(iOS 27.0, *)) {
++        NSDictionary *before = audioSnapshot();
++        [[NSNotificationCenter defaultCenter] postNotificationName:AVAudioSessionDidBecomeInactiveNotification
++          object:AVAudioSession.sharedInstance
++          userInfo:@{AVAudioSessionDeactivationContextKey: [DCPTestDeactivationContext new]}];
++        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
++          NSDictionary *paused = audioSnapshot();
++          [[NSNotificationCenter defaultCenter] postNotificationName:AVAudioSessionResumptionRecommendationNotification
++            object:AVAudioSession.sharedInstance
++            userInfo:@{AVAudioSessionResumptionContextKey: [DCPTestResumptionContext new]}];
++          dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
++            NSDictionary *after = audioSnapshot();
++            NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"before":before,@"paused":paused,@"after":after} options:0 error:nil];
++            [data writeToFile:[documents() stringByAppendingPathComponent:@"interrupt-test-result.json"] atomically:YES];
++          });
++        });
++      }
++    }];
++  }
++#endif
