@@ -1,0 +1,8 @@
+--- a/ios/app.mm
++++ b/ios/app.mm
+@@ -27,0 +28,3 @@
++extern "C" uint64_t dcp_batch_fast_calls();
++extern "C" uint64_t dcp_batch_fallback_calls();
++extern "C" uint64_t dcp_batch_element_count();
+@@ -1095,0 +1099 @@
++    @"batch_qa" : @{@"fast": @(dcp_batch_fast_calls()), @"fallback": @(dcp_batch_fallback_calls()), @"elements": @(dcp_batch_element_count())},

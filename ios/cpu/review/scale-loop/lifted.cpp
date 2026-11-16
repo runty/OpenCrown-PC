@@ -12,6 +12,10 @@ int main() {
   for(unsigned i=0;i<case_count;++i) {
     SampleCase cse=sample_at(i);
     Memory m;State s{};
+#ifdef DCP_BATCH_TEST
+    std::atomic<uint64_t> generation{1};Memory::SignalCache cache{generation};
+    cache.lastClear.store(1);m.signalCache=&cache;
+#endif
     const uint64_t src=Memory::base+0x100,dst=Memory::base+0x200;
     for(unsigned k=0;k<32;++k) {uint32_t x=source_word(k);std::memcpy(m.bytes.data()+0x100+k*4,&x,4);}
     s.gpr.rsi.qword=src;s.gpr.rdi.qword=dst;s.gpr.rdx.qword=cse.count;

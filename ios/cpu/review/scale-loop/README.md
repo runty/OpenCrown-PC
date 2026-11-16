@@ -44,3 +44,73 @@ and compares the saved output matrices. `fullstate.cpp` and `bench.cpp` use the
 same two real objects. Compiler/target flags and object paths, hashes, raw negative controls, machine
 identity and outputs are retained under
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-loop-study`.
+
+## Isolated batched-memory experiment
+
+`batch-runtime.cpp` is a separate private implementation that includes the
+runtime to access the existing stripe locks and snapshot invalidation. For a
+validated span of up to 4,096 elements with an already-clear signal cache, it
+locks both ranges as a unit and preserves ordered scalar operations. It falls
+back to the original trace for a missing/stale signal cache, oversized or
+invalid spans. It drops locks before any slow cancellation callback and then
+reacquires them. `batch-wrapper.ll` and the renamed original object preserve
+one normal trace-entry callback and retain the original as fallback. None of
+this is wired into the shipping builder.
+
+The first batch prototype called cancellation callbacks while holding a stripe;
+a reentrant guest read caused the child process to be killed (signal 9). That
+unsafe version and the negative result are retained, not used. The revised
+fixture matched the AMD exact-byte matrix above (32,778 selected cases), and
+19 full translated-State/memory cases covering selected faults, cancellation,
+input/output overlap, return-slot overlap, zero-length and fallback. A
+controlled signal-generation change verifies a reentrant callback runs after
+lock release. A separate two-thread fixture confirms an existing guest LOCK
+excludes the batch and that changed texture snapshots invalidate. ASan/UBSan
+and TSan passes cover the respective fixtures and instrumented batch runtime;
+the original translated object remains uninstrumented. Both iOS SDKs pass
+syntax checks. `run-batch-host.sh` and `run-batch-sanitizers.sh` reproduce the
+bounded host tests with explicitly supplied paths and reference host.
+
+The registered-memory Mac microbenchmark with a clear signal cache measured
+median original/batch times of 1,094.5/668.3 ns for 96 elements and
+3,018.8/1,734.9 ns for 256 across six alternating pairs. This is an uncontended
+host-only microbenchmark, not game or device performance. Whole-span locking
+changes which concurrent interleavings are possible and may affect scheduling;
+full guest atomic semantics, other instruction observers, full FP/MXCSR
+behavior, long pauses/cancellation, varied aliases, contention and heavy combat
+remain insufficiently qualified. The previous call-distribution audit suggests
+this one loop is not enough evidence of material overall headroom. Do not
+promote or install it based on these numbers.
+
+A private instrumented Mac build booted to Town: 20,744 fast calls, no
+fallbacks, 25,920 full-content texture checks and an unchanged disposable save.
+A separately built iPhone Simulator QA app reached the first Ruins/GOBLIN
+encounter in 7,068 frames, recording 82,432 fast calls, no fallbacks, 19,420,672
+processed elements, 142,928 verified texture checks and zero proof failures.
+Its disposable save hash remained `728f0ecb5c92c57a833b731b9b2943bc059d2abd2383a043a280e6c8cf937bac`;
+tracked files and diagnostic input were preserved and the original Simulator
+app was reinstalled. Audio was muted, and the result is not a device speed
+measurement. Independent archive inventories verify that each private Mac or
+Simulator archive differs from its respective original only in `memory.o` and
+`20619220.o`, plus the added renamed original fallback object. The QA app's
+build ID and manifest explicitly mark it experimental.
+
+The initial Simulator attempt showed the Ruins visually but missed the GOBLIN
+checkpoint after its timed walking input ended. It is retained as incomplete;
+the retry used the longer ordinary-input script. The QA-only app diagnostics
+patch is `batch-app-qa.patch` (`git apply --unidiff-zero`); the machine-specific
+retry driver and its input file are `simulator-batch-ruins.py` and
+`batch-ruins-extended-input.txt`. Inspect the driver before reuse: it installs
+a test app on the dedicated Simulator, copies a disposable save and restores
+the original app/input. Evidence and hashes are in
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-batch-study/result.json`
+and the sibling `scale-batch-game`, `scale-batch-simulator`,
+`simulator-batch-ruins` and `simulator-batch-ruins-retry` directories.
+No physical device, normal save, or skipped manual save test was used.
+
+The Mac audit was compiled before adding three read-only QA statistics getters
+used by the Simulator frontend. Rebuilding from the source with those getters
+removed produced a different full object hash, although the `__text` bytes and
+1,382 normalized text-relocation rows matched the audited object. This is not
+full-object identity; both hashes and the distinction are recorded in
+`result.json`.
