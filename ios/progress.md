@@ -1,5 +1,29 @@
 # Device port progress
 
+## 2026-11-16 — Reproduce masked SIMD status and host contamination
+
+A reproducible [isolated probe](https://github.com/runty/OpenCrown-PC/tree/codex/ios-mxcsr-evidence/ios/cpu/review/mxcsr)
+at `0ee0285` executes the actual reviewed scalar add/sub/mul/div traces against
+an x86-64 Rosetta reference on M5 Max. Eleven operand cases × two initial sticky
+states use masked exceptions, nearest rounding and FTZ/DAZ off. Result bits
+match in all 22 cases, while guest MXCSR differs in 13. The cases exercise
+invalid, divide-by-zero, overflow, underflow and inexact status. Clearing host
+exceptions immediately before the operation yields corresponding host flags
+in these 22 cases, including the seeded guest invalid bit.
+
+A separate negative control pre-raises host invalid and then performs exact
+`1 + 2`: the reference guest status remains clean, while the host flag remains
+set. Blindly copying host flags at STMXCSR would therefore leak exceptions from
+native work. This is a bounded result, not a fix or proof that host-flag mapping
+is generally safe. Denormal-operand status, DAZ/FTZ, exception priority, unmasked
+traps, packed lanes, HLE callbacks, concurrency and gameplay use remain open.
+The reference is Rosetta, not physical x86 hardware. `run.py` retains all raw
+outputs and hashes; proof is under `sse-nan-candidate/mxcsr-probe/repro-matrix-formatted/`.
+
+No runtime code, installed app, physical device or live save changed. The main
+candidate remains isolated and the original skipped manual save is untested.
+Host indexing and another workload still make a performance comparison noisy.
+
 ## 2026-11-16 — Simulator lifecycle passes; masked invalid status remains wrong
 
 Packaged isolated candidate `a3e07c2` reaches Town on the dedicated iPhone
