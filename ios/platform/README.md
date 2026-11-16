@@ -156,3 +156,27 @@ input, backs up existing files, and restores that input and launcher in a
 `finally` block. Its absolute paths and seed are specific to the recorded
 machine; inspect them before reuse. Evidence is in
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/simulator-audio-lifecycle`.
+
+### Simulated route-change notification (2026-11-16)
+
+A private Simulator-only QA copy of the app posted an artificial
+`AVAudioSessionRouteChangeNotification` with the old-device-unavailable reason
+while the real muted audio path was active in Town. The existing route handler
+flushed 1,536 queued frames, restarted the graph and rendered additional audio:
+1,523,200 cumulative frames before the notification and 1,617,920 two seconds
+later. The full 5,151-frame run rendered 4,243,968 audio frames with zero
+reported underruns/clipping, completed 119,119 full-content texture checks,
+preserved the disposable save and restored tracked files and input. The original
+Simulator app was reinstalled afterward.
+
+The first run completed its game checks but its cleanup script reported an
+error because reinstalling the original app changed the Simulator data-container
+path. Independent verification found its files and input intact. The corrected
+driver reacquires the container path and the complete retry passed. The QA
+injection is retained as a zero-context patch in
+`review/route-notification-qa.patch` (apply with `git apply --unidiff-zero`);
+the session-specific driver is `review/simulator-route-audit.py`. Evidence is
+under `simulator-route-audit` and `simulator-route-audit-retry` in the private
+`sse-nan-candidate` build directory. Posting a notification does not reproduce
+an actual hardware route change, a system interruption, audible quality or
+physical-device behavior.

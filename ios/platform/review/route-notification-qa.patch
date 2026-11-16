@@ -1,0 +1,23 @@
+--- a/ios/app.mm
++++ b/ios/app.mm
+@@ -16,0 +17 @@
++#import <AVFoundation/AVFoundation.h>
+@@ -355,0 +357,18 @@
++#if TARGET_OS_SIMULATOR
++  if (std::getenv("DCP_AUDIO_ROUTE_QA")) {
++    [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *) {
++      NSString *trigger = [documents() stringByAppendingPathComponent:@"route-test.trigger"];
++      if (![NSFileManager.defaultManager fileExistsAtPath:trigger]) return;
++      [NSFileManager.defaultManager removeItemAtPath:trigger error:nil];
++      NSDictionary *before = audioSnapshot();
++      [[NSNotificationCenter defaultCenter] postNotificationName:AVAudioSessionRouteChangeNotification
++        object:AVAudioSession.sharedInstance
++        userInfo:@{AVAudioSessionRouteChangeReasonKey: @(AVAudioSessionRouteChangeReasonOldDeviceUnavailable)}];
++      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
++        NSDictionary *after = audioSnapshot();
++        NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"before": before, @"after": after} options:0 error:nil];
++        [data writeToFile:[documents() stringByAppendingPathComponent:@"route-test-result.json"] atomically:YES];
++      });
++    }];
++  }
++#endif
