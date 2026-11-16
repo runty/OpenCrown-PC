@@ -271,6 +271,22 @@ the matching renderer was used without bypassing that ABI boundary. Evidence:
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-cache-core/`
 and the retained `save-restore-stable-core/build-simulator.log`.
 
+An end-to-end Simulator QA pass then used copies of two real saves in that
+independent app. The fixture checkpointed R, began a write session on Darrel,
+and changed one byte of the local copy to simulate interruption. XCTest used
+the actual launcher to select R's checkpoint. Hash inventories confirm R was
+restored, Darrel's complete prewrite tree retained, the modified interrupted
+tree archived, and the journal cleared. A separate diagnostic session copied
+that restored R tree and loaded it to an inspected Town frame, with 2,124
+frames and 25,557 texture checks, zero proof failures, and the restored and
+retained trees unchanged. This is a simulated interrupted write and a copied
+restore, not an in-game save or a physical-device test. The fixture source is
+`ui-qa-real-seed.cpp`; it requires a `real-save restore QA` marker and empty
+save/checkpoint roots, and only reads its source trees. `ui-qa-game.py` accepts
+`--restored` for the subsequent diagnostic copy. The QA project, logs and
+results are under `save-restore-cache-core/real-restore-ui/` and
+`save-restore-cache-core/real-restore-game/`.
+
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
 modification time with an ID tie-breaker. The just-committed checkpoint is always

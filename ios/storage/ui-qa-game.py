@@ -2,27 +2,29 @@
 """Run the real game in a separate, already installed restore QA simulator app."""
 import hashlib,json,os,shutil,subprocess,sys,time,uuid
 from pathlib import Path
-if len(sys.argv) not in (2,4):raise SystemExit('Usage: ui-qa-game.py NEW_EXTERNAL_OUTPUT [QA_BUNDLE EXPECTED_BUILD_ID]')
+if len(sys.argv) not in (2,4,5) or (len(sys.argv)==5 and sys.argv[4]!='--restored'):raise SystemExit('Usage: ui-qa-game.py NEW_EXTERNAL_OUTPUT [QA_BUNDLE EXPECTED_BUILD_ID [--restored]]')
 out=Path(sys.argv[1]).resolve()
 if len(out.parts)<3 or out.parts[1]!='Volumes' or not Path('/Volumes',out.parts[2]).is_mount():raise SystemExit('output must be on a mounted external disk')
 out.mkdir(parents=True,exist_ok=False)
 sim='F30116F9-F84C-44AA-A1A4-5A942B779628';normal='com.wadscorp.opencrown.mobile'
-qa=sys.argv[2] if len(sys.argv)==4 else 'com.wadscorp.opencrown.qa.restore'
-expected_build=sys.argv[3] if len(sys.argv)==4 else 'c0dee0def54f7c15fe73300d9be1113e683ed2c6'
+qa=sys.argv[2] if len(sys.argv)>=4 else 'com.wadscorp.opencrown.qa.restore'
+expected_build=sys.argv[3] if len(sys.argv)>=4 else 'c0dee0def54f7c15fe73300d9be1113e683ed2c6'
 assert qa.startswith('com.wadscorp.opencrown.qa.') and len(expected_build)==40
 def simctl(*args,**kwargs):return subprocess.run(['xcrun','simctl',*map(str,args)],check=True,capture_output=True,text=True,**kwargs)
 def docs(bundle):return Path(simctl('get_app_container',sim,bundle,'data').stdout.strip())/'Documents'
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 normal_docs=docs(normal);qa_docs=docs(qa)
-assert normal_docs!=qa_docs and not (qa_docs/'Game').exists()
+assert normal_docs!=qa_docs
+restored=len(sys.argv)==5
+assert (qa_docs/'Game').is_dir() if restored else not (qa_docs/'Game').exists()
 protected=['ProbeSaves','SaveCheckpoints','.ProbeSaves.previous']
 def inventory():
  return {str(p.relative_to(qa_docs)):sha(p) for item in protected for p in (qa_docs/item).rglob('*') if p.is_file()}
 before=inventory();(out/'before.json').write_text(json.dumps(before,indent=2)+'\n')
 # APFS clone, verified by the real launcher's game validator; no source writes.
-subprocess.run(['cp','-cR',str(normal_docs/'Game'),str(qa_docs/'Game')],check=True)
+if not restored:subprocess.run(['cp','-cR',str(normal_docs/'Game'),str(qa_docs/'Game')],check=True)
 saveid=str(uuid.uuid4()).upper();save=qa_docs/'DiagnosticSessions'/saveid/'ProbeSaves'
-seed=Path('/Volumes/office/Build/OpenCrown/mobile-adventure-live/cursor-investigation/touch-tutorial-driver/touch-earned-save')
+seed=qa_docs/'ProbeSaves' if restored else Path('/Volumes/office/Build/OpenCrown/mobile-adventure-live/cursor-investigation/touch-tutorial-driver/touch-earned-save')
 expected='df59b0681ff021bf4609361f0abb8d6b50f895a9902db701d09cda91bccb1fb4'
 assert sha(seed/'SAVEDATA00/SAVE0.DAT')==expected
 shutil.copytree(seed,save);assert sha(save/'SAVEDATA00/SAVE0.DAT')==expected
