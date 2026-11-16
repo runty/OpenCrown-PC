@@ -210,3 +210,29 @@ through the helper, but no game-visible regression has been demonstrated. A
 correct general fix needs isolated x87 and SSE guest exception state; neither
 blindly preserving these host flags nor promoting the prototype establishes
 that. Evidence: sibling `scale-fp-observer/observer.txt` and `x86-status.txt`.
+
+## Dynamic exception-helper usage in Town
+
+`exception-usage.c` is a private counting wrapper around the actual exception
+bridge; it is not used by an app. The bridge implementation is included
+unchanged with renamed symbols, and the wrappers count test/clear/raise calls
+and test results that include invalid. A positive-control build of
+`fp-observer.cpp` recorded four tests and one invalid result, while preserving
+its original results.
+
+A muted, offscreen native Town run used the guarded 16-element batch prototype
+and a disposable copy of R. It completed 2,225 frames, made 18,696 fast batch
+calls, and recorded **zero** exception test, clear or raise calls. The audit
+verified 26,081 texture-version hits against full contents, with no proof
+failure, clean unload and the exact original save hash. This is an observation
+for this startup/Town route only, not proof about combat, other scenes, iOS,
+or whether a guest-visible exception difference matters elsewhere. It is not
+a performance sample. The game's trace archive and renderer were unchanged from
+the prior guarded audit; a member-level comparison of the private FP archive
+shows that only `exceptions.o` changed. The private linked executable exports
+all three instrumented bridge symbols.
+
+Evidence, the link command and the run driver are under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/exception-usage/`.
+The driver uses a disposable save and assumes the recorded local paths; inspect
+it before reuse. No physical device or skipped manual save test was used.
