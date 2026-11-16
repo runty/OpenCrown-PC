@@ -1,5 +1,44 @@
 # Device port progress
 
+## 2026-11-16 — Isolated NaN-result candidate reaches Town and Ruins
+
+Candidate `a3e07c2` on `codex/ios-sse-nan` corrects masked binary SSE/AVX
+NaN result selection, with bounded [CPU review](https://github.com/runty/OpenCrown-PC/blob/a3e07c2fe69fcf2558a39748e3c2e693aebc6e4d/ios/cpu/review/sse-nan-results.md).
+Guest MXCSR exception flags/traps, DAZ/FTZ, x87, horizontal operations and full
+CPU fidelity remain open. It has not been integrated into this branch or pinned.
+
+A new private backend frozen to the reviewed semantics regenerated all 50,464
+entrypoints. Every recorded IR hash and both module images verify; 6,005 IR
+files differ from the width-only candidate, while all seven reviewed native
+CRILAYLA routines remain byte-identical. Mac, iPhoneOS and Simulator archives
+finish with full generation/current provenance, matching library hashes, native
+bulk libc and native CRILAYLA. The signed iPhoneOS package includes a compiled
+icon and verifies its signature and renderer/archive hashes; it was not installed.
+
+A native audit boots the real game into Town with the disposable R save: 2,225
+frames, 25,653 full-content version checks / 118,014,629,888 logical bytes,
+zero mismatches, 91 native decoder and 3 fallback calls, unchanged save and
+clean shutdown. SDK compilation overlapped this run, so it is not a performance
+sample. Its final Town image was inspected.
+
+The packaged iPhone Simulator reaches Town (1,977 frames; 23,367 checks /
+105,089,804,288 logical bytes) and separately travels through Town and world map
+to the first Ruins encounter (7,120 frames; 140,866 checks / 540,681,011,200
+logical bytes). Both have zero texture mismatches, unchanged disposable save
+hashes and preserved existing Simulator data/input. Both final images were
+inspected. The first Town attempt stopped before install because the simulator
+was shut down; the retained retry passed after boot. These are correctness
+checks, not device speed or full-adventure acceptance.
+
+A static scan finds 17 libc traces calling rounding helpers; none match the
+3,200 reported recent-entry contexts in an earlier Town profile. The limited
+profile and name-based scan cannot prove those routines were not executed or
+that exception handling is correct. Private evidence is under
+`mobile-adventure-live/sse-nan-candidate/`. No physical iPad was contacted,
+no manual save test was performed, and normal/cloud progress remains untouched.
+Stable pin `851c06b`, default-off texture versions, sustained headroom and all
+remaining lifecycle, audio, device, cloud and adventure gates stay open.
+
 ## 2026-11-15 — Narrow scalar FP operands; retain width proof and separate phone timing
 
 Isolated `6970470` on `codex/ios-scalar-fp-width` adds nine selector corrections:
