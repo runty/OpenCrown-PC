@@ -41,7 +41,7 @@ int main() {
       const uint64_t nestedRip = 0x20003008;
       profile::StateScope nested(&nestedRip);
       profile::trace(0x20003000);
-      for (unsigned i = 0; i < 2048; ++i)
+      for (unsigned i = 0; i < 16384; ++i)
         assert(__remill_read_memory_64(&memory, Memory::base + 8) == 6);
     }
     assert(__remill_read_memory_64(&memory, Memory::base + 8) == 6);

@@ -31,9 +31,9 @@ struct Record {
   Wait wait;
 };
 struct Thread {
-  uint64_t epoch = 0, index = 0, operations = 0, dropped_records = 0,
-           dropped_pages = 0, dropped_instruction_sites = 0,
-           allocation_failures = 0;
+  uint64_t epoch = 0, index = 0, operations = 0, random = 1,
+           dropped_records = 0, dropped_pages = 0,
+           dropped_instruction_sites = 0, allocation_failures = 0;
   Record *current = nullptr;
   const uint64_t *rip = nullptr;
   std::unordered_map<uint64_t, Record> records;
@@ -102,6 +102,8 @@ Thread *thread() {
   local = std::make_shared<Thread>();
   local->epoch = current;
   local->index = registry.size();
+  local->random =
+      0x9e3779b97f4a7c15ULL ^ ((local->index + 1) * 0xd1b54a32d192ed03ULL);
   local->records.reserve(2048);
   registry.push_back(local);
   return local.get();
@@ -166,10 +168,14 @@ Sample scalar(Thread *owner, bool lifted, bool writing, size_t bytes,
   if (atomic_held)
     ++record.atomic_held;
   ++owner->operations;
-  // Stagger periodic samples between workers. This is not random sampling:
-  // periodic workload aliasing and scheduler/preemption effects remain
-  // possible.
-  if (atomic_held || (owner->operations + 131 * owner->index) % samplePeriod)
+  if (atomic_held)
+    return {};
+  // Avoid fixed-stride aliasing with repeated scalar/vector loops. This is
+  // diagnostic pseudo-random sampling, not security entropy.
+  owner->random ^= owner->random << 13;
+  owner->random ^= owner->random >> 7;
+  owner->random ^= owner->random << 17;
+  if (owner->random % samplePeriod)
     return {};
   return {owner,
           &record,
@@ -258,7 +264,7 @@ std::string report(bool workers_joined) {
             });
   std::ostringstream out;
   out << "{\"available\":true,\"instrumented\":true,\"phase\":\"after_first_"
-         "town\",\"sample_period\":"
+         "town\",\"sampler\":\"xorshift64\",\"mean_sample_period\":"
       << samplePeriod << ",\"threads\":" << registry.size()
       << ",\"omitted_threads\":" << omittedThreads
       << ",\"dropped_records\":" << droppedRecords

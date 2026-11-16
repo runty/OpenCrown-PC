@@ -13,14 +13,14 @@ Entry counts group accesses by the **most recent trace entry**, not necessarily
 the active caller after a translated function returns. They are useful context,
 not proof of an exact instruction or function attribution.
 
-Every 1,024 scalar accesses, staggered between workers, the diagnostic samples
+With pseudo-random sampling averaging one in 1,024 scalar accesses, the diagnostic samples
 the existing AccessLock constructor's elapsed acquisition time. It never changes
 lock selection, adds try-locks, or bypasses original LOCK exclusion. Operations
 already inside original LOCK are counted separately and not latency-sampled.
 Counter publication and sampled-site allocation happen after the data lock is
 released. Samples include overhead and preemption/scheduler delays; they do not
-establish actual contested-lock duration or CPU-time percentages. Periodic
-sampling can alias a periodic workload. No extrapolated total wait is reported.
+establish actual contested-lock duration or CPU-time percentages. Xorshift64 uses reproducible per-thread seeds; samples are approximate
+and can still have sampling error. No extrapolated total wait is reported.
 
 A scoped binding keeps the current guest State alive for sampled RIP reads and
 restores the parent binding across nested native guest callbacks and exceptions.
