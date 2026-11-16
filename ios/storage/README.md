@@ -173,6 +173,10 @@ The supplied matching real dump passes executable hashes, archive sizes and
 archive TOC bounds through `storage-validate` without copying or changing it.
 Files-provider UI, progress-sheet presentation and on-device interruption remain
 unverified until the devices are available.
+`run-picker-qa.py` builds a separate Simulator QA app and directly exercises
+picker delegate edge cases; it does not operate a Files provider or normal
+game save. Specify a fresh external output, the storage build output, and an
+explicit Simulator UDID. The QA app uses a unique bundle ID.
 
 ## Save write sessions
 

@@ -82,6 +82,7 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
 @property(nonatomic, strong) NSURL *documentsURL;
 @property(nonatomic, weak) UIViewController *presentingController;
 @property(nonatomic, strong, nullable) NSFileCoordinator *coordinator;
+@property(nonatomic, strong, nullable) UIDocumentPickerViewController *picker;
 @property(nonatomic, strong, nullable)
     DCPImportProgressController *progressController;
 @property(nonatomic, readwrite, getter=isImporting) BOOL importing;
@@ -108,8 +109,13 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
 }
 - (void)presentGameFolderPickerFrom:(UIViewController *)controller {
   NSAssert(NSThread.isMainThread, @"Storage UI must run on main");
-  if (self.importing)
+  if (self.importing || self.picker)
     return;
+  if (!controller.view.window) {
+    if (self.completionHandler)
+      self.completionHandler(storage_error("Import cancelled", NSUserCancelledError));
+    return;
+  }
   self.presentingController = controller;
   UIDocumentPickerViewController *picker =
       [[UIDocumentPickerViewController alloc]
@@ -117,18 +123,28 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
                               asCopy:NO];
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
+  self.picker = picker;
   [controller presentViewController:picker animated:YES completion:nil];
 }
 - (void)documentPickerWasCancelled:
     (UIDocumentPickerViewController *)controller {
+  if (controller != self.picker || self.importing)
+    return;
+  self.picker = nil;
   if (self.completionHandler)
     self.completionHandler(
         storage_error("Import cancelled", NSUserCancelledError));
 }
 - (void)documentPicker:(UIDocumentPickerViewController *)controller
     didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-  if (self.importing || urls.count != 1)
+  if (self.importing || controller != self.picker)
     return;
+  self.picker = nil;
+  if (urls.count != 1) {
+    if (self.completionHandler)
+      self.completionHandler(storage_error("Choose one game folder."));
+    return;
+  }
   self.importing = YES;
   _cancel = std::make_shared<std::atomic<bool>>(false);
   auto cancel = _cancel;
@@ -209,5 +225,10 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
   if (_cancel)
     _cancel->store(true);
   [self.coordinator cancel];
+  if (self.picker) {
+    self.picker = nil;
+    if (self.completionHandler)
+      self.completionHandler(storage_error("Import cancelled", NSUserCancelledError));
+  }
 }
 @end

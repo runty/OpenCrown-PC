@@ -110,15 +110,19 @@ NSError *transferError(NSString *text, NSInteger code = 1) {
   });
 }
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)picker {
-  if (picker != self.picker || !self.busy)
+  if (picker != self.picker || !self.busy || self.working)
     return;
   [self finish:nil
          error:transferError(@"Save transfer cancelled", NSUserCancelledError)];
 }
 - (void)documentPicker:(UIDocumentPickerViewController *)picker
     didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-  if (picker != self.picker || !self.busy || self.working || urls.count != 1)
+  if (picker != self.picker || !self.busy || self.working)
     return;
+  if (urls.count != 1) {
+    [self finish:nil error:transferError(@"Choose one folder for save transfer.")];
+    return;
+  }
   if (self.exporting) {
     self.lastSaveFolder = urls.firstObject;
     [self finish:@"Save copy exported. Wait for Files to finish uploading "
