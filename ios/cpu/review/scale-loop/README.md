@@ -41,6 +41,6 @@ candidate `memory.o` and `20619220.o`; add `prototype.cpp` and define
 `DCP_SCALE_PROTOTYPE` for the prototype. `compare-amd.py` extracts and verifies
 the original code bytes, executes them on an authorized x86 Linux reference,
 and compares the saved output matrices. `fullstate.cpp` and `bench.cpp` use the
-same two real objects. Full commands, hashes, raw negative controls, machine
+same two real objects. Compiler/target flags and object paths, hashes, raw negative controls, machine
 identity and outputs are retained under
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-loop-study`.
