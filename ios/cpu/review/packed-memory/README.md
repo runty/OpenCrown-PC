@@ -53,3 +53,33 @@ original vs grouped. The benchmark does not represent the whole game, and
 other Mac workloads make these measurements noisy. The older game experiment
 on the previous global-lock runtime found no settled gameplay improvement.
 Further correctness review and a matched whole-game comparison are required.
+
+## Muted native Town comparison
+
+A private read-only variant of the older lowerer admitted 137 eight-lane reads
+and no writes or four-lane reads. Its source was derived from the protected
+original checkout's uncommitted `lower.cpp` (SHA-256
+`66298194e162be90f6e2b290315f21297510d7f8c95d483a0039317940a98f17`)
+by rejecting groups that write or have a lane count other than eight. The
+source and resulting IR remain in the isolated evidence folder. Inline flag
+lowering and the same compiler were used on both traces; the control object
+matches the existing release object byte for byte. Of 50,479 archive members,
+only `206364d0.o` differs between the two private game binaries. Both contain
+the same experimental memory object. The candidate still has the known
+interleaving/cancellation caveats and neither binary is a shipping build.
+
+Four alternating Town runs, with 600 settled frames, yielded process CPU time
+19.510 and 14.947 seconds for the control, 20.577 and 18.994 for the candidate.
+An initial experiment included wrapped writes and is not a fair read-only
+comparison. These few timings vary substantially with other Mac work; they
+show no established game-level gain or regression. The copied save remained
+unchanged and each run reached Town without a reported error. A separate
+instrumented read-only run recorded 12,365,010 fast reads and no fallbacks,
+plus 26,242 full-content texture checks and zero proof failures. Instrumentation
+was disabled for timing. The comparison script requires the previously built,
+archive-verified private binaries and never touches a physical device.
+
+`cancellation-test.cpp` injects a signal change immediately after the grouped
+read releases its lock. It checks both a stop and a continuing callback which
+re-enters checked memory, under native, ASan/UBSan and TSan. This deterministic
+case does not establish equivalence for all signal races or guest interleavings.

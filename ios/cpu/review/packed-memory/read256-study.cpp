@@ -10,6 +10,9 @@
 #ifndef DCP_EXTERNAL_DISPATCH
 Memory *dispatch(State &,uint64_t,Memory *m){return m;}
 #endif
+#ifdef DCP_READ256_TEST_HOOK
+static void read256_test_hook();
+#endif
 static bool try_read256(Memory &m,uint64_t address,uint32_t (&out)[8]) {
   auto *cache=m.signalCache;
   if(!cache)return false;
@@ -19,6 +22,9 @@ static bool try_read256(Memory &m,uint64_t address,uint32_t (&out)[8]) {
     auto *p=checkedPointer(m,address,32);
     if(cache->generation.load(std::memory_order_acquire)!=generation)return false;
     { AccessLock lock(p,32);std::memcpy(out,p,32); }
+#ifdef DCP_READ256_TEST_HOOK
+    read256_test_hook(); // deterministic signal injection, outside the lock
+#endif
     // Discard the speculative value and use the original per-lane sequence if
     // a stop/pause/cancel signal changed during the grouped read.
     return cache->generation.load(std::memory_order_acquire)==generation;
