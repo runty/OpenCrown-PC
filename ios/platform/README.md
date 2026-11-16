@@ -144,8 +144,8 @@ Town session it rendered 1,375,232 source frames before backgrounding, stopped
 and reported paused in the background, and rendered 1,600,000 cumulative
 frames after foregrounding the same session. A 5,138-frame run finished with
 4,442,624 cumulative rendered audio frames, zero reported underruns or clipped
-samples, an unchanged disposable save, restored input and no changes to other
-preexisting Simulator files. Full-content texture verification passed 119,588
+samples, an unchanged disposable save, restored input and unchanged preexisting tracked Simulator files (excluding
+game assets and global diagnostic reports). Full-content texture verification passed 119,588
 checks. The audit does not test audio interruption notifications, route changes,
 audibility, real devices, game-save writing or sustained performance.
 
