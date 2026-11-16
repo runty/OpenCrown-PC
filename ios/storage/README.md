@@ -287,6 +287,16 @@ save/checkpoint roots, and only reads its source trees. `ui-qa-game.py` accepts
 results are under `save-restore-cache-core/real-restore-ui/` and
 `save-restore-cache-core/real-restore-game/`.
 
+The same non-NaN build also reached the first GOBLIN/Ruins checkpoint from a
+separate disposable Darrel save and completed 720 scripted encounter frames.
+It captured 7,162 frames, verified 142,568 texture hits against full contents
+with no proof failure, retained the Darrel save hash, and left the previous
+restored R save and its recovery copies unchanged. The final captured frame
+shows Darrel at the chest. `ui-qa-game.py --combat` uses the retained
+`ui-qa-ruins-input.txt` route in this separate QA app. This is not a full
+adventure clear, device performance test, audio acceptance, or in-game save
+test. Evidence: `save-restore-cache-core/simulator-ruins/`.
+
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
 modification time with an ID tie-breaker. The just-committed checkpoint is always
