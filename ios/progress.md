@@ -1,5 +1,71 @@
 # Device port progress
 
+## 2026-11-15 — Narrow scalar FP operands; retain width proof and separate phone timing
+
+Isolated `6970470` on `codex/ios-scalar-fp-width` adds nine selector corrections:
+legacy/VEX MULSS/MULSD/DIVSS/DIVSD and VMAXSS read their actual m32/m64 operands.
+Register/packed forms, arithmetic expressions, destination and merge types are
+unchanged; ADD/SUB were already narrow. The bootstrap applies the new patch,
+and game generation now fingerprints BINARY.cpp. The provenance fixture passes
+22 checks, including changed/missing binary-source rejection. See the
+[width review](https://github.com/runty/OpenCrown-PC/blob/697047062d02dbf27bc6324689ae4d7e76be18c8/ios/cpu/review/scalar-fp-memory.md).
+
+Native x86 covers 24 forms × 256 vectors, four rounding modes, aligned and
+unaligned sources, finite/zero/subnormal/infinity/NaN values and lane/flag
+controls. Twenty valid protected-end operands work and twenty one-byte overruns
+fault. Each baseline/fixed arm64 configuration, native and ASan/UBSan, evaluates
+67,904 checks including 160 recorded/throwing boundary cases. All 18 baseline
+excess-read negative controls disappear in the fixed version. Access, boundary,
+input mutation, flags and inactive lanes have zero regressions; all 442,368
+captured result bytes per mode remain baseline/fixed identical.
+
+**Strict native-oracle qualification remains failed:** all four configurations
+retain the same 160 NaN-selection/payload differences. The reports and nonzero
+exits are retained. Width-delta proof is a separate verdict, not a full CPU
+fidelity pass. Resolving the existing NaN policy requires a separate review.
+
+A private backend and explicitly bound lifter actually regenerate all 50,464
+frozen entry roots. Module bytes and the reviewed native CRILAYLA routines stay
+exact; 4,488 IR files change. The game's `0x20619220` routine now has one checked
+F32 read instead of four at VMULSS `0x20619240`. All Mac/iPhoneOS/Simulator archives
+complete with current and actual-generation provenance, trace hash
+`3ec0775bcb6316520ae607e26f2063c2a609bd8e50703d4429cad58f1076f1a1`.
+Existing shared backends, frozen corpus, shader caches and nxnative are untouched.
+Both SDK apps include icons and matching archive identities; physical signing
+verifies without added memory entitlements. Renderer bytes, native bulk/codec
+features, FreeType/FP80 helpers and inline flag lowering match the reference.
+
+Native Town completes 2,226 frames/600 checkpoint intervals and 24,387 full
+texture-version checks over 112,645,425,152 logical bytes with zero mismatches.
+Packaged Simulator completes 2,133 frames/600 intervals, 24,898 checks over
+114,520,973,312 logical bytes, zero mismatches, preserved existing state/input
+and an inspected recognizable Town image. These audits are not speed tests.
+
+Four uninstrumented physical iPhone walks use reference/candidate/candidate/reference,
+with opt-in texture versions on, identical input/save bytes, nominal thermal
+state, Low Power Mode off and real muted 48 kHz/256-frame audio. Median FPS is
+59.424 reference versus 59.450 candidate; median checkpoint CPU is 26.916902
+versus 27.265752 seconds (**1.30% higher**, normalized CPU/wall 1.36% higher).
+The small, variable series establishes no headroom gain or sustained-performance
+claim. A separate phone audit checks 25,851 hits / 118,792,048,640 logical bytes
+with zero mismatches. All phone runs finish with clean errors, zero audio
+underruns/clipping and exact disposable R save bytes. The width code remains
+isolated; correctness of narrower access does not imply measured speedup.
+
+Candidate installation preserves all 113 pre-existing non-asset files before
+first launch. Restoration of the original `bb540ac` preserves all 122 then-existing
+files before first launch. The original input, protected manual root and normal
+muted launcher are retained; final comparison preserves all 122 prior files
+except the two expected global reports, with 124 files now backed up. The new disposable R root is separate from the
+skipped manual save check. No physical iPad or normal/cloud saves are used.
+
+Private proof: `mobile-adventure-live/scalar-fp-width-candidate/`, including the
+strict failed review, separate width delta, private-backend construction,
+actual generation/IR change maps, SDK package identities, native/Simulator Town,
+phone comparison/audit and preservation. The width code stays on its isolated
+branch. Stable pin `851c06b`, default-off texture versions and full P4–P6 gates
+remain unchanged; no sustained 60 fps or full-port completion is claimed.
+
 ## 2026-11-15 — Phone scalar diagnostics identify an oversized scalar FP read
 
 Opt-in diagnostic `b238069` stays on `codex/ios-scalar-profile`. Normal builds
