@@ -1,5 +1,19 @@
 # Device port progress
 
+## 2026-11-16 — Simulator Files-picker cancellation and damaged copy
+
+The isolated real-picker QA exports a synthetic save into its own unique
+local container, changes the current synthetic save, cancels an import, then
+attempts a same-size checksum-damaged copy. Both errors are displayed and the
+current save remains `after`; repairing the export and importing succeeds,
+with current/exported `before`, incoming/previous checkpoints and marker
+verified. XCTest passes on the dedicated iPhone Simulator. An initial bad
+fixture had a different size and was correctly rejected as incomplete rather
+than checksum-invalid; its failed expectation is retained. No physical
+device, iCloud or real save was used. Actual Files-provider/network and
+interruption behavior remain open. Evidence: `mobile-adventure-live/
+files-picker-failures-simulator-qa3/`.
+
 ## 2026-11-16 — Real Simulator Files-picker local handoff
 
 A uniquely named Simulator QA app exercises the production save-transfer

@@ -83,12 +83,16 @@ name=(root/'qa-export-name.txt').read_text().strip()
 if len(name)!=32 or any(c not in '0123456789abcdef' for c in name):raise RuntimeError('unexpected export name')
 slot=root/'ProbeSaves/SAVEDATA00/SAVE0.DAT';marker=root/'protected.txt';incoming=root/'Incoming/SAVEDATA00/SAVE0.DAT'
 if slot.read_bytes()!=b'before' or marker.read_bytes()!=b'marker' or incoming.read_bytes()!=b'after':raise RuntimeError('fixture contents differ')
+cancel=(root/'qa-error-1.txt').read_text()
+corrupt=(root/'qa-error-2.txt').read_text()
+if 'cancelled' not in cancel.lower() or not cancel.endswith('\nafter'):raise RuntimeError('cancellation did not preserve current save')
+if 'File checksum mismatch' not in corrupt or not corrupt.endswith('\nafter'):raise RuntimeError('damaged import did not preserve current save')
 checkpoints={p.parent.parent.name:p.read_text() for p in (root/'SaveCheckpoints').glob('*/SAVEDATA00/SAVE0.DAT')}
 if not {'before','after'}.issubset(checkpoints.values()):raise RuntimeError('expected checkpoints missing')
 exported=Path((root/'qa-export-path.txt').read_text()).resolve()
 if exported.parent != root.resolve() or exported.name != name:raise RuntimeError('export destination is not the QA app local container')
 if (exported/'SAVEDATA00/SAVE0.DAT').read_bytes()!=b'before':raise RuntimeError('exported copy differs')
 result={'success':True,'simulator':a.simulator,'bundle':bundle,'current_save':'before',
-        'exported_save':'before','checkpoints':checkpoints,'marker':'marker',
+        'exported_save':'before','cancelled_save':'after','rejected_damaged_save':'after','checkpoints':checkpoints,'marker':'marker',
         'export_folder':name,'scope':'Synthetic data, QA app local container and real Simulator Files picker; no iCloud or physical device'}
 (out/'verification.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))

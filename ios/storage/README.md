@@ -192,6 +192,8 @@ not exercise the Files picker, a cloud provider, or game-generated saves.
 export and import a synthetic save in a uniquely named QA app’s own local
 container. The test refuses to export unless that container is selected, then
 checks the exported and restored bytes, both checkpoints and a marker. It
+The same test cancels a picker and rejects a same-size checksum-damaged copy,
+recording unchanged current-save bytes before repairing and importing it.
 does not qualify iCloud, a physical device, or game-generated save contents.
 
 ## Save write sessions

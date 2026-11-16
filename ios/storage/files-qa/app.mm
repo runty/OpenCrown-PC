@@ -5,6 +5,7 @@
 @property(nonatomic, strong) DCPSaveTransferController *transfer;
 @property(nonatomic, strong) UILabel *status;
 @property(nonatomic, strong) NSURL *documents;
+@property(nonatomic) unsigned errorCount;
 @end
 @implementation FilesQAController
 - (void)viewDidLoad {
@@ -27,12 +28,24 @@
   UIButton *changeButton = [UIButton buttonWithType:UIButtonTypeSystem];
   [changeButton setTitle:@"Change Synthetic Save" forState:UIControlStateNormal]; changeButton.accessibilityIdentifier = @"change-save";
   [changeButton addTarget:self action:@selector(changeSave) forControlEvents:UIControlEventTouchUpInside];
-  UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[button,exportButton,changeButton,self.status]]; stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 20; stack.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:stack];
+  UIButton *corruptButton = [UIButton buttonWithType:UIButtonTypeSystem];
+  [corruptButton setTitle:@"Corrupt Export" forState:UIControlStateNormal]; corruptButton.accessibilityIdentifier = @"corrupt-export";
+  [corruptButton addTarget:self action:@selector(corruptExport) forControlEvents:UIControlEventTouchUpInside];
+  UIButton *repairButton = [UIButton buttonWithType:UIButtonTypeSystem];
+  [repairButton setTitle:@"Repair Export" forState:UIControlStateNormal]; repairButton.accessibilityIdentifier = @"repair-export";
+  [repairButton addTarget:self action:@selector(repairExport) forControlEvents:UIControlEventTouchUpInside];
+  UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[button,exportButton,changeButton,corruptButton,repairButton,self.status]]; stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 20; stack.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:stack];
   [NSLayoutConstraint activateConstraints:@[[stack.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],[stack.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]]];
   __weak FilesQAController *weakSelf = self;
   self.transfer.completionHandler = ^(NSString *message, NSError *error) {
     FilesQAController *strongSelf = weakSelf;
-    if (error) strongSelf.status.text = error.localizedDescription;
+    if (error) {
+      strongSelf.status.text = error.localizedDescription;
+      ++strongSelf.errorCount;
+      NSString *value = [NSString stringWithContentsOfURL:[strongSelf.documents URLByAppendingPathComponent:@"ProbeSaves/SAVEDATA00/SAVE0.DAT"] encoding:NSUTF8StringEncoding error:nil];
+      NSString *record = [NSString stringWithFormat:@"%@\n%@", error.localizedDescription, value ?: @"<missing>"];
+      [record writeToURL:[strongSelf.documents URLByAppendingPathComponent:[NSString stringWithFormat:@"qa-error-%u.txt",strongSelf.errorCount]] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
     else if ([message hasPrefix:@"Save copy exported."]) {
       NSURL *exported = [strongSelf.transfer valueForKey:@"lastSaveFolder"];
       NSString *name = exported.lastPathComponent ?: @"";
@@ -44,6 +57,17 @@
 }
 - (void)importSave { [self.transfer importFromFiles:self]; }
 - (void)exportSave { [self.transfer exportToFiles:self]; }
+- (void)writeExport:(NSString *)value {
+  NSURL *exported = [self.transfer valueForKey:@"lastSaveFolder"];
+  NSString *prefix = [self.documents.path stringByAppendingString:@"/"];
+  if (self.transfer.isBusy || ![exported.path hasPrefix:prefix]) {
+    self.status.text = @"Invalid QA export location"; return;
+  }
+  BOOL ok = [value writeToURL:[exported URLByAppendingPathComponent:@"SAVEDATA00/SAVE0.DAT"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  self.status.text = ok ? ([value isEqualToString:@"before"] ? @"Export repaired" : @"Export corrupted") : @"Could not alter QA export";
+}
+- (void)corruptExport { [self writeExport:@"badbad"]; }
+- (void)repairExport { [self writeExport:@"before"]; }
 - (void)changeSave {
   if (self.transfer.isBusy) return;
   [@"after" writeToURL:[self.documents URLByAppendingPathComponent:@"ProbeSaves/SAVEDATA00/SAVE0.DAT"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
