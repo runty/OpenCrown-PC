@@ -27,4 +27,10 @@ private:
   mutable std::mutex lock_;
   std::string error_, recovered_, retention_warning_;
 };
+// With all guest writers stopped and exclusive access to the roots, finish any
+// interrupted write recovery before applying an explicit user restore. Throws
+// on recovery or restore failure; the interrupted copy is retained by recovery.
+void restore_user_checkpoint(const std::filesystem::path &checkpoint,
+                             const std::filesystem::path &save_root,
+                             const std::filesystem::path &checkpoint_root);
 } // namespace dcp::storage

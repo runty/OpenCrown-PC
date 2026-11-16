@@ -96,6 +96,13 @@ and completed checkpoints alone.
 Restore validates the complete checkpoint first, stages a fresh copy, validates
 again and atomically exchanges the live directory. The former live tree remains
 as `.ProbeSaves.previous`. An invalid checkpoint never replaces the live tree.
+The direct `restore_checkpoint` API refuses an unresolved save-write journal.
+For the launcher, `restore_user_checkpoint` first recovers any interrupted
+write (retaining its partial tree), then applies the selected checkpoint. This
+prevents a later launch from silently rolling back a newly selected restore.
+If recovery fails, the restore fails and the journal and interrupted live tree
+remain available for repair. Both APIs still require exclusive access and all
+guest writers to be stopped.
 Completed checkpoints are retained until the user/integrator deliberately prunes
 them. An empty tree is a valid checkpoint; the launcher decides when that is
 useful. The helpers do not infer whether game progress or a save slot is complete.
@@ -199,6 +206,14 @@ invalid/nested transitions, rollback-checkpoint corruption and restart after bot
 the recovery exchange and interrupted-tree archival. These are filesystem
 simulations on the host; actual termination during the translated game's write
 still requires an integrated runtime/device pass.
+
+A separate interrupted-write/user-restore fixture verifies direct restore is
+rejected while the journal is active; the user-facing restore then recovers
+the interrupted copy, applies the chosen checkpoint, and retains it after a
+subsequent simulated launch. A corrupt rollback checkpoint instead leaves the
+interrupted data and journal untouched. The regression failed against the
+previous direct restore implementation. It does not replace a device or
+manual in-game save/relaunch test.
 
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint

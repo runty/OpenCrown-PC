@@ -975,12 +975,13 @@ UIButton *button(NSString *title, id target, SEL action) {
                                  ^{
                                    NSString *failure = nil;
                                    try {
-                                     dcp::storage::restore_checkpoint(
+                                     dcp::storage::restore_user_checkpoint(
                                          path.fileSystemRepresentation,
                                          [documents()
                                              stringByAppendingPathComponent:
                                                  @"ProbeSaves"]
-                                             .fileSystemRepresentation);
+                                             .fileSystemRepresentation,
+                                         root.fileSystemRepresentation);
                                    } catch (const std::exception &exception) {
                                      failure = @(exception.what());
                                    }

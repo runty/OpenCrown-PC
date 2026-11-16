@@ -576,6 +576,9 @@ void validate_checkpoint(const fs::path &checkpoint) {
   validate_manifest(checkpoint, checkpoint_manifest(checkpoint));
 }
 void restore_checkpoint(const fs::path &checkpoint, const fs::path &save_root) {
+  check(!present(save_root.parent_path() /
+                 ("." + save_root.filename().string() + ".write-session")),
+        "Recover the interrupted save before restoring a checkpoint");
   detail::restore_checkpoint_generation(checkpoint, save_root, unique_id());
 }
 void detail::restore_checkpoint_generation(const fs::path &checkpoint,

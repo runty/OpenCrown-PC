@@ -282,4 +282,12 @@ bool SaveTransactions::active() const {
   std::lock_guard<std::mutex> guard(lock_);
   return present(journal_);
 }
+void restore_user_checkpoint(const fs::path &checkpoint,
+                             const fs::path &save_root,
+                             const fs::path &checkpoint_root) {
+  SaveTransactions session(save_root, checkpoint_root);
+  if (!session.recover())
+    throw std::runtime_error(session.error());
+  restore_checkpoint(checkpoint, save_root);
+}
 } // namespace dcp::storage

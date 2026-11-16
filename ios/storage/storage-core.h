@@ -40,6 +40,8 @@ std::string checkpoint_saves(const std::filesystem::path &save_root,
                              const std::filesystem::path &checkpoint_root);
 void recover_checkpoints(const std::filesystem::path &checkpoint_root);
 void validate_checkpoint(const std::filesystem::path &checkpoint);
+// Refuses to replace a save with an unresolved write-session journal. The UI
+// should use restore_user_checkpoint to recover before applying the selection.
 void restore_checkpoint(const std::filesystem::path &checkpoint,
                         const std::filesystem::path &save_root);
 void recover_save_restore(const std::filesystem::path &save_root);

@@ -326,6 +326,54 @@ int main(int argc, char **argv) {
            "oversized fixture creation failed");
     rejects([&] { detail::import_manifest(source, game, manifest, cancel); },
             "oversized optional metadata accepted");
+    // A user restore must not exchange the live tree while a previous save
+    // write still has a recovery journal. Otherwise the next launch silently
+    // rolls back the user's selected checkpoint and may replace the partial
+    // tree before it can be archived.
+    const auto restoreSaves = base / "InterruptedRestore/Saves",
+               restoreCheckpoints = base / "InterruptedRestore/Checkpoints";
+    write(restoreSaves / "SAVEDATA00/data.bin", "chosen-progress");
+    const auto chosen = restoreCheckpoints /
+                        checkpoint_saves(restoreSaves, restoreCheckpoints);
+    write(restoreSaves / "SAVEDATA00/data.bin", "before-interruption");
+    SaveTransactions restoreSession(restoreSaves, restoreCheckpoints);
+    expect(restoreSession.begin(), "restore regression begin failed");
+    write(restoreSaves / "SAVEDATA00/data.bin", "interrupted-bytes");
+    rejects([&] { restore_checkpoint(chosen, restoreSaves); },
+            "restore accepted an unresolved save write journal");
+    expect(read(restoreSaves / "SAVEDATA00/data.bin") == "interrupted-bytes",
+           "rejected restore changed interrupted data");
+    restore_user_checkpoint(chosen, restoreSaves, restoreCheckpoints);
+    expect(read(restoreSaves / "SAVEDATA00/data.bin") == "chosen-progress",
+           "user restore did not apply selected checkpoint");
+    std::vector<fs::path> interruptedCopies;
+    for (const auto &entry : fs::directory_iterator(restoreCheckpoints))
+      if (entry.path().filename().string().find("interrupted-") == 0)
+        interruptedCopies.push_back(entry.path());
+    expect(interruptedCopies.size() == 1 &&
+               read(interruptedCopies[0] / "SAVEDATA00/data.bin") ==
+                   "interrupted-bytes",
+           "user restore lost interrupted save copy");
+    expect(read(base / "InterruptedRestore/.Saves.previous/SAVEDATA00/data.bin") ==
+               "before-interruption",
+           "user restore did not retain recovered pre-write save");
+    SaveTransactions nextLaunch(restoreSaves, restoreCheckpoints);
+    expect(nextLaunch.recover() &&
+               read(restoreSaves / "SAVEDATA00/data.bin") == "chosen-progress",
+           "next launch rolled back explicit user restore");
+    expect(nextLaunch.begin(), "user restore corruption test begin failed");
+    const auto restoreJournal = base / "InterruptedRestore/.Saves.write-session";
+    std::istringstream restoreRecord(read(restoreJournal));
+    std::string restoreVersion, restoreBefore;
+    std::getline(restoreRecord, restoreVersion);
+    std::getline(restoreRecord, restoreBefore);
+    write(restoreSaves / "SAVEDATA00/data.bin", "second-interrupted");
+    write(restoreCheckpoints / restoreBefore / "SAVEDATA00/data.bin", "corrupt");
+    rejects([&] { restore_user_checkpoint(chosen, restoreSaves, restoreCheckpoints); },
+            "user restore ignored corrupt recovery checkpoint");
+    expect(read(restoreSaves / "SAVEDATA00/data.bin") == "second-interrupted" &&
+               fs::exists(restoreJournal),
+           "failed user restore changed interrupted save or journal");
     const auto sessionSaves = base / "Session/Saves",
                sessionCheckpoints = base / "Session/Checkpoints";
     write(sessionSaves / "SAVEDATA00/data.bin", "complete-before-write");
