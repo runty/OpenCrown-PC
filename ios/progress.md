@@ -1,5 +1,38 @@
 # Device port progress
 
+## 2026-11-16 — Exercise experimental fenv boundaries in real runtime
+
+Isolated `codex/ios-fenv-runtime` at `9108301` places the prototype behind
+`DCP_FENV_BOUNDARY_EXPERIMENT` in the real HLE service and nested worker
+callback paths. A second compile-time flag injects a host exception and a
+single translated `scePthreadOnce` callback for tests only. Neither flag is
+used by a shipped app. No MXCSR status mapping or trap fix is implemented.
+
+A private Mac archive differs from the verified NaN candidate in only its
+instrumented `runtime.o`; all 50,479 members were independently hashed. The
+real game reaches Town in 2,224 frames with 25,186 full-content texture checks /
+114,386,884,608 logical bytes and zero mismatch. Its disposable R save remains
+exact and the final Town image was inspected. During startup and the checkpoint,
+2,312,840 service entries and one deliberately injected callback report zero
+restore failures. The callback's guest flags were 0 and the native side held
+invalid flag 1; guest entry and native return matched their expected states.
+The callback runs the original translated `xor eax,eax; ret` at `0x20007bc0`;
+it contains no floating-point work. This is one synthetic callback path, not
+qualification of all real callback semantics or guest flag mapping.
+
+The private archive also passes 20 parked-stop and five resume-cycle sessions,
+plus configured cancellation and concurrent-report rejection, with 27 unload
+handoffs and maximum observed stop 51.109 ms. The fixture uses an empty asset
+root, not full gameplay. Both iPhoneOS and Simulator compile experimental
+runtime syntax-only. Default-off Mac object text and relocations match the
+reference. A host-only scope microbenchmark gives 17.02 ns median net per scope;
+it excludes actual HLE work/instrumentation and is not device/game performance.
+All details and limitations are in the [experiment notes](https://github.com/runty/OpenCrown-PC/blob/9108301/ios/game/fenv-boundary-experiment.md)
+and `mobile-adventure-live/sse-nan-candidate/fenv-runtime-callback-v2/`.
+No physical device or normal/cloud save was touched. Intentional HLE FP changes,
+direct native helpers, DAZ/FTZ, exceptions/traps, performance, device testing
+and the P4–P6 gates remain open; no integration or pin promotion is claimed.
+
 ## 2026-11-16 — Prototype guest/native floating-environment isolation
 
 Isolated `codex/ios-fenv-boundary` at `ac1395c` tests a proposed native-boundary
