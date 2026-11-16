@@ -4,6 +4,28 @@
 #import "storage-ui.h"
 #import "save-transfer-ui.h"
 
+@interface DeferredPicker : UIDocumentPickerViewController
+@property(nonatomic, copy) void (^dismissal)(void);
+@end
+@implementation DeferredPicker
+- (void)dismissViewControllerAnimated:(BOOL)animated completion:(void (^)(void))completion {
+  (void)animated; self.dismissal = completion;
+}
+@end
+@interface AttachedView : UIView
+@property(nonatomic, strong) UIWindow *fakeWindow;
+@end
+@implementation AttachedView
+- (UIWindow *)window { return self.fakeWindow; }
+@end
+@interface DeferredPresenter : UIViewController
+@property(nonatomic, copy) void (^presentation)(void);
+@end
+@implementation DeferredPresenter
+- (void)presentViewController:(UIViewController *)controller animated:(BOOL)animated completion:(void (^)(void))completion {
+  (void)controller; (void)animated; self.presentation = completion;
+}
+@end
 @interface PickerQAScene : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic, strong) UIWindow *window;
 @end
@@ -82,9 +104,61 @@
   active = picker(); [storage setValue:active forKey:@"picker"];
   [storage documentPicker:active didPickDocumentsAtURLs:@[root, marker]];
   check(gameCompletions == 3 && gameError && !storage.isImporting, @"Multiple game URLs were accepted");
+  DeferredPicker *delayed = [[DeferredPicker alloc] initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
+  [storage setValue:delayed forKey:@"picker"];
+  [storage documentPicker:delayed didPickDocumentsAtURLs:@[root]];
+  check(storage.isImporting && [storage valueForKey:@"pendingStart"] != nil, @"Expected pending dismissal");
+  [storage cancelImport];
+  check(!storage.isImporting && gameCompletions == 4 && gameError.code == NSUserCancelledError, @"Pending dismissal cancellation stuck");
+  active = picker(); [storage setValue:active forKey:@"picker"];
+  delayed.dismissal();
+  check(!storage.isImporting && gameCompletions == 4 && [storage valueForKey:@"picker"] == active, @"Late dismissal affected a new session");
+  check(![[NSFileManager defaultManager] fileExistsAtPath:[documents stringByAppendingPathComponent:@"Game"]], @"Cancelled import touched game data");
+  [storage cancelImport];
+  check(gameCompletions == 5, @"New session failed to cancel");
+
+  DeferredPresenter *presenter = [[DeferredPresenter alloc] init];
+  AttachedView *attached = [[AttachedView alloc] init];
+  attached.fakeWindow = [[UIWindow alloc] initWithFrame:CGRectMake(0,0,100,100)];
+  presenter.view = attached;
+  [storage setValue:presenter forKey:@"presentingController"];
+  delayed = [[DeferredPicker alloc] initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
+  [storage setValue:delayed forKey:@"picker"];
+  [storage documentPicker:delayed didPickDocumentsAtURLs:@[root]];
+  delayed.dismissal();
+  check(storage.isImporting && presenter.presentation != nil, @"Expected pending presentation");
+  [storage cancelImport];
+  check(!storage.isImporting && gameCompletions == 6, @"Pending presentation cancellation stuck");
+  active = picker(); [storage setValue:active forKey:@"picker"];
+  presenter.presentation();
+  check(!storage.isImporting && gameCompletions == 6 && [storage valueForKey:@"picker"] == active, @"Late presentation affected a new session");
+  check(![[NSFileManager defaultManager] fileExistsAtPath:[documents stringByAppendingPathComponent:@"Game"]], @"Late presentation started a worker");
+  [storage cancelImport];
+  check(gameCompletions == 7, @"New session after presentation failed to cancel");
   check([[NSString stringWithContentsOfURL:marker encoding:NSUTF8StringEncoding error:nil] isEqualToString:@"unchanged"], @"Marker changed");
-  NSString *result = [NSString stringWithFormat:@"{\"checks\":%u,\"failed\":0}\n", checks];
-  [result writeToURL:[root URLByAppendingPathComponent:@"picker-results.json"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  [storage setValue:nil forKey:@"presentingController"];
+  delayed = [[DeferredPicker alloc] initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
+  [storage setValue:delayed forKey:@"picker"];
+  [storage documentPicker:delayed didPickDocumentsAtURLs:@[root]];
+  delayed.dismissal();
+  check(!storage.isImporting && gameCompletions == 8 && gameError.code == NSUserCancelledError, @"Detached presenter did not cancel pending import");
+  check(![[NSFileManager defaultManager] fileExistsAtPath:[documents stringByAppendingPathComponent:@"Game"]], @"Detached presenter started a worker");
+  [storage setValue:presenter forKey:@"presentingController"];
+  // Complete a real local coordinated read through the worker path. The
+  // folder deliberately lacks game data and must fail without a destination.
+  storage.completionHandler = ^(NSError *error) {
+    check(error != nil && !storage.isImporting, @"Failed local import did not finish");
+    check(![[NSFileManager defaultManager] fileExistsAtPath:[documents stringByAppendingPathComponent:@"Game"]], @"Invalid local source created game data");
+    check([[NSString stringWithContentsOfURL:marker encoding:NSUTF8StringEncoding error:nil] isEqualToString:@"unchanged"], @"Local import changed marker");
+    NSString *result = [NSString stringWithFormat:@"{\"checks\":%u,\"failed\":0}\n", checks];
+    [result writeToURL:[root URLByAppendingPathComponent:@"picker-results.json"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  };
+  delayed = [[DeferredPicker alloc] initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
+  [storage setValue:delayed forKey:@"picker"];
+  [storage documentPicker:delayed didPickDocumentsAtURLs:@[root]];
+  delayed.dismissal();
+  presenter.presentation();
+  check(storage.isImporting, @"Local import worker failed to start");
   return YES;
 }
 @end

@@ -83,6 +83,9 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
 @property(nonatomic, weak) UIViewController *presentingController;
 @property(nonatomic, strong, nullable) NSFileCoordinator *coordinator;
 @property(nonatomic, strong, nullable) UIDocumentPickerViewController *picker;
+@property(nonatomic, copy, nullable) dispatch_block_t pendingStart;
+@property(nonatomic, strong, nullable) NSObject *pendingToken;
+@property(nonatomic, strong, nullable) NSURL *pendingScopeURL;
 @property(nonatomic, strong, nullable)
     DCPImportProgressController *progressController;
 @property(nonatomic, readwrite, getter=isImporting) BOOL importing;
@@ -203,28 +206,67 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
         self.importing = NO;
         self.coordinator = nil;
         self.progressController = nil;
-        [progress dismissViewControllerAnimated:YES
-                                     completion:^{
-                                       if (self.completionHandler)
-                                         self.completionHandler(failure);
-                                     }];
+        void (^complete)(void) = ^{
+          if (self.completionHandler)
+            self.completionHandler(failure);
+        };
+        if (progress.presentingViewController)
+          [progress dismissViewControllerAnimated:YES completion:complete];
+        else
+          complete();
       });
     });
   };
-  // Start work only after progress is visible, including fast preflight errors.
-  [controller dismissViewControllerAnimated:YES
-                                 completion:^{
-                                   [self.presentingController
-                                       presentViewController:progress
-                                                    animated:YES
-                                                  completion:startWork];
-                                 }];
+  // A scene can disappear before either presentation completion arrives.
+  // Keep a cancellable, session-specific pending start so a late completion
+  // cannot launch this or a later import after the launcher becomes available.
+  NSObject *token = [[NSObject alloc] init];
+  self.pendingToken = token;
+  self.pendingStart = startWork;
+  self.pendingScopeURL = scoped ? source : nil;
+  void (^startIfPending)(void) = ^{
+    if (self.pendingToken != token)
+      return;
+    dispatch_block_t work = self.pendingStart;
+    self.pendingToken = nil;
+    self.pendingStart = nil;
+    self.pendingScopeURL = nil; // worker now owns the security scope
+    if (work)
+      work();
+  };
+  [controller dismissViewControllerAnimated:YES completion:^{
+    if (self.pendingToken != token)
+      return;
+    if (!self.presentingController.view.window) {
+      [self cancelImport];
+      return;
+    }
+    [self.presentingController presentViewController:progress animated:YES
+        completion:^{
+          if (self.pendingToken == token)
+            startIfPending();
+          else
+            [progress dismissViewControllerAnimated:NO completion:nil];
+        }];
+  }];
 }
 - (void)cancelImport {
   NSAssert(NSThread.isMainThread, @"Storage UI must run on main");
   if (_cancel)
     _cancel->store(true);
   [self.coordinator cancel];
+  if (self.pendingStart) {
+    self.pendingStart = nil;
+    self.pendingToken = nil;
+    [self.pendingScopeURL stopAccessingSecurityScopedResource];
+    self.pendingScopeURL = nil;
+    [self.progressController dismissViewControllerAnimated:NO completion:nil];
+    self.progressController = nil;
+    self.coordinator = nil;
+    self.importing = NO;
+    if (self.completionHandler)
+      self.completionHandler(storage_error("Import cancelled", NSUserCancelledError));
+  }
   if (self.picker) {
     self.picker = nil;
     if (self.completionHandler)

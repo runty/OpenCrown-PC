@@ -64,7 +64,7 @@ try:
   time.sleep(1)
  else:raise RuntimeError('QA app did not produce a result')
  data=json.loads(result.read_text())
- if data!={'checks':16,'failed':0}:raise RuntimeError(f'Unexpected QA result: {data}')
+ if data!={'checks':32,'failed':0}:raise RuntimeError(f'Unexpected QA result: {data}')
  (out/'results.json').write_text(json.dumps({'bundle':bundle,'simulator':a.simulator,**data},indent=2)+'\n')
  print(json.dumps(data))
 finally:

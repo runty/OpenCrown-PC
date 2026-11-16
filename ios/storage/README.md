@@ -143,6 +143,12 @@ Game execution and other storage actions remain disabled throughout a transfer.
 If file coordination returns without invoking its read callback, both the save
 and game-data importers report an error instead of reporting an import that
 never occurred. Provider errors and errors from the import itself are kept.
+Unexpected picker results report an error and release the launcher. Stale game
+picker callbacks are ignored after cancellation, and stale save-picker cancel
+callbacks cannot release an active transfer. A game import waiting for picker
+dismissal or progress presentation can be cancelled without starting a worker.
+Delayed UI completions cannot start a later session; a detached presenter
+cancels pending work. Running transfers remain busy until their worker joins.
 The integrator owns exclusive access and must stop/join all guest workers first.
 `DCPSaveTransferController` also recovers abandoned local transactions before
 reading or replacing saves.
