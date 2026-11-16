@@ -1,0 +1,27 @@
+diff --git a/ios/game/runtime.cpp b/ios/game/runtime.cpp
+index d3d09fe..4e58975 100644
+--- a/ios/game/runtime.cpp
++++ b/ios/game/runtime.cpp
+@@ -26,0 +27,2 @@
++#include <atomic>
++#include <cstdio>
+@@ -1460,0 +1463,12 @@ extern "C" Memory *__remill_sync_hyper_call(State &state, Memory *,
++namespace {
++std::atomic<uint64_t> scale_counts[258]{}, scale_elements[258]{};
++struct ScaleProbeResults {
++  ~ScaleProbeResults() {
++    for(unsigned i=0;i<258;++i)
++      if (scale_counts[i].load()) std::fprintf(stderr,"SCALE_DISTRIBUTION %u %llu %llu\n",i,
++          (unsigned long long)scale_counts[i].load(),
++          (unsigned long long)scale_elements[i].load());
++  }
++} scale_probe_results;
++}
++
+@@ -1466,0 +1481,6 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
++  if (observedPC == 0x20619220) {
++    const uint32_t n = state.gpr.rdx.dword;
++    const unsigned b = n <= 256 ? n : 257;
++    scale_counts[b].fetch_add(1,std::memory_order_relaxed);
++    scale_elements[b].fetch_add(n,std::memory_order_relaxed);
++  }

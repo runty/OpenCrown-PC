@@ -44,3 +44,28 @@ and compares the saved output matrices. `fullstate.cpp` and `bench.cpp` use the
 same two real objects. Compiler/target flags and object paths, hashes, raw negative controls, machine
 identity and outputs are retained under
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-loop-study`.
+
+## Call distribution in a bounded Mac replay
+
+A separate private runtime probe counted calls at the original translated entry
+without changing that routine. In a muted native startup/Town replay with a
+disposable save, 2,576 calls had 96 elements and 18,256 had 256; no other
+length occurred. This is the entire instrumented session, not a count isolated
+to Town and not evidence of iPhone or combat distributions. The 2,404-frame
+replay completed its checkpoint with 28,380 full-content texture checks, zero
+proof failures, unchanged save and clean unload. A preceding broader-bin run
+also found every call in the 65–256 range.
+
+A six-pair, 5,000-call-per-sample Mac benchmark using a registered native memory
+region (rather than the synthetic `Memory::base` fixture) measured medians of
+1019.65/992.07 ns per 96-element call and 2798.45/2760.52 ns per 256-element
+call (original/prototype). This is a small, uncontended host microbenchmark;
+other host workloads were present. It cannot establish a device speedup or
+justify integration, especially given the unqualified semantics noted above.
+
+The temporary entry probe is stored as `distribution-probe.patch` and requires
+`git apply --unidiff-zero`; it is not included in normal builds. The host
+benchmark is `registered-bench.cpp`. Private build and data are under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-distribution`,
+including `result.json` with hashes and exact histogram. The normal candidate
+archive and user saves were not changed.
