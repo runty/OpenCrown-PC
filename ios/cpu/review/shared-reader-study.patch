@@ -1,0 +1,88 @@
+--- a/ios/cpu/runtime.cpp
++++ b/ios/cpu/runtime.cpp
+@@ -3,6 +3,7 @@
+ #include <cstring>
+ #include <limits>
+ #include <mutex>
++#include <shared_mutex>
+ #include <unordered_map>
+ #ifdef __APPLE__
+ #include <os/lock.h>
+@@ -27,15 +28,7 @@
+ // Guest atlas comparisons are multi-megabyte reads. A 4 KiB lock band
+ // turned each into a global lock even for workers on unrelated mappings.
+ constexpr uintptr_t stripeBytes = 256 * 1024;
+-#ifdef __APPLE__
+-struct StripeMutex {
+-  os_unfair_lock value = OS_UNFAIR_LOCK_INIT;
+-  void lock() noexcept { os_unfair_lock_lock(&value); }
+-  void unlock() noexcept { os_unfair_lock_unlock(&value); }
+-};
+-#else
+-using StripeMutex = std::mutex;
+-#endif
++using StripeMutex = std::shared_mutex;
+ struct VersionPage {
+   uint64_t version = 1;
+   bool escaped = false, watched = false;
+@@ -147,13 +140,13 @@
+ }
+ class AccessLock {
+ public:
+-  AccessLock(const void *pointer, size_t size, unsigned depth = scalarThread.exclusiveDepth) {
++  AccessLock(const void *pointer, size_t size, unsigned depth = scalarThread.exclusiveDepth, bool shared = false) : shared_(shared) {
+     if (depth)
+       return;
+     const uintptr_t address = reinterpret_cast<uintptr_t>(pointer);
+     if (size <= stripeBytes - address % stripeBytes) {
+       single_ = &stripes[stripeForBand(address / stripeBytes)].mutex;
+-      single_->lock();
++      if (shared_) single_->lock_shared(); else single_->lock();
+     } else
+       acquire(spanMask(pointer, size));
+   }
+@@ -163,20 +156,21 @@
+   }
+   AccessLock(const AccessLock &) = delete;
+   ~AccessLock() {
+-    if (single_)
+-      single_->unlock();
+-    else
++    if (single_) {
++      if (shared_) single_->unlock_shared(); else single_->unlock();
++    } else
+       release();
+   }
+ 
+ private:
+   StripeMutex *single_ = nullptr;
++  bool shared_ = false;
+   uint64_t held_ = 0;
+   void acquire(uint64_t mask) {
+     try {
+       while (mask) {
+         const unsigned index = __builtin_ctzll(mask);
+-        stripes[index].mutex.lock();
++        if (shared_) stripes[index].mutex.lock_shared(); else stripes[index].mutex.lock();
+         held_ |= uint64_t(1) << index;
+         mask &= mask - 1;
+       }
+@@ -187,7 +181,8 @@
+   }
+   void release() noexcept {
+     while (held_) {
+-      stripes[__builtin_ctzll(held_)].mutex.unlock();
++      auto &mutex = stripes[__builtin_ctzll(held_)].mutex;
++      if (shared_) mutex.unlock_shared(); else mutex.unlock();
+       held_ &= held_ - 1;
+     }
+   }
+@@ -514,7 +509,7 @@
+ static T loadScalar(Memory &memory, uint64_t address) {
+   auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
+   const auto *pointer = scalarPointer<T>(memory, address, thread);
+-  AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
++  AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth, true);
+   T value;
+   std::memcpy(&value, pointer, sizeof(value));
+   return value;
