@@ -33,3 +33,13 @@ all operand combinations or rounding modes, guest trap behavior, integration
 with native callbacks, game behavior, performance, or physical iOS devices.
 The comparison script accepts a reference host; its output is not hardware
 attestation. Detailed v2 results are in `mxcsr-lift-private-v2` on Office.
+
+A broader follow-up compared 8,232 exact-byte cases (the original 40 plus
+4 operations × 4 rounding modes × 16 left operand classes × 16 right operand
+classes × 2 initial sticky states) with the same physical AMD host. The O2
+and ASan/UBSan lifted runs matched every result and MXCSR value. The operand
+classes include signed zeros and denormals, finite extremes, infinities,
+quiet NaNs and signaling NaNs. This remains a finite matrix for the four
+32-bit scalar memory forms with exceptions masked and DAZ/FTZ off; it does
+not cover other forms, x87/packed/64-bit arithmetic, unmasked exceptions,
+other sticky combinations, native callback integration or real game behavior.

@@ -5,13 +5,16 @@
 #include "status.h"
 
 #include <cfenv>
+#include <string>
+#include <vector>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
 struct Case {
-  const char *name;
+  std::string name;
   int op;
   uint32_t lhs, rhs;
+  uint32_t rounding = 0;
 };
 Case cases[] = {{"add_exact", 0, 0x3f800000, 0x40000000},
                 {"add_denormal", 0, 0x3f800000, 0x00000001},
@@ -57,9 +60,21 @@ extern "C" Memory *__remill_error(State &, uint64_t, Memory *m) {
   return m;
 }
 int main() {
+  std::vector<Case> matrix(std::begin(cases), std::end(cases));
+  const uint32_t values[] = {0, 0x80000000, 1, 0x80000001, 0x00800000,
+      0x3f800000, 0x3fa00000, 0xc0600000, 0x7f7fffff, 0xff7fffff,
+      0x7f800000, 0xff800000, 0x7fc01234, 0xffc05678, 0x7f801234, 0xff800001};
+  for (unsigned op = 0; op < 4; ++op)
+    for (unsigned rounding = 0; rounding < 4; ++rounding)
+      for (unsigned left = 0; left < 16; ++left)
+        for (unsigned right = 0; right < 16; ++right)
+          matrix.push_back({"matrix_" + std::to_string(op) + "_" +
+                                std::to_string(rounding) + "_" + std::to_string(left) +
+                                "_" + std::to_string(right),
+                            int(op), values[left], values[right], rounding});
   Lifted fn[] = {sub_50000000, sub_50010000, sub_50020000, sub_50030000};
   uint64_t pc[] = {0x50000000, 0x50010000, 0x50020000, 0x50030000};
-  for (auto &c : cases)
+  for (auto &c : matrix)
     for (uint32_t sticky : {0u, 1u}) {
       State s{};
       Memory m;
@@ -68,7 +83,7 @@ int main() {
       s.gpr.rdi.qword = Memory::base + 0x100;
       s.gpr.rsi.qword = Memory::base + 0x200;
       s.gpr.rsp.qword = Memory::base + 0xff00;
-      uint32_t initial = 0x1f80 | sticky;
+      uint32_t initial = 0x1f80 | sticky | (c.rounding << 13);
       std::memcpy(m.bytes.data() + 0x100, &initial, 4);
       std::memcpy(m.bytes.data() + 0x104, &c.lhs, 4);
       std::memcpy(m.bytes.data() + 0x108, &c.rhs, 4);
@@ -82,7 +97,7 @@ int main() {
       std::memcpy(&result, m.bytes.data() + 0x204, 4);
       if (!m.fault.empty())
         return 2;
-      std::printf("%s %u %08x %08x\n", c.name, sticky, result, csr);
+      std::printf("%s %u %08x %08x\n", c.name.c_str(), sticky, result, csr);
     }
   // Unsupported guest controls must fail before changing the guest MXCSR or
   // host FPSR. These cases exercise actual lifted LDMXCSR, not just the hook.
