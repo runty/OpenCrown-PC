@@ -150,3 +150,17 @@ This is not a physical-device, actual audio-route interruption, audible
 quality or sustained-performance qualification. The test-only driver is
 `ios/storage/ui-qa-audio-lifecycle.py`; evidence is under
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-cache-core/simulator-audio-lifecycle/`.
+
+To resolve the stale background heartbeat, a separate QA-only build applies
+`review/background-counter-qa.patch` and requests a short iOS background task
+while sampling `dcp_game_snapshot` independently of the display link. Fourteen
+samples spanning 7.995 seconds report the same paused guest counters: 66,899,536
+steps, 1,929 vblanks and 1,928 flips. The app then resumes the same session,
+reaches an inspected Town frame after 2,897 captured frames, verifies 42,451
+texture hits, consumes 2,439,680 muted audio frames without reported underruns
+or clipping, and preserves the disposable and prior QA saves. The requested
+background task deliberately keeps this instrumented process runnable, so this
+does not qualify normal OS suspension behavior or physical devices. The patch
+is not part of a release app. `review/background-counter-qa.py` is the
+test-only driver; evidence is under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-cache-core/background-counter-run/`.

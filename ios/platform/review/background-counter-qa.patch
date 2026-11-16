@@ -1,0 +1,45 @@
+--- a/ios/app.mm
++++ b/ios/app.mm
+@@ -258,9 +258,42 @@
+ }
+ } // namespace
+ 
++// QA-only: observe the runtime while the Simulator has given the app a
++// short background task. This instrumentation is not linked into release.
++static void installBackgroundCounterQA() {
++  [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
++      object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *) {
++    UIApplication *app = UIApplication.sharedApplication;
++    __block UIBackgroundTaskIdentifier task = UIBackgroundTaskInvalid;
++    task = [app beginBackgroundTaskWithName:@"OpenCrown QA counter" expirationHandler:^{
++      if (task != UIBackgroundTaskInvalid) { [app endBackgroundTask:task]; task = UIBackgroundTaskInvalid; }
++    }];
++    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
++      NSString *path = [documents() stringByAppendingPathComponent:@"qa-background-counters.csv"];
++      FILE *f = fopen(path.fileSystemRepresentation, "w");
++      if (f) {
++        fprintf(f, "seconds,running,paused,steps,vblanks,flips\n");
++        for (int i = 0; i < 16; ++i) {
++          DcpGameStats s{}; int present = dcp_game_snapshot(&s);
++          fprintf(f, "%.6f,%d,%d,%llu,%llu,%llu\n", CACurrentMediaTime(), present, s.paused,
++                  (unsigned long long)s.steps, (unsigned long long)s.vblanks,
++                  (unsigned long long)s.flips);
++          fflush(f);
++          [NSThread sleepForTimeInterval:0.5];
++        }
++        fclose(f);
++      }
++      dispatch_async(dispatch_get_main_queue(), ^{
++        if (task != UIBackgroundTaskInvalid) { [app endBackgroundTask:task]; task = UIBackgroundTaskInvalid; }
++      });
++    });
++  }];
++}
++
+ @implementation GameController
+ - (void)viewDidLoad {
+   [super viewDidLoad];
++  installBackgroundCounterQA();
+   _diagnosticQueue = dispatch_queue_create("com.wadscorp.opencrown.diagnostics",
+                                            DISPATCH_QUEUE_SERIAL);
+   _sessionID = NSUUID.UUID.UUIDString;
