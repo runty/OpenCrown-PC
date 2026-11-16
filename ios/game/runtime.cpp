@@ -1,4 +1,8 @@
 #include "../cpu/runtime.h"
+#ifdef DCP_FENV_BOUNDARY_EXPERIMENT
+#include "fenv-boundary-experiment.h"
+#include <optional>
+#endif
 #if DCP_NATIVE_CRILAYLA
 #include "crilayla-native.h"
 #endif
@@ -54,6 +58,37 @@ struct HostFloatingEnvironment {
       std::fesetenv(&value);
   }
 };
+#ifdef DCP_FENV_BOUNDARY_EXPERIMENT
+struct NativeServiceScope;
+thread_local NativeServiceScope *activeNativeService = nullptr;
+std::atomic<uint64_t> fenvServiceEntries{0}, fenvCallbacks{0}, fenvRestoreFailures{0};
+std::atomic<uint64_t> fenvCallbackGuestFailures{0}, fenvCallbackNativeFailures{0};
+#ifdef DCP_FENV_BOUNDARY_INJECT
+std::atomic<bool> fenvOnceProbeStarted{false};
+#endif
+struct NativeServiceScope {
+  NativeServiceScope *previous = activeNativeService;
+  int guestFlags = std::fetestexcept(FE_ALL_EXCEPT);
+  int guestRounding = std::fegetround();
+  bool callbackSeen = false;
+  std::optional<ExperimentalNativeBoundary> boundary;
+  NativeServiceScope() {
+    boundary.emplace();
+    activeNativeService = this;
+    ++fenvServiceEntries;
+#ifdef DCP_FENV_BOUNDARY_INJECT
+    std::feraiseexcept(FE_INVALID);
+#endif
+  }
+  ~NativeServiceScope() noexcept {
+    activeNativeService = previous;
+    boundary.reset();
+    if (!callbackSeen && (std::fetestexcept(FE_ALL_EXCEPT) != guestFlags ||
+                          std::fegetround() != guestRounding))
+      ++fenvRestoreFailures;
+  }
+};
+#endif
 struct GuestThreadExit : std::exception {
   uint64_t value;
   explicit GuestThreadExit(uint64_t result) : value(result) {}
@@ -322,6 +357,20 @@ uint64_t allocate(Memory &memory, size_t size, size_t alignment = 16) {
   return address;
 }
 Memory *service(State &state, uint64_t pc, Memory *memory) {
+#ifdef DCP_FENV_BOUNDARY_EXPERIMENT
+  NativeServiceScope nativeScope;
+#endif
+#if defined(DCP_FENV_BOUNDARY_EXPERIMENT) && defined(DCP_FENV_BOUNDARY_INJECT)
+  // Test only: invoke an actual translated XOR EAX,EAX; RET callback through
+  // the real scePthreadOnce adapter, once per process. Never enabled in apps.
+  if (!fenvOnceProbeStarted.exchange(true)) {
+    const uint64_t once = allocate(*memory, 4096);
+    const uint64_t arguments[6] = {once, 0x20007bc0, 0, 0, 0, 0};
+    uint64_t result = 0;
+    if (!dcp_thread_service("scePthreadOnce", arguments, &result) || result)
+      throw std::runtime_error("fenv once-callback probe failed");
+  }
+#endif
   auto index = (pc - hleBase) / 16;
   if (index >= std::size(imports))
     throw std::runtime_error("invalid HLE import");
@@ -861,7 +910,28 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
   try {
     uint64_t value;
     try {
-      value = invoke(canonical(pc), *currentMemory, argument);
+#ifdef DCP_FENV_BOUNDARY_EXPERIMENT
+      if (nested && activeNativeService) {
+        auto *scope = activeNativeService;
+        const bool firstCallback = !scope->callbackSeen;
+        scope->callbackSeen = true;
+        ++fenvCallbacks;
+        const int nativeFlags = std::fetestexcept(FE_ALL_EXCEPT);
+        const int nativeRounding = std::fegetround();
+        {
+          ExperimentalNativeBoundary::GuestCallback callback(*scope->boundary);
+          if (firstCallback &&
+              (std::fetestexcept(FE_ALL_EXCEPT) != scope->guestFlags ||
+               std::fegetround() != scope->guestRounding))
+            ++fenvCallbackGuestFailures;
+          value = invoke(canonical(pc), *currentMemory, argument);
+        }
+        if (std::fetestexcept(FE_ALL_EXCEPT) != nativeFlags ||
+            std::fegetround() != nativeRounding)
+          ++fenvCallbackNativeFailures;
+      } else
+#endif
+        value = invoke(canonical(pc), *currentMemory, argument);
     } catch (const GuestThreadExit &exit) {
       value = exit.value;
     }
@@ -1432,9 +1502,21 @@ extern "C" const char *dcp_cpu_report() {
     out << jsonString(event);
   }
   const auto gnm = dcp_gnm_stats();
+#ifdef DCP_FENV_BOUNDARY_EXPERIMENT
+  out << "],\"submits\":" << gnm.submits << ",\"flips\":" << gnm.flips
+      << ",\"label_writes\":" << gnm.label_writes
+      << ",\"vblanks\":" << engine().vblanks;
+  out << ",\"fenv_boundary_experiment\":{\"service_entries\":" << fenvServiceEntries.load()
+      << ",\"callbacks\":" << fenvCallbacks.load()
+      << ",\"restore_failures\":" << fenvRestoreFailures.load()
+      << ",\"callback_guest_failures\":" << fenvCallbackGuestFailures.load()
+      << ",\"callback_native_failures\":" << fenvCallbackNativeFailures.load() << "}";
+  out << "}";
+#else
   out << "],\"submits\":" << gnm.submits << ",\"flips\":" << gnm.flips
       << ",\"label_writes\":" << gnm.label_writes
       << ",\"vblanks\":" << engine().vblanks << "}";
+#endif
   report = out.str();
   if (joined) {
     std::lock_guard<std::mutex> lock(engineLifetime);
