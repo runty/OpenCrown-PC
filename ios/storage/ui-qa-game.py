@@ -2,11 +2,14 @@
 """Run the real game in a separate, already installed restore QA simulator app."""
 import hashlib,json,os,shutil,subprocess,sys,time,uuid
 from pathlib import Path
-if len(sys.argv)!=2:raise SystemExit('Usage: ui-qa-game.py NEW_EXTERNAL_OUTPUT')
+if len(sys.argv) not in (2,4):raise SystemExit('Usage: ui-qa-game.py NEW_EXTERNAL_OUTPUT [QA_BUNDLE EXPECTED_BUILD_ID]')
 out=Path(sys.argv[1]).resolve()
 if len(out.parts)<3 or out.parts[1]!='Volumes' or not Path('/Volumes',out.parts[2]).is_mount():raise SystemExit('output must be on a mounted external disk')
 out.mkdir(parents=True,exist_ok=False)
-sim='F30116F9-F84C-44AA-A1A4-5A942B779628';normal='com.wadscorp.opencrown.mobile';qa='com.wadscorp.opencrown.qa.restore'
+sim='F30116F9-F84C-44AA-A1A4-5A942B779628';normal='com.wadscorp.opencrown.mobile'
+qa=sys.argv[2] if len(sys.argv)==4 else 'com.wadscorp.opencrown.qa.restore'
+expected_build=sys.argv[3] if len(sys.argv)==4 else 'c0dee0def54f7c15fe73300d9be1113e683ed2c6'
+assert qa.startswith('com.wadscorp.opencrown.qa.') and len(expected_build)==40
 def simctl(*args,**kwargs):return subprocess.run(['xcrun','simctl',*map(str,args)],check=True,capture_output=True,text=True,**kwargs)
 def docs(bundle):return Path(simctl('get_app_container',sim,bundle,'data').stdout.strip())/'Documents'
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -42,7 +45,7 @@ try:
  else:raise RuntimeError('Timed out waiting for QA session')
  (out/'final.json').write_text(json.dumps(report,indent=2)+'\n')
  g=report['guest'];v=g['texture_versions'];t=report['textures']
- assert report['build_id']=='c0dee0def54f7c15fe73300d9be1113e683ed2c6' and g['booted'] and g['game_code_executed']
+ assert report['build_id']==expected_build and g['booted'] and g['game_code_executed']
  assert g['checkpoint_complete'] and g['current_scene']=='TOWN'
  assert not any((g['error'],report['frontend_error'],report['save_error'],report.get('platform_error','')))
  assert report['diagnostic_resumed'] and report['save_session_id']==saveid

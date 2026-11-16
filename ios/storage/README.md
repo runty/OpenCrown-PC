@@ -256,6 +256,21 @@ its build-ID and guest-boot assertions were added after the retained run and
 were independently verified in `final.json`. Evidence:
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/real-game-qa/`.
 
+The fix was also packaged against the audited `bb540ac` native support and
+matching renderer, without the experimental NaN core. Both simulator and
+signed iPhoneOS builds include compiled icons; their three CPU library hashes
+match the audited artifacts, and their 50,464-entry translated corpus has the
+same trace hash as the `851c06b` stable package. This is not an identical
+`851c06b` app: it includes the later `bb540ac` support overrides. A separate
+Simulator QA app reached an inspected Town frame in 2,341 frames with 26,112
+full-content texture checks, zero proof failures and an unchanged disposable R
+save. The game was muted; no physical device or in-game save test was used.
+The earlier attempt to pair the current launcher with the original `851c06b`
+renderer failed at link time because that renderer lacks `texture_stats_v2`;
+the matching renderer was used without bypassing that ABI boundary. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-cache-core/`
+and the retained `save-restore-stable-core/build-simulator.log`.
+
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
 modification time with an ID tie-breaker. The just-committed checkpoint is always
