@@ -243,6 +243,19 @@ was falsely created. `ui-qa-seed.cpp` provides `seed-corrupt` and
 pre-seeded app container; select one with `-only-testing` per invocation. Evidence:
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/restore-ui-failure-qa/`.
 
+The successful-restore QA app subsequently ran the real game from a separate
+disposable R diagnostic save. It reached an inspected Town frame after 2,186
+captured frames and verified 25,276 texture-version hits against full contents
+without a proof failure; the R save and earlier synthetic QA saves/checkpoints
+were unchanged. The QA container used an APFS clone of the already installed
+Simulator game files. This checks runtime/renderer integration with the fixed
+launcher; it does not claim the synthetic restored save was game progress,
+that the skipped manual in-game save test occurred, or that device performance
+or audio was qualified. `ui-qa-game.py` records the exact diagnostic setup;
+its build-ID and guest-boot assertions were added after the retained run and
+were independently verified in `final.json`. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/real-game-qa/`.
+
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
 modification time with an ID tie-breaker. The just-committed checkpoint is always
