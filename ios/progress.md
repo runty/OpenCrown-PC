@@ -1,5 +1,30 @@
 # Device port progress
 
+## 2026-11-16 — Prototype guest/native floating-environment isolation
+
+Isolated `codex/ios-fenv-boundary` at `ac1395c` tests a proposed native-boundary
+scope and nested guest callback scope. It saves/restores separate floating-point
+environments and collects callback changes in the guest side. This is a local
+prototype, **not connected to the game runtime and not an MXCSR fix**.
+
+Two host threads each run 1,000 sequences covering saved rounding and sticky
+flags, native contamination, nested boundary/callback and exception unwinding.
+Native, ASan/UBSan and TSan each pass 22,000 checks. The fixture compiles for
+both iPhoneOS and Simulator with syntax-only checks; neither target execution
+nor physical-device validation is implied. A separate test uses the reviewed
+lifted ADDSS object: host invalid survives a native boundary, native overflow
+is excluded, and a callback's divide-by-zero survives on the guest side.
+Guest MXCSR remains `1f80`, demonstrating that no status mapping has been fixed.
+
+Before integration, resolve intended HLE/callback rounding behavior, cancellation,
+MXCSR status load/store/clear and mapping, denormal operand flags, DAZ/FTZ,
+exception priorities, unmasked traps, packed lanes, compiler behavior and native
+work outside the proposed boundary. Measure boundary cost and test both devices.
+Proof: `mobile-adventure-live/sse-nan-candidate/fenv-boundary/qualified/` and
+[prototype instructions](https://github.com/runty/OpenCrown-PC/blob/ac1395c/ios/cpu/review/fenv-boundary/README.md).
+Stable pin, device restrictions, skipped manual save and full acceptance gates
+remain unchanged.
+
 ## 2026-11-16 — Reproduce masked SIMD status and host contamination
 
 A reproducible [isolated probe](https://github.com/runty/OpenCrown-PC/tree/codex/ios-mxcsr-evidence/ios/cpu/review/mxcsr)
