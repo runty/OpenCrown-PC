@@ -35,3 +35,23 @@ not establish a whole-game gain or regression. No mobile build was installed.
 Evidence and retained inputs: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls/`.
 `lazy-tls-game.py` requires already-built private matched binaries and the prior
 disposable reference run. The iPad is with the player; no device was contacted.
+
+## Actual routine and game-path audit
+
+`lazy-tls-leaf.cpp` adapts the prior fixed DSP leaf fixture but binds the memory
+context on its owning worker. Both linked entry names contain the original,
+inline-flags-lowered game IR; no vector grouping is applied. In six alternating
+process pairs, each with three inner repetitions per thread count, original
+runtime / candidate median throughput is 37,092 / 39,770 calls/sec with one
+worker and 50,458 / 53,881 with two independent-buffer workers. Ranges overlap
+and other Mac work runs concurrently. Each process passes its 36 within-run
+alias/state cases and canary checks; these are not a cross-process state oracle,
+a device test, or evidence of a whole-game gain.
+
+A separately instrumented, deliberately slow native Town run records
+2,980,616,903 bound and zero unbound lifted scalar selections over the full
+session, including startup. It passes 25,260 full-content texture checks,
+with all three disposable-save files unchanged. The atomic counters alter
+performance and scheduling, so that run is not a timing sample. The generator
+`lazy-tls-instrument.py` reproduces the private counter source byte-for-byte.
+The uninstrumented Town results above still show no established gain.
