@@ -1,6 +1,6 @@
 --- a/lib/Arch/X86/Semantics/BINARY.cpp
 +++ b/lib/Arch/X86/Semantics/BINARY.cpp
-@@ -116,10 +116,26 @@
+@@ -116,10 +116,38 @@
    return memory;
  }
  
@@ -18,37 +18,58 @@
 +  return ld || rd;
 +}
 +
++// Signaling NaNs require invalid status even when the NaN result helper
++// selects a quieted payload without performing host floating point arithmetic.
++ALWAYS_INLINE static bool DcpSignalingNaN32(float32_t value) {
++  uint32_t bits;
++  __builtin_memcpy(&bits, &value, sizeof(bits));
++  bits &= 0x7fffffffu;
++  return bits > 0x7f800000u && bits < 0x7fc00000u;
++}
++
  template <typename D, typename S1, typename S2>
  DEF_SEM(ADDSS, D dst, S1 src1, S2 src2) {
    auto lhs = FReadV32(src1);
    auto rhs = FReadV32(src2);
++  if (DcpSignalingNaN32(FExtractV32(lhs, 0)) ||
++      DcpSignalingNaN32(FExtractV32(rhs, 0)))
++    state.x87.fxsave.mxcsr.flat |= 1;
 +  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), false))
 +    state.x87.fxsave.mxcsr.flat |= 2;
    auto sum = X86SSEAdd(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
    auto res = FInsertV32(lhs, 0, sum);
    FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
-@@ -209,6 +225,8 @@
+@@ -209,6 +237,11 @@
  DEF_SEM(SUBSS, D dst, S1 src1, S2 src2) {
    auto lhs = FReadV32(src1);
    auto rhs = FReadV32(src2);
++  if (DcpSignalingNaN32(FExtractV32(lhs, 0)) ||
++      DcpSignalingNaN32(FExtractV32(rhs, 0)))
++    state.x87.fxsave.mxcsr.flat |= 1;
 +  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), false))
 +    state.x87.fxsave.mxcsr.flat |= 2;
    auto sum = X86SSESub(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
    auto res = FInsertV32(lhs, 0, sum);
    FWriteV32(dst, res);
-@@ -411,6 +429,8 @@
+@@ -411,6 +444,11 @@
  DEF_SEM(MULSS, D dst, S1 src1, S2 src2) {
    auto lhs = FReadV32(src1);
    auto rhs = FReadV32(src2);
++  if (DcpSignalingNaN32(FExtractV32(lhs, 0)) ||
++      DcpSignalingNaN32(FExtractV32(rhs, 0)))
++    state.x87.fxsave.mxcsr.flat |= 1;
 +  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), false))
 +    state.x87.fxsave.mxcsr.flat |= 2;
    auto mul = X86SSEMul(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
    auto res = FInsertV32(lhs, 0, mul);
    FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
-@@ -611,6 +631,8 @@
+@@ -611,6 +649,11 @@
  DEF_SEM(DIVSS, D dst, S1 src1, S2 src2) {
    auto lhs = FReadV32(src1);
    auto rhs = FReadV32(src2);
++  if (DcpSignalingNaN32(FExtractV32(lhs, 0)) ||
++      DcpSignalingNaN32(FExtractV32(rhs, 0)))
++    state.x87.fxsave.mxcsr.flat |= 1;
 +  if (DcpDenormal32(FExtractV32(lhs, 0), FExtractV32(rhs, 0), true))
 +    state.x87.fxsave.mxcsr.flat |= 2;
    auto quot = X86SSEDiv(FExtractV32(lhs, 0), FExtractV32(rhs, 0));

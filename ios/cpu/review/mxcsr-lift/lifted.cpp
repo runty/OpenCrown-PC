@@ -2,6 +2,7 @@
 #define DCP_PRESEED_HOST_INVALID 0
 #endif
 #include "runtime.h"
+#include "status.h"
 
 #include <cfenv>
 #include <cstdio>
@@ -17,6 +18,14 @@ Case cases[] = {{"add_exact", 0, 0x3f800000, 0x40000000},
                 {"add_invalid", 0, 0x7f800000, 0xff800000},
                 {"add_snan", 0, 0x7f801234, 0x3f800000},
                 {"add_qnan", 0, 0x7fc01234, 0x3f800000},
+                {"add_rhs_snan", 0, 0x3f800000, 0x7f801234},
+                {"add_qnan_rhs_snan", 0, 0x7fc01234, 0x7f801234},
+                {"sub_lhs_snan", 1, 0x7f801234, 0x3f800000},
+                {"sub_rhs_snan", 1, 0x3f800000, 0x7f801234},
+                {"mul_lhs_snan", 2, 0x7f801234, 0x3f800000},
+                {"mul_rhs_snan", 2, 0x3f800000, 0x7f801234},
+                {"div_lhs_snan", 3, 0x7f801234, 0x3f800000},
+                {"div_rhs_snan", 3, 0x3f800000, 0x7f801234},
                 {"sub_invalid", 1, 0x7f800000, 0x7f800000},
                 {"mul_invalid", 2, 0x00000000, 0x7f800000},
                 {"mul_overflow", 2, 0x7f7fffff, 0x40000000},
@@ -75,4 +84,32 @@ int main() {
         return 2;
       std::printf("%s %u %08x %08x\n", c.name, sticky, result, csr);
     }
+  // Unsupported guest controls must fail before changing the guest MXCSR or
+  // host FPSR. These cases exercise actual lifted LDMXCSR, not just the hook.
+  for (uint32_t unsupported : {0x1fc0u, 0x9f80u, 0x1f00u, 0x11f80u}) {
+    State s{};
+    Memory m;
+    s.x87.fxsave.mxcsr.flat = 0x1f80;
+    s.gpr.rdi.qword = Memory::base + 0x100;
+    s.gpr.rsi.qword = Memory::base + 0x200;
+    s.gpr.rsp.qword = Memory::base + 0xff00;
+    std::memcpy(m.bytes.data() + 0x100, &unsupported, 4);
+    write64(m, s.gpr.rsp.qword, 0xfeedface);
+    fenv_t old_env;
+    std::fegetenv(&old_env);
+    uint64_t fpsr = experimental_mxcsr::read_fpsr();
+    bool rejected = false;
+    try { fn[0](s, pc[0], &m); }
+    catch (const std::runtime_error &) { rejected = true; }
+    bool unchanged = fpsr == experimental_mxcsr::read_fpsr() &&
+                     s.x87.fxsave.mxcsr.flat == 0x1f80;
+    std::fesetenv(&old_env);
+    if (!rejected || !unchanged) {
+      std::fprintf(stderr, "unsupported=%08x rejected=%d unchanged=%d\n",
+                   unsupported, rejected, unchanged);
+      return 3;
+    }
+  }
+  std::fprintf(stderr, "unsupported controls: 4 rejected without mutation\n");
+
 }

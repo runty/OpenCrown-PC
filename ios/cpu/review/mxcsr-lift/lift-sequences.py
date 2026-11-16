@@ -32,6 +32,7 @@ for i, op in enumerate(('addss', 'subss', 'mulss', 'divss')):
         lifted = re.sub(r' #' + group + r'\b', '', lifted)
     lifted = re.sub(r'^(define .*?) \{$', r'\1 uwtable {', lifted, flags=re.M)
     ir.write_text(lifted)
-    for optimization in ('O1', 'O2'):
-        run([llvm/'clang', '-target', 'arm64-apple-macos15', '-'+optimization, '-funwind-tables', '-c', ir, '-o', out/(op+'-'+optimization+'.o')])
+    for optimization in ('O1', 'O2', 'asan'):
+        flags = ['-O1', '-fsanitize=address,undefined', '-g'] if optimization == 'asan' else ['-'+optimization]
+        run([llvm/'clang', '-target', 'arm64-apple-macos15', *flags, '-funwind-tables', '-c', ir, '-o', out/(op+'-'+optimization+'.o')])
     print(op, raw.read_bytes().hex(), flush=True)
