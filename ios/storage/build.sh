@@ -34,6 +34,8 @@ done
 xcrun clang++ -std=c++20 -O2 -Wall -Wextra -Werror "$source_root/ios/storage/tests.cpp" "$output/mac/libstorage.a" -o "$output/storage-tests"
 xcrun clang++ -std=c++20 -O2 -Wall -Wextra -Werror "$source_root/ios/storage/validate.cpp" "$output/mac/libstorage.a" -o "$output/storage-validate"
 "$output/storage-tests" "$output" | tee "$output/results.json"
+xcrun clang++ -std=c++20 -O2 -Wall -Wextra -Werror -fobjc-arc "$source_root/ios/storage/coordinated-read-tests.mm" -framework Foundation -o "$output/coordinated-read-tests"
+"$output/coordinated-read-tests" | tee "$output/coordinated-read-results.txt"
 
 xcrun clang++ -std=c++20 -O2 -Wall -Wextra -Werror "$source_root/ios/storage/save-service-integration.cpp" "$source_root/ios/game/file-services.cpp" "$source_root/ios/game/offline-services.cpp" "$source_root/linux-port/src/hle/kernel/pure.cpp" -I"$source_root/linux-port/src" "$output/mac/libstorage.a" -o "$output/save-service-integration"
 "$output/save-service-integration" "$output" | tee "$output/save-service-results.json"

@@ -140,6 +140,9 @@ select the pre-import copy. Incoming checkpoints also remain available.
 The picker remembers the last transferred folder only within this launcher
 session; the next import still requires an explicit selection.
 Game execution and other storage actions remain disabled throughout a transfer.
+If file coordination returns without invoking its read callback, both the save
+and game-data importers report an error instead of reporting an import that
+never occurred. Provider errors and errors from the import itself are kept.
 The integrator owns exclusive access and must stop/join all guest workers first.
 `DCPSaveTransferController` also recovers abandoned local transactions before
 reading or replacing saves.

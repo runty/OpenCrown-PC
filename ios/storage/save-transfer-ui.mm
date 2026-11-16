@@ -1,3 +1,4 @@
+#import "coordinated-read.h"
 #import "save-transfer-ui.h"
 #include "save-transactions.h"
 #include "storage-core.h"
@@ -133,25 +134,22 @@ NSError *transferError(NSString *text, NSInteger code = 1) {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
     __block NSError *failure = nil;
     NSError *coordinationError = nil;
-    [coordinator
-        coordinateReadingItemAtURL:source
-                           options:NSFileCoordinatorReadingWithoutChanges
-                             error:&coordinationError
-                        byAccessor:^(NSURL *readURL) {
-                          try {
-                            const auto root = std::filesystem::path(
-                                self.documentsURL.fileSystemRepresentation);
-                            dcp::storage::SaveTransactions saves(
-                                root / "ProbeSaves", root / "SaveCheckpoints");
-                            if (!saves.recover())
-                              throw std::runtime_error(saves.error());
-                            dcp::storage::import_save_folder(
-                                readURL.fileSystemRepresentation,
-                                root / "ProbeSaves", root / "SaveCheckpoints");
-                          } catch (const std::exception &error) {
-                            failure = transferError(@(error.what()));
-                          }
-                        }];
+    coordinationError =
+        DCPCoordinatedRead(coordinator, source, ^(NSURL *readURL) {
+          try {
+            const auto root = std::filesystem::path(
+                self.documentsURL.fileSystemRepresentation);
+            dcp::storage::SaveTransactions saves(root / "ProbeSaves",
+                                                 root / "SaveCheckpoints");
+            if (!saves.recover())
+              throw std::runtime_error(saves.error());
+            dcp::storage::import_save_folder(readURL.fileSystemRepresentation,
+                                             root / "ProbeSaves",
+                                             root / "SaveCheckpoints");
+          } catch (const std::exception &error) {
+            failure = transferError(@(error.what()));
+          }
+        });
     if (scoped)
       [source stopAccessingSecurityScopedResource];
     if (!failure)

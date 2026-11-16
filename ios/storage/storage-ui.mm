@@ -1,3 +1,4 @@
+#import "coordinated-read.h"
 #import "storage-ui.h"
 #include "storage-core.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -147,47 +148,37 @@ NSError *storage_error(const std::string &message, NSInteger code = 1) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
       __block NSError *failure = nil;
       NSError *coordinationError = nil;
-      [coordinator
-          coordinateReadingItemAtURL:source
-                             options:NSFileCoordinatorReadingWithoutChanges
-                               error:&coordinationError
-                          byAccessor:^(NSURL *readURL) {
-                            try {
-                              auto sourcePath = std::filesystem::path(
-                                  readURL.fileSystemRepresentation);
-                              auto destination =
-                                  std::filesystem::path(
-                                      self.documentsURL
-                                          .fileSystemRepresentation) /
-                                  "Game";
-                              uint64_t lastUpdate = 0;
-                              dcp::storage::import_game(
-                                  sourcePath, destination, *cancel,
-                                  [self, progress, &lastUpdate](
-                                      const dcp::storage::Progress &state) {
-                                    if (state.copied != state.total &&
-                                        state.copied - lastUpdate <
-                                            8 * 1024 * 1024)
-                                      return;
-                                    lastUpdate = state.copied;
-                                    const uint64_t copied = state.copied,
-                                                   total = state.total;
-                                    NSString *file = @(state.file.c_str());
-                                    dispatch_async(dispatch_get_main_queue(), ^{
-                                      [progress updateCopied:copied
-                                                       total:total
-                                                        file:file];
-                                      if (self.progressHandler)
-                                        self.progressHandler(copied, total,
-                                                             file);
-                                    });
-                                  });
-                            } catch (const std::exception &error) {
-                              failure = storage_error(
-                                  error.what(),
-                                  cancel->load() ? NSUserCancelledError : 1);
-                            }
-                          }];
+      coordinationError =
+          DCPCoordinatedRead(coordinator, source, ^(NSURL *readURL) {
+            try {
+              auto sourcePath =
+                  std::filesystem::path(readURL.fileSystemRepresentation);
+              auto destination =
+                  std::filesystem::path(
+                      self.documentsURL.fileSystemRepresentation) /
+                  "Game";
+              uint64_t lastUpdate = 0;
+              dcp::storage::import_game(
+                  sourcePath, destination, *cancel,
+                  [self, progress,
+                   &lastUpdate](const dcp::storage::Progress &state) {
+                    if (state.copied != state.total &&
+                        state.copied - lastUpdate < 8 * 1024 * 1024)
+                      return;
+                    lastUpdate = state.copied;
+                    const uint64_t copied = state.copied, total = state.total;
+                    NSString *file = @(state.file.c_str());
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                      [progress updateCopied:copied total:total file:file];
+                      if (self.progressHandler)
+                        self.progressHandler(copied, total, file);
+                    });
+                  });
+            } catch (const std::exception &error) {
+              failure = storage_error(
+                  error.what(), cancel->load() ? NSUserCancelledError : 1);
+            }
+          });
       if (scoped)
         [source stopAccessingSecurityScopedResource];
       if (!failure)
