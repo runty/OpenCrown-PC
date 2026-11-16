@@ -130,3 +130,21 @@ identifier stayed GOBLIN; this is not a generic checkpoint pass. Evidence is
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-harpy-extended/`.
 No physical device was contacted. The candidate remains unpromoted: this is
 correctness coverage, not evidence of an iOS performance gain.
+
+## Recorded reference replay
+
+`lazy-tls-replay.py` replays the 55 captured pad scripts and the two recorded
+touch points from the extended candidate fight using a fresh disposable save.
+The guided reference binary completed all 55 commands with identical script
+contents, while actual starting vblanks differed by -1 to +10. It produced
+40,719 rendered frames and 998,831 full-content texture checks with zero proof
+failures, empty host/guest errors, clean unload and unchanged seed and working
+saves. The final captured frame still shows the Harpy alive, whereas the
+candidate reached Stats. The input-driven runs do not follow identical game
+states, so they are stability coverage, not a differential correctness or speed
+measurement. Intentional stop exited 1 with the same unmet HARPY checkpoint.
+Evidence: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-tls-harpy-reference-replay/`.
+The executable replay driver is retained to reproduce this evidence; its
+post-run script-equality and host-hash assertions were added after this run and
+the script equality and host hash were independently verified on the recorded
+files. No devices or normal saves were accessed.
