@@ -63,6 +63,7 @@ struct NativeServiceScope;
 thread_local NativeServiceScope *activeNativeService = nullptr;
 std::atomic<uint64_t> fenvServiceEntries{0}, fenvCallbacks{0}, fenvRestoreFailures{0};
 std::atomic<uint64_t> fenvCallbackGuestFailures{0}, fenvCallbackNativeFailures{0};
+std::atomic<int> fenvCallbackGuestFlags{-1}, fenvCallbackNativeFlags{-1}, fenvInjectedFlag{0};
 #ifdef DCP_FENV_BOUNDARY_INJECT
 std::atomic<bool> fenvOnceProbeStarted{false};
 #endif
@@ -71,13 +72,21 @@ struct NativeServiceScope {
   int guestFlags = std::fetestexcept(FE_ALL_EXCEPT);
   int guestRounding = std::fegetround();
   bool callbackSeen = false;
+  int injectedFlag = 0;
   std::optional<ExperimentalNativeBoundary> boundary;
   NativeServiceScope() {
     boundary.emplace();
     activeNativeService = this;
     ++fenvServiceEntries;
 #ifdef DCP_FENV_BOUNDARY_INJECT
-    std::feraiseexcept(FE_INVALID);
+    const int flags[] = {FE_INVALID, FE_DIVBYZERO, FE_OVERFLOW, FE_UNDERFLOW, FE_INEXACT};
+    for (int flag : flags) {
+      if (!(guestFlags & flag)) {
+        std::feraiseexcept(flag);
+        injectedFlag = flag;
+        break;
+      }
+    }
 #endif
   }
   ~NativeServiceScope() noexcept {
@@ -918,6 +927,11 @@ uint64_t runWorker(void *context, uint64_t pc, uint64_t argument) {
         ++fenvCallbacks;
         const int nativeFlags = std::fetestexcept(FE_ALL_EXCEPT);
         const int nativeRounding = std::fegetround();
+        if (firstCallback) {
+          fenvCallbackGuestFlags.store(scope->guestFlags);
+          fenvCallbackNativeFlags.store(nativeFlags);
+          fenvInjectedFlag.store(scope->injectedFlag);
+        }
         {
           ExperimentalNativeBoundary::GuestCallback callback(*scope->boundary);
           if (firstCallback &&
@@ -1510,7 +1524,10 @@ extern "C" const char *dcp_cpu_report() {
       << ",\"callbacks\":" << fenvCallbacks.load()
       << ",\"restore_failures\":" << fenvRestoreFailures.load()
       << ",\"callback_guest_failures\":" << fenvCallbackGuestFailures.load()
-      << ",\"callback_native_failures\":" << fenvCallbackNativeFailures.load() << "}";
+      << ",\"callback_native_failures\":" << fenvCallbackNativeFailures.load()
+      << ",\"callback_guest_flags\":" << fenvCallbackGuestFlags.load()
+      << ",\"callback_native_flags\":" << fenvCallbackNativeFlags.load()
+      << ",\"injected_flag\":" << fenvInjectedFlag.load() << "}";
   out << "}";
 #else
   out << "],\"submits\":" << gnm.submits << ",\"flips\":" << gnm.flips
