@@ -1,5 +1,62 @@
 # Device port progress
 
+## 2026-11-15 — Phone scalar diagnostics identify an oversized scalar FP read
+
+Opt-in diagnostic `b238069` stays on `codex/ios-scalar-profile`. Normal builds
+omit it: CPU/game runtime text and relocations match the guarded-cache reference
+across Mac, iPhoneOS and Simulator. Native/ASan+UBSan/TSan verify exact counts,
+worker/nested-state lifetime, original LOCK accounting and joined-only reporting;
+the existing memory suite passes 267,130 checks per mode with the diagnostic
+compiled in. Both SDK packages retain icons, full 50,464-entry provenance,
+paired cache hashes and verified physical signing without memory entitlements.
+No translated entry or existing backend is changed by this diagnostic.
+
+The native and physical iPhone each complete 600 Town intervals with exact R
+bytes and clean shutdown/errors. The phone records 661,691,324 lifted scalar
+reads and 433,958,196 writes after the first active Town update. Its top 20
+**most-recent-entry contexts** account for 48.91% of those accesses; these are
+not exact active-caller attribution after a translated return. Sampled live guest
+RIP uses scoped bindings restored across native guest callbacks. The xorshift64
+sampler observes 1,072,140 acquisition latencies; 42 exceed 10 microseconds,
+maximum 81.5 microseconds. Acquisition includes overhead and preemption, not
+only lock contention. No total-wait extrapolation or CPU percentage is inferred.
+Page/RIP limits omit 6,897/1,279 sampled attribution records; total scalar and
+acquisition counters remain complete, with zero omitted threads/entry records
+or allocation failures. This instrumented run is excluded from FPS/headroom
+qualification. Real muted 48 kHz/256-frame audio has zero underruns/clipping;
+sampled peak footprint is 2,383,023,984 bytes, not an OS high-water mark.
+
+A concrete instruction-width problem is observed at canonical `0x20619240`:
+original bytes `c5 fa 59 16` decode as `vmulss (%rsi), %xmm0, %xmm2`.
+[Intel specifies a 32-bit memory source](https://cdrdv2-public.intel.com/782151/253667-sdm-vol-2b.pdf).
+The current Remill selector instead instantiates `MULSS<..., MV128>` and its
+actual game IR issues four checked F32 reads at offsets 0/4/8/12; only the first
+value participates in the multiplication. Phone samples at this read and the
+corresponding scalar store are 19,101/4,794, consistent with this hot expansion.
+This is ordinary LLVM disassembly, source/IR and runtime-counter evidence,
+not REA decompilation. REA accepts the derived ELF identity but cannot acquire
+Hopper because another REA run owns it; that owner is left untouched and this
+chat's binding is closed. The original SELF carrier is unsupported by REA.
+
+Next audit and correct scalar SS/SD memory selectors in an isolated backend.
+ADD/SUB are already narrow in the current source; do not change working forms
+or replace all memory operands indiscriminately. Preserve register merge/upper
+lanes/FP semantics, prove exact operand access with native x86 and guarded-end
+negative controls, rebuild a fully provenanced corpus in a new tree, and then
+measure the uninstrumented phone. No width fix or resulting speedup is claimed
+yet. Existing frozen traces/backend and `~/work/nxnative` remain untouched.
+
+The diagnostic install preserves all 106 existing non-asset files before first
+launch. It uses a new disposable R UUID and restores original input. Restoring
+`bb540ac` preserves all 111 then-present files before first launch and reopens
+the normal launcher muted. The manual save root, normal/cloud progress and
+physical iPad remain untouched; the manual Inn/save/reload test stays skipped.
+Private proof: `mobile-adventure-live/scalar-profile-candidate/`, including
+fixture/memory/default-code/package provenance, both native attempts, phone
+result/analysis, preservation, `scalar-width-finding.json`, original-byte LLVM
+assembly and the separate unsuccessful REA record. Stable pin `851c06b`,
+default-off texture versions and outstanding full-port acceptance gates remain.
+
 ## 2026-11-15 — Exact renderer-entry filtering does not establish phone headroom
 
 Isolated `b5d4fe5` on `codex/ios-trace-hooks` derives the native installation
