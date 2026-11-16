@@ -215,6 +215,14 @@ interrupted data and journal untouched. The regression failed against the
 previous direct restore implementation. It does not replace a device or
 manual in-game save/relaunch test.
 
+For the recovery change, the 159-check storage suite and 216-check integrated
+save-service suite also pass as iPhone Simulator processes using disposable
+files. The storage suite passes ASan/UBSan and TSan on macOS. iPhoneOS and
+Simulator app builds link the launcher change; the Simulator execution covers
+the service and storage APIs, not the on-screen restore picker or a physical
+device. Evidence is under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/`.
+
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
 modification time with an ID tie-breaker. The just-committed checkpoint is always
