@@ -135,3 +135,18 @@ continue. App diagnostics report the source node's captured output mode as
 This does not change system volume or qualify audible quality. The setting is
 read when the audio graph starts or restarts. The older `DCP_SIM_MUTE_AUDIO=1`
 alias and `audio.simulator_muted` field remain supported only in Simulator.
+
+A later separate-app Simulator run combines the save-recovery launcher fix with
+the audited `bb540ac` native core and matching renderer. It runs the real game
+with the platform audio sink muted, backgrounds it using Settings, then returns
+to the same session. Audio diagnostics show the engine stopped and paused on
+background and resumed consuming muted samples in the foreground. The final
+2,751-frame run reports 2,345,472 rendered audio frames, zero underrun frames
+and zero clipped samples; 42,185 texture hits verify against full contents and
+the disposable save plus prior QA save trees remain unchanged. The held
+background diagnostic has the same timestamp as the first background report,
+so it does not independently measure guest progress during the whole interval.
+This is not a physical-device, actual audio-route interruption, audible
+quality or sustained-performance qualification. The test-only driver is
+`ios/storage/ui-qa-audio-lifecycle.py`; evidence is under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-cache-core/simulator-audio-lifecycle/`.
