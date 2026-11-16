@@ -188,3 +188,25 @@ does not establish a game-visible bug, but the difference remains unqualified;
 the guard does not fix it and the optimization must not be promoted on these
 results. No physical device or skipped save test was used. Evidence is in
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-guard-study/`.
+
+`run-fp-observer.sh` extends that investigation with the real exception bridge
+and its softfloat x87 state stubbed clear. With zero scalar operands and zero
+upper lanes, the original arm64 trace leaves FPSR invalid set and the bridge
+returns invalid; the prototype leaves both clear. Setting only lane 1 of both
+input vectors to 1.0 makes the original flag and bridge result clear, with the
+same scalar operands. The original object contains a two-lane `fdiv`, consistent
+with an extra-lane 0/0, though this fixture does not instrument the individual
+instruction. Both paths leave their saved guest MXCSR at 0x1f80 in this case.
+
+On an AMD Zen 4 host, `fp-reference.py` runs the 57 verified original game
+bytes for 4,096 one-element combinations. Starting with clear x87 status, x87
+exception flags remain clear for all of them; scalar zero operands leave MXCSR
+clear, including when the upper lanes are changed to 1.0. The comparison is a
+bounded architecture reference, not a claim about all game instructions. The
+current translated corpus contains 240 trace files with a call to the exception
+test helper; that is a static count, not evidence those calls run after this
+loop in a game. The bridge reads host flags, making the difference observable
+through the helper, but no game-visible regression has been demonstrated. A
+correct general fix needs isolated x87 and SSE guest exception state; neither
+blindly preserving these host flags nor promoting the prototype establishes
+that. Evidence: sibling `scale-fp-observer/observer.txt` and `x86-status.txt`.
