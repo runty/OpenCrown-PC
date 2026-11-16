@@ -1,7 +1,8 @@
 # Town floating-point-control entry audit
 
 This is an isolated probe, not an app or performance change. `town-entry-probe.patch`
-instruments `dcp_trace_enter` on a private copy of the Mac runtime. It counts
+instruments `dcp_trace_enter` on a private copy of the Mac runtime (apply it
+with `git apply --unidiff-zero`). It counts
 17 AOT trace entry PCs whose translated IR contains calls to
 `__remill_fpu_get_rounding` or `__remill_fpu_set_rounding`, plus the known Town
 cursor trace `0x20045850` as a positive control. Those helper calls are not
