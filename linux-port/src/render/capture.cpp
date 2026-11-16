@@ -311,26 +311,10 @@ struct HookSpec {
 };
 // Standard prologue: push rbp (55) / mov rbp,rsp (48 89 e5) / push r1x (41 5x), or push rbx..rdi (5x) when ins[2] == 1.
 const HookSpec kHooks[] = {
-    {0x5650d0, (void*)&obs_set_vs, {1, 3, 2}, false},       // Cue_SetVsShader(cue, VS entry+0x18, 0, fetch, ...)
-    {0x565280, (void*)&obs_set_ps, {1, 3, 2}, false},       // Cue_SetPsShader(cue, PS entry+0x18, ...)
-    {0x5646d0, (void*)&obs_set_cb, {1, 3, 2}, false},       // Cue_SetConstantBuffer(cue, stage, slot, V#*)
-    {0x564030, (void*)&obs_set_tex, {1, 3, 2}, false},      // Cue_SetTexture(cue, stage, slot, T#*)
-    {0x5644b0, (void*)&obs_set_samp, {1, 3, 2}, false},     // Cue_SetSampler(cue, stage, slot, S#*)
-    {0x564b30, (void*)&obs_set_vb, {2, 2, 6}, true},        // Cue_SetVertexBuffers: mov eax,ecx; test; je
-    {0x55ffb0, (void*)&obs_set_blend, {1, 3, 2}, false},    // Dcb_SetBlendControl(dcb, rt, word)
-    {0x55fef0, (void*)&obs_init_default_state, {1, 3, 1}, false},  // Dcb_InitDefaultHardwareState(dcb): push rbx
-    {0x5606a0, (void*)&obs_set_prim, {1, 3, 2}, false},     // Dcb_SetPrimitiveType(dcb, prim)
-    {0x560970, (void*)&obs_set_index_size, {1, 3, 2}, false},
-    {0x5612d0, (void*)&obs_set_scissor, {1, 3, 2}, false},  // Dcb_SetScreenScissor(dcb, x0, y0, x1, y1)
-    {0x638870, (void*)&obs_set_rt, {1, 3, 2}, false},       // Dcb_SetRenderTarget(dcb, slot, rt*)
-    {0x5a7260, (void*)&obs_exec_sprite, {1, 3, 2}, false},
-    {0x59f7b0, (void*)&obs_exec_x1, {1, 3, 2}, false},
-    {0x5a0330, (void*)&obs_exec_x2, {1, 3, 2}, false},
-    {0x5a12e0, (void*)&obs_exec_x3, {1, 3, 2}, false},
-    {0x5a15e0, (void*)&obs_exec_x4, {1, 3, 2}, false},
-    {0x07ddb0, (void*)&obs_exec_a, {1, 3, 2}, false},
-    {0x07eb40, (void*)&obs_exec_b, {1, 3, 2}, false},
-    {0x5a3a00, (void*)&obs_layer_replay, {1, 3, 2}, false},
+#define DCP_RENDER_HOOK(address, observer, a, b, c, jcc) \
+    {address, (void*)&observer, {a, b, c}, jcc},
+#include "capture-hooks.inc"
+#undef DCP_RENDER_HOOK
 };
 
 #ifndef DCP_AOT
@@ -570,12 +554,16 @@ std::shared_ptr<AotSnapshot> aot_capture_snapshot(uint64_t address, size_t bytes
 }
 bool observe_aot_entry(uint64_t offset, const uint64_t arguments[6]) {
     if (!g_enabled || !arguments) return false;
-    using Observer = void (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
-    for (const HookSpec &hook : kHooks)
-        if (hook.addr == offset) {
-            reinterpret_cast<Observer>(hook.observer)(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
-            return true;
-        }
+    switch (offset) {
+#define DCP_RENDER_HOOK(address, observer, a, b, c, jcc) \
+    case address: \
+        observer(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]); \
+        return true;
+#include "capture-hooks.inc"
+#undef DCP_RENDER_HOOK
+    default:
+        break;
+    }
     return false;
 }
 bool install_hooks(uint8_t*) { return false; }

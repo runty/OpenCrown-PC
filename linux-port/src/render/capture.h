@@ -87,6 +87,19 @@ bool aot_capture_memory(uint64_t address, size_t bytes, bool writing);
 bool aot_capture_matches(uint64_t address, const void *snapshot, size_t bytes);
 bool aot_capture_copy(uint64_t address, void *destination, size_t bytes);
 std::shared_ptr<AotSnapshot> aot_capture_snapshot(uint64_t address, size_t bytes);
+// Exact wrapper filter, before the caller materializes SysV arguments. The same
+// list drives native hook installation and AOT dispatch; this does not gate the
+// runtime's separate scene/cursor observers or its per-trace cancellation checks.
+inline constexpr bool is_aot_entry(uint64_t eboot_offset) {
+    switch (eboot_offset) {
+#define DCP_RENDER_HOOK(address, observer, a, b, c, jcc) case address:
+#include "capture-hooks.inc"
+#undef DCP_RENDER_HOOK
+        return true;
+    default:
+        return false;
+    }
+}
 // Called before executing the original wrapper entry instructions. Arguments are SysV integer args.
 bool observe_aot_entry(uint64_t eboot_offset, const uint64_t arguments[6]);
 #endif

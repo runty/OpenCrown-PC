@@ -1484,7 +1484,7 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
       ++engine().cursorReadErrors;
     }
   }
-  if (observedPC >= 0x20000000 && observedPC < 0x30000000) {
+  if (dcp::render::is_aot_entry(observedPC - 0x20000000)) {
     const auto &r = state.gpr;
     const uint64_t args[6] = {r.rdi.qword, r.rsi.qword, r.rdx.qword,
                               r.rcx.qword, r.r8.qword,  r.r9.qword};

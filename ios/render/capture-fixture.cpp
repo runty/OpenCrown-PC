@@ -32,6 +32,7 @@ bool valid(void *context, uint64_t address, size_t bytes, bool) {
 void observe(uint64_t offset, uint64_t a = 0, uint64_t b = 0, uint64_t c = 0,
              uint64_t d = 0, uint64_t e = 0, uint64_t f = 0) {
   uint64_t arguments[6] = {a, b, c, d, e, f};
+  assert(dcp::render::is_aot_entry(offset));
   assert(dcp::render::observe_aot_entry(offset, arguments));
 }
 } // namespace
@@ -85,6 +86,8 @@ int main() {
   assert(draw.vb[0].bytes.size() == sizeof(vertices) &&
          std::memcmp(draw.vb[0].bytes.data(), vertices, sizeof(vertices)) == 0);
   uint64_t none[6]{};
+  assert(!is_aot_entry(0x123));
+  assert(!is_aot_entry(0x1005650d0ULL)); // never truncate a non-image PC
   assert(!observe_aot_entry(0x123, none));
   on_draw(reinterpret_cast<uint32_t *>(1), 7, 3, 0,
           false); // rejected without touching unregistered memory
