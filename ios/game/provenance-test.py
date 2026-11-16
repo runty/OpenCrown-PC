@@ -16,6 +16,7 @@ def require(value):
 active = {
     "lifter_sha256": "lifter",
     "runtime_bc_sha256": "semantics",
+    "binary_source_sha256": "binary",
     "fp80_lower_sha256": "new-pass",
     "fp80_manifest_sha256": "new-helper",
 }
@@ -45,7 +46,7 @@ require(not record_current(record, active, "ir", {"eboot": "different-image"}))
 require(not record_current(record, active, "ir", {}))
 require(not record_current(None, active, "ir", {"eboot": "image"}))
 require(not backend_matches({}, active))
-for key in ["lifter_sha256", "runtime_bc_sha256"]:
+for key in ["lifter_sha256", "runtime_bc_sha256", "binary_source_sha256"]:
     changed = dict(old)
     changed[key] = "different"
     require(not backend_matches(dict(record, backend=changed), active))

@@ -137,6 +137,7 @@ backend_snapshot = {
     "remill_revision": subprocess.check_output(
         ["git", "-C", str(backend / "remill"), "rev-parse", "HEAD"], text=True
     ).strip(),
+    "binary_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/BINARY.cpp"),
     "sse_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/SSE.cpp"),
     "avx_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/AVX.cpp"),
     "x87_source_sha256": sha256(backend / "remill/lib/Arch/X86/Semantics/X87.cpp"),

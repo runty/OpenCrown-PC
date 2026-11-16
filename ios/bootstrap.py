@@ -46,6 +46,7 @@ PATCHES = [
     "remill-confirmed-packed-float.patch",
     "remill-confirmed-packed-integer.patch",
     "remill-movbe-stores.patch",
+    "remill-scalar-fp-memory.patch",
 ]
 
 
