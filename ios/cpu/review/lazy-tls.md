@@ -96,3 +96,20 @@ collided on the case-insensitive filesystem; its log is retained. A fresh
 unchanged QA patch, and passes. Provenance and results are under
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-mobile/background-run/`.
 No physical device was contacted, and this remains an unpromoted experiment.
+
+## Native guided route to Harpy
+
+A private guided host with input-only and read-only cursor helpers was linked
+against the candidate memory object. Its 50,479-member archive differs from
+the earlier guided reference only in `memory.o`. The retained route opens the
+first chest and progresses through snakes, water/lizards and the visible Harpy;
+three additional attack segments run after the original route. Captured
+screenshots show the boss still alive afterward. The 21,277-frame run reports
+528,556 full-content texture checks and zero proof failures; all disposable
+save files remain unchanged, no guest/host error is reported and unload is
+acknowledged. The harness intentionally stops on SIGINT with exit 1 because its
+`HARPY` scene checkpoint is unmet (the original scene identifier remains
+`GOBLIN`). This is not a boss clear, full adventure, device test, or performance
+measurement. The private helpers are not release code, and the TLS candidate
+remains unpromoted. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls-guided/`.
