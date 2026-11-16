@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Run picker lifecycle checks in a newly named, isolated Simulator app."""
+"""Run local picker or save-transfer checks in an isolated Simulator app."""
 import argparse,json,subprocess,time,uuid
 from pathlib import Path
 p=argparse.ArgumentParser()
+p.add_argument('--scenario',choices=['picker','transfer'],default='picker')
 p.add_argument('--output',type=Path,required=True)
 p.add_argument('--storage',type=Path,required=True,help='storage build output containing simulator/libstorage.a')
 p.add_argument('--simulator',required=True,help='explicitly authorized Simulator UDID')
@@ -13,6 +14,8 @@ source=Path(__file__).resolve().parent;library=storage/'simulator/libstorage.a'
 if not library.is_file():p.error('missing simulator storage library')
 bundle='com.wadscorp.opencrown.qa.picker'+uuid.uuid4().hex
 q=lambda x:json.dumps(str(x))
+qa_source='picker-qa.mm' if a.scenario=='picker' else 'save-transfer-qa.mm'
+expected_checks=32 if a.scenario=='picker' else 22
 spec=f'''name: OpenCrownPickerQA
 options:
   deploymentTarget:
@@ -22,7 +25,7 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: {q(source/'picker-qa.mm')}
+      - path: {q(source/qa_source)}
     dependencies:
       - framework: {q(library)}
         embed: false
@@ -64,8 +67,8 @@ try:
   time.sleep(1)
  else:raise RuntimeError('QA app did not produce a result')
  data=json.loads(result.read_text())
- if data!={'checks':32,'failed':0}:raise RuntimeError(f'Unexpected QA result: {data}')
- (out/'results.json').write_text(json.dumps({'bundle':bundle,'simulator':a.simulator,**data},indent=2)+'\n')
+ if data!={'checks':expected_checks,'failed':0}:raise RuntimeError(f'Unexpected QA result: {data}')
+ (out/'results.json').write_text(json.dumps({'bundle':bundle,'simulator':a.simulator,'scenario':a.scenario,**data},indent=2)+'\n')
  print(json.dumps(data))
 finally:
  if started:subprocess.run(['xcrun','simctl','terminate',a.simulator,bundle],check=False)

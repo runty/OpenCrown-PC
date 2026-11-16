@@ -1,5 +1,17 @@
 # Device port progress
 
+## 2026-11-16 — Simulator local save-transfer round trip
+
+The `--scenario transfer` runner builds a uniquely named Simulator QA app
+with the real transfer controller and local file coordinator. Using only
+synthetic data, it imports an incoming save, validates and restores the old
+checkpoint to a separate folder, then rejects an invalid import while checking
+current save, checkpoint bytes and an unrelated marker. All 22 checks pass;
+a separate rerun of the existing picker scenario passes 32. No production
+code changed. This does not exercise a Files picker/provider, iCloud, game
+saves, actual device interruption or physical devices. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-transfer-preservation-final-qa/`.
+
 ## 2026-11-16 — Verify launcher fixes with the real Simulator game
 
 Clean source `3b546d0`, with the coordinated-read, picker and pending-

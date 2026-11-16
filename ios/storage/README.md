@@ -183,6 +183,11 @@ unverified until the devices are available.
 picker delegate edge cases; it does not operate a Files provider or normal
 game save. Specify a fresh external output, the storage build output, and an
 explicit Simulator UDID. The QA app uses a unique bundle ID.
+With `--scenario transfer`, the same runner exercises the real save-transfer
+controller and local file coordinator using synthetic saves. It verifies import,
+checkpoint validation and restoration into a separate folder, then a rejected
+import that preserves the current save and checkpoint inventory. This does
+not exercise the Files picker, a cloud provider, or game-generated saves.
 
 ## Save write sessions
 
