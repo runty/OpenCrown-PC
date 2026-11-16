@@ -218,10 +218,20 @@ manual in-game save/relaunch test.
 For the recovery change, the 159-check storage suite and 216-check integrated
 save-service suite also pass as iPhone Simulator processes using disposable
 files. The storage suite passes ASan/UBSan and TSan on macOS. iPhoneOS and
-Simulator app builds link the launcher change; the Simulator execution covers
-the service and storage APIs, not the on-screen restore picker or a physical
-device. Evidence is under
-`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/`.
+Simulator app builds link the launcher change. A separate Simulator QA bundle
+then exercises the actual launcher's **Restore Save Checkpoint** button on a
+synthetic interrupted session. XCTest selects the checkpoint and observes the
+success message; a host-side check confirms the chosen bytes, prewrite copy,
+interrupted archive and an additional simulated recovery. The test uses the
+launcher source from `c0dee0d`, the existing isolated NaN-candidate core and
+an independent app container; it does not run the game or touch a device.
+`ui-qa/RestoreTests.mm` and `ui-qa-seed.cpp` are test-only. The seed helper
+requires a marker file with `synthetic restore QA` followed by a newline, and
+the seed operation also refuses existing save/checkpoint roots. The test
+project, command logs and results are under
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/restore-ui-qa/`.
+Physical-device, real interrupted-write and skipped manual save checks remain
+open.
 
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
