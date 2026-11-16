@@ -254,3 +254,30 @@ launch; the corrected run and evidence are under `exception-usage/ruins-usage-2/
 The fast-count assertion was added to the script after that run, and the saved
 counter line independently confirms the value. No physical device or manual
 save test was used.
+
+## Native whole-game cost comparison
+
+`build-game-cost.sh` creates two private Mac hosts from the same audited
+NaN-candidate archive and frontend. Both use the same trace wrapper; the
+control forwards to the original translated loop and the candidate uses the
+guarded 16-element batch path. Their archives differ only in `memory.o`; batch
+statistics are disabled in both. The control's extra forwarding wrapper means
+it is not byte-identical to the ordinary app. Rebuilding the pair reproduced
+both host binary hashes. `game-cost.py` runs four alternating 600-frame Town
+checkpoints; `--reverse` reverses the order for another set. Texture versions
+are enabled without the full-verification overhead used by correctness audits.
+
+All eight native runs reached Town, unloaded without reported error and retained
+the disposable R save hash; the first baseline and last chunk frames were
+visually inspected. Four baseline checkpoint CPU times range from 12.96 to
+17.92 seconds, and four chunk times range from 12.57 to 17.01 seconds. Their
+medians are 14.24 and 13.18 seconds respectively (7.43% lower for the chunk),
+but the two alternating sets favor opposite variants and the ranges overlap
+substantially. The first run in each set also reached the Town checkpoint about
+180 frames later than the others. With this variation and a busy host, the
+result does not establish a whole-game or physical-device gain. Floating-point
+status and changed lock interleavings also remain unresolved; do not promote
+this prototype. Evidence, binaries and individual reports are in
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/scale-game-cost/`;
+the independently rebuilt pair is in `scale-game-cost-repro/`. No physical
+device or skipped manual save test was used.
