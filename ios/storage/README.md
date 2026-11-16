@@ -233,6 +233,16 @@ project, command logs and results are under
 Physical-device, real interrupted-write and skipped manual save checks remain
 open.
 
+A second independent Simulator QA app covers the error path. Its synthetic
+rollback checkpoint is corrupted after the write journal is created. XCTest
+chooses a separate valid checkpoint and observes the checksum error; a
+host-side check verifies the interrupted live bytes and journal are unchanged,
+the chosen checkpoint remains valid, and no recovery archive or previous tree
+was falsely created. `ui-qa-seed.cpp` provides `seed-corrupt` and
+`verify-corrupt` modes for this fixture. Each XCTest method requires its own
+pre-seeded app container; select one with `-only-testing` per invocation. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/save-restore-recovery/restore-ui-failure-qa/`.
+
 Save write sessions apply retention only **after a successful durable commit**:
 keep the latest ten validated checkpoint directories, ordered by checkpoint
 modification time with an ID tie-breaker. The just-committed checkpoint is always
