@@ -1,0 +1,37 @@
+# Lazy scalar-thread fallback study
+
+This branch is an experiment, not an app change or a claim of faster phone
+play. In the captured `bb540ac` phone binary, disassembly of
+`__remill_read_memory_64` resolves `scalarThread` before selecting the already
+bound `Memory::scalarThread` pointer. The proposal moves only the lifted
+unbound fallback into a noinline helper. In a new iPhoneOS object, the bound
+path branches around that helper. Non-lifted host hooks still select the
+calling thread's TLS, and unbound lifted calls still use TLS. The existing
+contract that a bound `Memory` belongs to its guest worker is unchanged.
+
+The old phone Time Profiler export contains 1,733 samples weighted at 1 ms
+whose leaf is `_tlv_get_addr`, 4.23% of its overall sample weight. These are
+sample weights, not CPU durations, and frames can be omitted by unwinding;
+they do not establish that every sample comes from this particular lookup or
+predict a device speedup. `lazy-tls-profile.py` re-reads the retained XML.
+
+`lazy-tls-test.py` inserts a counter only into a private test runtime. Native,
+ASan/UBSan and TSan confirm six unbound fallbacks, no fallback for bound lifted
+or host calls, and eight independent bound workers. The existing memory suite
+passes 267,130 checks per mode; snapshot tests pass native, ASan/UBSan, TSan,
+wrap and writer-negative controls. Both mobile SDK runtime objects compile.
+This is not exhaustive cross-thread or lifecycle qualification.
+
+Six alternating pairs of a tiny bound native scalar benchmark have median
+2M-read CPU 8.103 ms baseline / 8.022 ms candidate and 2M-write CPU 9.335 /
+8.299 ms. This is synthetic, with no phone claim. A candidate native Town audit
+passes 25,297 full-content texture checks with unchanged disposable save.
+In four alternating uninstrumented Town runs, process CPU medians are 13.825 s
+baseline / 14.176 s candidate, with different trace counts and competing host
+load. The archives have 50,479 members and differ only in `memory.o`; the
+baseline object is byte-identical to the audited reference. These few runs do
+not establish a whole-game gain or regression. No mobile build was installed.
+
+Evidence and retained inputs: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/lazy-scalar-tls/`.
+`lazy-tls-game.py` requires already-built private matched binaries and the prior
+disposable reference run. The iPad is with the player; no device was contacted.

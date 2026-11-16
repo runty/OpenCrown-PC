@@ -510,9 +510,24 @@ template <typename T>
   return checkedPointer(memory, address, sizeof(T));
 }
 
+// Keep the unbound path out of line: Apple Clang otherwise speculates the
+// thread-local address lookup even when the lifted worker is already bound.
+[[gnu::noinline]] static GuestScalarThread &unboundScalarThread() {
+  return scalarThread;
+}
+template <bool lifted>
+[[gnu::always_inline]] static inline GuestScalarThread &selectScalarThread(Memory &memory) {
+  if constexpr (lifted) {
+    if (memory.scalarThread)
+      return *memory.scalarThread;
+    return unboundScalarThread();
+  } else {
+    return scalarThread;
+  }
+}
 template <typename T, bool lifted = false>
 static T loadScalar(Memory &memory, uint64_t address) {
-  auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
+  auto &thread = selectScalarThread<lifted>(memory);
   const auto *pointer = scalarPointer<T>(memory, address, thread);
   AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
   T value;
@@ -521,7 +536,7 @@ static T loadScalar(Memory &memory, uint64_t address) {
 }
 template <typename T, bool lifted = false>
 static void storeScalar(Memory &memory, uint64_t address, T value) {
-  auto &thread = lifted && memory.scalarThread ? *memory.scalarThread : scalarThread;
+  auto &thread = selectScalarThread<lifted>(memory);
   auto *pointer = scalarPointer<T>(memory, address, thread);
   AccessLock lock(pointer, sizeof(T), thread.exclusiveDepth);
   changed(pointer, sizeof(T));
