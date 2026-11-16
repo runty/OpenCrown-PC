@@ -236,3 +236,21 @@ Evidence, the link command and the run driver are under
 `/Volumes/office/Build/OpenCrown/mobile-adventure-live/sse-nan-candidate/exception-usage/`.
 The driver uses a disposable save and assumes the recorded local paths; inspect
 it before reuse. No physical device or skipped manual save test was used.
+
+The same private host was then exercised from a disposable Darrel adventure
+save through the GOBLIN/Ruins checkpoint, with 720 frames of the scripted
+attack route after the checkpoint. It completed 7,243 frames and 82,136 batch
+fast-path calls, with 144,876 texture hits verified against full contents, no
+proof failure, unchanged save bytes, and clean unload. Its captured final frame
+shows Darrel swinging by the chest; this is not a complete combat or boss
+clear. The bridge counters again report zero test/clear/raise calls. This adds
+the first-encounter route only; later scenes and devices remain unqualified.
+
+`run-combat-usage.py` records intent, validates the disposable seed, runs the
+host and checks its report, texture proof and save hash. It relies on the
+private instrumented executable and local paths above; inspect before reuse.
+The first invocation failed on an incorrect relative route path before game
+launch; the corrected run and evidence are under `exception-usage/ruins-usage-2/`.
+The fast-count assertion was added to the script after that run, and the saved
+counter line independently confirms the value. No physical device or manual
+save test was used.
