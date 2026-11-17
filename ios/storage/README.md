@@ -170,6 +170,20 @@ the pre-import checkpoint ID, or an empty string for a first import. It refuses
 an active/interrupted write journal; call `SaveTransactions::recover()` with
 writers stopped before invoking it. Neither helper prunes checkpoints.
 
+The isolated `ui-qa-castle.py` runner accepts `--route-file` and
+`--settle-frames` to exercise a different bounded Town checkpoint route using
+an already installed QA bundle and an explicitly pinned disposable seed.
+Route files are limited to 64 KiB.
+`--duration-seconds` adjusts the independent diagnostic timeout; trace and
+vblank budgets still apply. `--expected-final-scene` selects the expected final
+component when the route leaves Town. The runner records the inputs, verifies texture
+proofs and save preservation, and captures the last frame. With the explicit
+`--expect-save-change` option, it requires the copied character save to change
+and retains a verified copy under the external output directory; the pinned
+source and protected QA files must still remain unchanged. Its generic Town
+checkpoint cannot establish a particular destination: inspect `final.png`
+for the intended scene. It does not qualify physical devices or performance.
+
 ## Verification
 
 The arm64 Mac regression suite covers initial/replacement imports, case

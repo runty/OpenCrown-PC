@@ -2,6 +2,29 @@
 
 ## 2026-11-17 — Simulator Castle continuation
 
+The isolated Simulator route now returns from the Castle to the Inn and
+selects Report adventures. The original Town-only QA assertion flagged the
+first Inn arrival despite a clean runtime; inspection of the retained frame
+confirmed Dragon's Haven Inn. The QA runner now accepts a bounded route file,
+settle duration, expected final component and explicit disposable-save-change
+expectation, retaining a verified copy of a changed character save. Eight
+invalid input cases reject before output creation. Route files for Inn and a
+single Data 1 confirmation are checked in; visual review remains required.
+
+A muted Simulator replay handed in the scepter, went to the Inn and confirmed
+one disposable save. The captured screen says Save completed and SAVE0.DAT
+changed from `82d24f52ac07522bedb3dc0ae137d49fe37cab64489fb225c3c49df0ee2ebf1b`
+to `b9246a2e308e347f7e5874f2b44987a4fd9ea47c395e87810dff5dd913582446`.
+The save run rendered 8,182 frames, verified 149,391 texture hits and had no
+proof failures. Two fresh Simulator processes reopened copies of that new save
+and both showed the fairy's next story prompt in Town. They rendered 2,152 /
+2,160 frames with 27,732 / 26,421 verified texture hits and no proof failures.
+The source seeds and protected QA files remained unchanged throughout. This
+qualifies the isolated Simulator save/reopen path, not physical-device saves,
+cloud sync or sustained performance. Evidence:
+`/Volumes/office/Build/OpenCrown/long-checkpoint-package/post-castle-save/`,
+`post-castle-cold-reopen/` and `post-castle-cold-reopen-2/`.
+
 The next muted Simulator replay opened the Town Map after the Castle sequence,
 then reached Morgan's Magic Item Shop. To permit routes beyond the previous
 one-minute checkpoint, `5033878` raises the diagnostic settle-frame ceiling

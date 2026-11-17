@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,6 +18,12 @@ p.add_argument('--bundle', required=True)
 p.add_argument('--build-id', required=True)
 p.add_argument('--seed', type=Path, required=True)
 p.add_argument('--save-sha256', required=True)
+p.add_argument('--route-file', type=Path, help='optional UTF-8 checkpoint input script')
+p.add_argument('--settle-frames', type=int, default=3400)
+p.add_argument('--duration-seconds', type=int, default=240)
+p.add_argument('--expected-final-scene', default='TOWN')
+p.add_argument('--expect-save-change', action='store_true',
+               help='retain a changed disposable session save under the output directory')
 a = p.parse_args()
 out, seed = a.output.resolve(), a.seed.resolve()
 for path in (out, seed):
@@ -28,6 +35,24 @@ if not a.bundle.startswith('com.wadscorp.opencrown.qa.') or len(a.build_id) != 4
     p.error('a separate QA bundle and exact 40-character build ID are required')
 if len(a.save_sha256) != 64 or any(c not in '0123456789abcdef' for c in a.save_sha256):
     p.error('save SHA-256 must be lowercase hexadecimal')
+if not 120 <= a.settle_frames <= 18000:
+    p.error('settle frames must be between 120 and 18000')
+if not 1 <= a.duration_seconds <= 2100:
+    p.error('duration must be between 1 and 2100 seconds')
+if not re.fullmatch(r'[A-Z0-9_]{1,15}', a.expected_final_scene):
+    p.error('expected final scene must be 1–15 uppercase letters, digits or underscores')
+if a.route_file is not None:
+    data = a.route_file.read_bytes()
+    if len(data) > 64 * 1024:
+        p.error('route file exceeds 64 KiB')
+    try:
+        custom_route = data.decode('utf-8')
+    except UnicodeDecodeError:
+        p.error('route file must be UTF-8')
+    if not custom_route or '\x00' in custom_route:
+        p.error('route file must be nonempty and contain no NUL bytes')
+else:
+    custom_route = None
 out.mkdir(parents=True, exist_ok=False)
 
 def simctl(*args, **kwargs):
@@ -62,20 +87,23 @@ if inventory(save) != seed_before:
 source = Path(__file__).resolve().parent
 shutil.copyfile(source / 'ui-qa-castle-boot.txt', qa / 'diagnostic-input.txt')
 route = ('0 0\n450 MAP\n470 0\n' + ''.join(f'{t} RIGHT\n{t+10} 0\n' for t in (600,690,780,870,960,1050)) + '1190 CROSS\n1200 0\n' + ''.join(f'{t} CROSS\n{t+8} 0\n' for t in range(1350,3300,50)) + '3400 0\n')
-values = dict(DCP_DIAGNOSTIC_SECONDS='240', DCP_DIAGNOSTIC_RESUME_UUID=saveid,
-              DCP_CHECKPOINT_SCENE='TOWN', DCP_CHECKPOINT_SETTLE_FRAMES='3400',
+if custom_route is not None:
+    route = custom_route
+values = dict(DCP_DIAGNOSTIC_SECONDS=str(a.duration_seconds), DCP_DIAGNOSTIC_RESUME_UUID=saveid,
+              DCP_CHECKPOINT_SCENE='TOWN', DCP_CHECKPOINT_SETTLE_FRAMES=str(a.settle_frames),
               DCP_MAX_TRACE_ENTRIES='9400000000', DCP_MAX_VBLANKS='90000',
               DCP_CHECKPOINT_INPUT=route, DCP_MUTE_AUDIO='1',
               DCP_TEXTURE_VERSIONS='1', DCP_TEXTURE_VERSION_VERIFY='1')
 env = os.environ.copy()
 env.update({'SIMCTL_CHILD_' + k: v for k, v in values.items()})
 (out / 'intent.json').write_text(json.dumps({'bundle': a.bundle, 'session': saveid,
-    'seed_sha256': a.save_sha256, 'environment': values}, indent=2) + '\n')
+    'seed_sha256': a.save_sha256, 'expected_final_scene': a.expected_final_scene,
+    'expect_save_change': a.expect_save_change, 'environment': values}, indent=2) + '\n')
 try:
     launch = simctl('launch', '--terminate-running-process', a.simulator, a.bundle,
                     '--diagnostic-startup', env=env)
     (out / 'launch.txt').write_text(launch.stdout)
-    deadline = time.monotonic() + 280
+    deadline = time.monotonic() + a.duration_seconds + 40
     last = None
     while time.monotonic() < deadline:
         time.sleep(3)
@@ -94,22 +122,36 @@ try:
     else:
         raise RuntimeError('timed out waiting for the same QA session; inspect before restarting')
     (out / 'final.json').write_text(json.dumps(report, indent=2) + '\n')
+    frame = qa / 'DiagnosticSessions' / report['session_id'] / 'last-game-frame.png'
+    if frame.is_file():
+        shutil.copy2(frame, out / 'final.png')
     g = report['guest']
     v = g['texture_versions']
     if (report['build_id'] != a.build_id or not g['booted'] or not g['game_code_executed'] or
-        not g['checkpoint_complete'] or g['current_scene'] != 'TOWN' or
+        not g['checkpoint_complete'] or g['current_scene'] != a.expected_final_scene or
         any((g['error'], report['frontend_error'], report['save_error'], report.get('platform_error', ''))) or
         not report['diagnostic_resumed'] or report['save_session_id'] != saveid):
         raise RuntimeError('runtime or checkpoint validation failed; inspect retained report')
     if not v['enabled'] or not v['verifying'] or not v['verified_checks'] or v['proof_failures'] or v['version_hits'] != v['verified_checks']:
         raise RuntimeError('texture verification failed')
-    if inventory(save) != seed_before:
-        raise RuntimeError('disposable working save changed')
-    frame = qa / 'DiagnosticSessions' / report['session_id'] / 'last-game-frame.png'
-    shutil.copy2(frame, out / 'final.png')
+    save_after = inventory(save)
+    changed = save_after != seed_before
+    if changed != a.expect_save_change:
+        raise RuntimeError('disposable working save change did not match expectation')
+    if changed:
+        if not save_after.get('SAVEDATA00/SAVE0.DAT') or save_after['SAVEDATA00/SAVE0.DAT'] == a.save_sha256:
+            raise RuntimeError('character save did not change')
+        saved_game = out / 'saved-game'
+        shutil.copytree(save, saved_game)
+        if inventory(saved_game) != save_after:
+            raise RuntimeError('retained working save does not match session')
+    if not (out / 'final.png').is_file():
+        raise RuntimeError('stopped session has no captured game frame')
     result = {'frames': report['captured_game_frames'], 'texture_checks': v['verified_checks'],
-              'castle_visual_review_required': True,
-              'scope': 'Muted Simulator runtime checkpoint; inspect final.png for Castle/story content. Not physical-device or performance acceptance.'}
+              'expected_final_scene': a.expected_final_scene, 'working_save_changed': changed,
+              'character_save_sha256': save_after.get('SAVEDATA00/SAVE0.DAT'),
+              'visual_review_required': True,
+              'scope': 'Muted Simulator runtime checkpoint; inspect final.png for intended scene. Not physical-device or performance acceptance.'}
     (out / 'verification.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result), flush=True)
 finally:
