@@ -644,6 +644,9 @@ def main():
     # sign-extended 16-bit selector, guards unsigned <= 0x6a, then uses
     # signed relative offsets from 6e6984. Its 107 slots have 30 distinct
     # file-backed, instruction-aligned destinations (ally-switch-audit.py).
+    # Post-adventure layout uses an 8-slot signed-relative table at ELF
+    # 75a3b0, with EDX zero-extended and guarded unsigned <= 7. Its five
+    # distinct instruction-aligned destinations are covered as a group.
     # An ally combat path resumes at the JBE immediately after VUCOMISS in
     # ELF 26dfbc. Preserve its incoming guest flags; this is an observed
     # continuation, not evidence of a jump table or adjacent case targets.
@@ -665,6 +668,7 @@ def main():
         "2001d0dd", "2001d0eb", "2001d0f8", "2001d0ff", "2001d106",
         "2001d10e", "2001d120", "2001d2cd", "2001d2e0", "2001d2f0",
         "2026dfc0",
+        "20515a4d", "20515a5f", "20515a71", "20515a83", "20515aa0",
         "200f8d1e", "200f8d2b", "200f8d38", "200f8d5f", "200f8d6c",
         "200f8d79", "200f8d86", "200f8d93", "200f8da0", "200f8df5",
         "200f8e02", "200f8e0f", "200f8e36", "200f8e5d", "200f8e99",
