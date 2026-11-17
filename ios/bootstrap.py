@@ -640,6 +640,9 @@ def main():
     # Their preloaded RBX/R13 bases (645080/645060/645040) are retained;
     # LEA-to-EAX subtracts 12 and zero extends before unsigned <=8/7/7
     # guards. Cover all 19 distinct targets, including observed 1d410.
+    # An ally combat path resumes at the JBE immediately after VUCOMISS in
+    # ELF 26dfbc. Preserve its incoming guest flags; this is an observed
+    # continuation, not evidence of a jump table or adjacent case targets.
     traces = game / "traces"
     required = (
         "300717e0", "30000000", "2054c690", "203d54a0", "2063b950",
@@ -657,6 +660,7 @@ def main():
         "2051bd81", "2051c06e", "2051c0a9", "2051c0ee", "2051c1d0",
         "2001d0dd", "2001d0eb", "2001d0f8", "2001d0ff", "2001d106",
         "2001d10e", "2001d120", "2001d2cd", "2001d2e0", "2001d2f0",
+        "2026dfc0",
         "2001d300", "2001d375", "2001d3cb", "2001d3d9", "2001d3e6",
         "2001d3ed", "2001d3f4", "2001d3fc", "2001d410",
     )
