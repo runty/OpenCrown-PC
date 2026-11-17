@@ -114,7 +114,7 @@ iPhoneOS package passes strict signature/profile checks.
 
 ### Measuring Town frame timing
 
-Set `DCP_CHECKPOINT_SCENE=TOWN` and choose 120–3,600 settle frames with
+Set `DCP_CHECKPOINT_SCENE=TOWN` and choose 120–18,000 settle frames with
 `DCP_CHECKPOINT_SETTLE_FRAMES`. The default pad releases all buttons at the
 scene marker. For a walk, `DCP_CHECKPOINT_INPUT` takes the same multiline
 frame/button syntax as the boot script. Its frame numbers start at the

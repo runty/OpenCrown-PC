@@ -44,11 +44,11 @@ int main() {
   }
   const auto tiny = dcp::game::headless_config("A_1", "1", "1");
   require(tiny.scene == "A_1" && tiny.trace_budget == 1 && tiny.vblank_budget == 1);
-  for (const char *valid : {"120", "1800", "3600"}) {
+  for (const char *valid : {"120", "1800", "3600", "18000"}) {
     const auto config = dcp::game::headless_config("TOWN", nullptr, nullptr, valid);
     require(config.settle_frames == std::stoull(valid));
   }
-  for (const char *bad : {"", "0", "1", "119", "3601", "-120", "+120", "120 ",
+  for (const char *bad : {"", "0", "1", "119", "18001", "-120", "+120", "120 ",
                           "120x", "999999999999999999999"}) {
     bool rejected = false;
     try { dcp::game::headless_config(nullptr, nullptr, nullptr, bad); }

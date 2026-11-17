@@ -45,7 +45,7 @@ inline HeadlessConfig headless_config(const char *scene, const char *traces,
                                       "DCP_MAX_TRACE_ENTRIES");
   result.vblank_budget = bounded_count(vblanks, result.vblank_budget, 216000,
                                        "DCP_MAX_VBLANKS");
-  result.settle_frames = bounded_count(settle, result.settle_frames, 3600,
+  result.settle_frames = bounded_count(settle, result.settle_frames, 18000,
                                        "DCP_CHECKPOINT_SETTLE_FRAMES");
   if (result.settle_frames < 120)
     throw std::invalid_argument("Invalid DCP_CHECKPOINT_SETTLE_FRAMES (minimum 120)");
