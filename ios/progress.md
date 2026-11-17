@@ -1,5 +1,43 @@
 # Device port progress
 
+## 2026-11-17 — Simulator Castle continuation
+
+After the player stopped the looping iPhone profiling attempt, the original
+diagnostic input and normal muted launcher were restored. The disposable
+working SAVE0.DAT and param.bin changed during that interrupted run; it did
+not produce a combat profile. The player took the phone and requested
+Simulator-only work; no further physical-device or live cloud access occurred.
+
+The Simulator reopened the game-written post-Wyvern save (SAVE0.DAT SHA-256
+`82d24f52ac07522bedb3dc0ae137d49fe37cab64489fb225c3c49df0ee2ebf1b`)
+and displayed the Castle objective. It rendered 2,148 frames and verified
+26,416 texture hits with no proof failures; the source and protected files
+were unchanged. At `8b1f806`, scripted input gained a `MAP` gesture combining
+touchpad press and left touch contact. Native input and sanitizer fixtures each
+passed 167 checks; the Mac HLE test passed. Simulator screenshots confirmed
+that MAP opens the Town Map once the transition settles, and a disposable
+route reached the Castle and showed the royal scepter handoff. A too-early MAP
+opened the character menu, so route timing remains material.
+
+A faster dialogue run exposed missing target `201cf925`. The original ELF's
+guarded eight-slot table has five distinct destinations; the reproducible
+`ios/game/castle-story-switch-audit.py` checks their provenance and
+instruction boundaries. At `7903f7f`, all five were added to the Mac,
+iPhoneOS and Simulator archives (50,513 entrypoints), with a reusable bounded
+Simulator Castle route. The rebuilt, uninstrumented Simulator completed the
+Castle sequence and returned outside: 4,964 frames, 78,841 full-content texture
+checks, no errors, and unchanged source and protected files. That scene alone
+does not by itself establish that `201cf925` executed. A separate QA-only
+observer build (`f7d322e`) then recorded 152 executions of that exact target,
+reached the Castle exterior, and stopped without error after 5,150 frames and
+82,435 verified texture hits. The source seed and protected files remained
+unchanged. This instrumented Simulator run is not performance or physical
+device qualification. Evidence also includes
+`/Volumes/office/Build/OpenCrown/castle-story-observer-package/castle-observer-qa/`.
+Other evidence is under
+`/Volumes/office/Build/OpenCrown/map-script-package/` and
+`/Volumes/office/Build/OpenCrown/castle-story-package/`.
+
 ## 2026-11-17 — Wyvern clear, scepter save and iPhone combat
 
 On the Mac QA host using core `be8ce7c`, the player-style disposable route
