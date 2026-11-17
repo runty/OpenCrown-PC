@@ -1,5 +1,28 @@
 # Device port progress
 
+## 2026-11-17 — iPhone post-fight Inn dispatch
+
+The player reported a missing trace after a fight. The stopped iPhone report
+for build `8c301b5` identifies `200788c4` in INN after 8,035 captured frames;
+real audio reported zero underrun frames. The original ELF owner
+`78620..78a6a` has a guarded seven-slot signed-relative switch at `6e2e60`.
+`ios/game/inn-return-switch-audit.py` checks the image against the ELF and
+unwind atlas, guard and table instructions, and all seven instruction-aligned
+targets. Source `30aeb10` requires all seven and both iPhoneOS and Simulator
+archives contain them, with 50,520 entries and complete backend provenance.
+The signed icon-bearing iPhone build passed signature verification and was
+installed while stopped. All 186 non-game-data files matched before and after
+installation; the player was invited to retry. The actual post-fight case has
+not yet been re-executed in the corrected build.
+
+Two consecutive read-only copies of the stopped local save matched. An isolated
+Simulator attempt with a disposable copy reached the Inn's Select player screen
+but did not reach its requested Town checkpoint; the harness also had an
+incorrect expected build ID. It is excluded from acceptance, not a reproduction
+of the post-fight stop. Evidence is under
+`/Volumes/office/Build/OpenCrown/{inn-return-audit,iphone-latest-package}/`.
+No live save was written by this investigation.
+
 ## 2026-11-17 — Old Tower map availability remains unresolved
 
 On isolated Simulator build `5033878`, four right selections on the Town Map
