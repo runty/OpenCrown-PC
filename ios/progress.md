@@ -17,8 +17,18 @@ The six-left route selected the shop, so it does not establish an Inn save or
 a purchase. A second muted disposable run selected Buy items and displayed
 the stock list and item-use tutorial: 6,616 frames, 113,856 verified texture
 checks, no proof failures and unchanged source and protected files. Evidence:
-`/Volumes/office/Build/OpenCrown/long-checkpoint-package/shop-stock/`. No
-purchase was made; no physical device or live cloud save was used.
+`/Volumes/office/Build/OpenCrown/long-checkpoint-package/shop-stock/`. Further
+separate disposable runs dismissed the tutorial and showed a tonic purchase
+confirmation, then confirmed once. Two completed runs showed 10/500 inventory
+slots and 2,494 / 2,460 gold after confirmation, compared with 9/500 and 3,128
+gold on earlier replays of the same seed. Stock prices vary by run. The
+attempted same-session before capture missed its window, so the exact debit is
+not independently verified; these are consistent with, but do not fully prove,
+the purchase transaction. The second run rendered 8,409 frames, verified
+137,917 texture hits without proof failures, and preserved source and protected
+files. Evidence: `long-checkpoint-package/shop-select/`, `shop-purchase/`, and
+`shop-purchase-verified/` under `/Volumes/office/Build/OpenCrown/`. No physical
+device or live cloud save was used.
 
 After the player stopped the looping iPhone profiling attempt, the original
 diagnostic input and normal muted launcher were restored. The disposable
