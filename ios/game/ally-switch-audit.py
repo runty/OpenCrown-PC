@@ -28,11 +28,13 @@ elf = Elf(root / 'eboot.elf')
 start, end, table, count = 0xf8bb0, 0xf9054, 0x6e6984, 107
 owner = image[start:end]
 raw_table = image[table:table + count * 4]
-assert len(owner) == end - start and len(raw_table) == count * 4
+if len(owner) != end - start or len(raw_table) != count * 4:
+    raise SystemExit("owner or table is outside the prepared image")
 owner_offset, owner_flags = elf.file_match(start, owner, readonly=True)
 table_offset, table_flags = elf.file_match(table, raw_table, readonly=True)
 rows = json.loads(a.atlas.read_text())
-assert sum(r.get('module') == 'eboot' and r.get('start') == start and r.get('end') == end for r in rows) == 1
+if sum(r.get('module') == 'eboot' and r.get('start') == start and r.get('end') == end for r in rows) != 1:
+    raise SystemExit('unwind atlas does not identify the expected owner')
 cmd = ['/opt/homebrew/opt/llvm/bin/llvm-objdump', '-d', '--start-address=' + hex(start),
        '--stop-address=' + hex(end), str(root / 'eboot.elf')]
 r = subprocess.run(cmd, check=True, capture_output=True, text=True)

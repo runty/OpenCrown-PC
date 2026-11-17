@@ -1,5 +1,44 @@
 # Device port progress
 
+## 2026-11-16 — Ally switch and both continuations execute
+
+The longer private guided ally run stopped at missing `200f8f13`. In the
+supported original ELF, the owner spans f8bb0..f9054. It sign-extends a
+16-bit selector, subtracts 0x4a in EAX, guards unsigned <= 0x6a, and dispatches
+through 107 signed relative slots at 6e6984. The original read-only table and
+owner bytes match the unique file-backed ELF mapping; all 30 distinct targets
+are decoded instruction boundaries inside the unwind owner. The audit records
+all target bytes and does not claim a complete owner CFG or individual effects.
+`ios/game/ally-switch-audit.py` reproduces the target inventory. Bootstrap
+requires all 30 destinations, including the observed case. All 30 and the prior
+`2026dfc0` continuation are present in the 50,495-entry Mac, iPhoneOS and
+Simulator archives, with their manifest hashes verified.
+
+A separate native guided QA host uses the fixed core and read-only counters,
+with no guest-field mutation. From a fresh disposable Julius save, it observes
+`200f8f13` once at vblank 9,369 and `2026dfc0` 693 times, first at 17,297,
+then shows the Harpy defeated with Julius and Darrel visible. It renders
+19,190 frames / 20,058 vblanks and reports 550,405 full-content texture checks
+with zero proof failures, empty host/guest errors, unchanged save and clean
+unload. It intentionally exits 1 on SIGINT because the HARPY scene checkpoint
+remains unmet (the scene identifier stays GOBLIN); this is not a generic
+checkpoint pass. The counter/readback host is test-only.
+
+A separate uninstrumented iPhone Simulator QA app at `4a3fb16` reaches the
+first Ruins checkpoint with the same ally save: 6,680 frames, 154,150
+full-content checks, zero failures/errors and unchanged protected QA saves.
+It does not establish that the two target PCs ran on Simulator. The earlier
+original-build retry passed once and another remained in the Inn's save menu
+until timeout; neither reproduces the original intermittent Simulator failure.
+An icon-bearing signed iPhoneOS app at `4a3fb16` builds and verifies without
+increased-memory entitlements. It is uninstalled and needs device gameplay,
+performance and audio qualification before promotion. Evidence:
+`/Volumes/office/Build/OpenCrown/ally-switch-audit-final/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/ally-switch-guided-run/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/ally-simulator-study/switch-combat/`
+and `/Volumes/office/Build/OpenCrown/ally-switch-package/`. No physical device
+or normal/cloud save was accessed.
+
 ## 2026-11-16 — Ally combat exposes a missing continuation
 
 A private guided native session starts from the completed-adventure disposable
