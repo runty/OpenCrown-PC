@@ -640,6 +640,10 @@ def main():
     # Their preloaded RBX/R13 bases (645080/645060/645040) are retained;
     # LEA-to-EAX subtracts 12 and zero extends before unsigned <=8/7/7
     # guards. Cover all 19 distinct targets, including observed 1d410.
+    # The observed ally/combat switch at ELF f8bb0 subtracts 0x4a from a
+    # sign-extended 16-bit selector, guards unsigned <= 0x6a, then uses
+    # signed relative offsets from 6e6984. Its 107 slots have 30 distinct
+    # file-backed, instruction-aligned destinations (ally-switch-audit.py).
     # An ally combat path resumes at the JBE immediately after VUCOMISS in
     # ELF 26dfbc. Preserve its incoming guest flags; this is an observed
     # continuation, not evidence of a jump table or adjacent case targets.
@@ -661,6 +665,12 @@ def main():
         "2001d0dd", "2001d0eb", "2001d0f8", "2001d0ff", "2001d106",
         "2001d10e", "2001d120", "2001d2cd", "2001d2e0", "2001d2f0",
         "2026dfc0",
+        "200f8d1e", "200f8d2b", "200f8d38", "200f8d5f", "200f8d6c",
+        "200f8d79", "200f8d86", "200f8d93", "200f8da0", "200f8df5",
+        "200f8e02", "200f8e0f", "200f8e36", "200f8e5d", "200f8e99",
+        "200f8ec0", "200f8ecd", "200f8eda", "200f8f06", "200f8f13",
+        "200f8f20", "200f8f83", "200f8fb7", "200f8fea", "200f8ff4",
+        "200f8ffe", "200f9008", "200f9012", "200f901c", "200f9035",
         "2001d300", "2001d375", "2001d3cb", "2001d3d9", "2001d3e6",
         "2001d3ed", "2001d3f4", "2001d3fc", "2001d410",
     )
