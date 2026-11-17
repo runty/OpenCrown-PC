@@ -1,5 +1,33 @@
 # Device port progress
 
+## 2026-11-16 — New combat dispatch and level-4 save reopen
+
+Another muted replay stopped at `2024dec4` (Old Capital combat). Original ELF
+owner 24de00..24e2e1 uses a zero-extended selector, an unsigned <= 3 guard and
+four signed relative targets in a file-backed table at 70b6f0. The reproducible
+`ios/game/capital-state-switch-audit.py` checks the guard, table bytes, unwind
+owner and instruction boundaries. All four targets build into the 50,508-entry
+Mac/iPhoneOS/Simulator archives at `be8ce7c`; the exact new case has not yet
+been observed executing in gameplay. The signed, icon-bearing iOS build is
+verified but uninstalled. A separate uninstrumented Simulator Guild regression
+passes at 5,126 frames / 73,972 texture checks with protected files unchanged;
+it does not exercise the new combat case.
+
+A subsequent native route diverged and reached different adventure results
+without encountering the new case. Results show level 4 and 310 maximum HP;
+after item appraisal and return to Town, the game wrote a new disposable save
+(`SAVE0.DAT` SHA-256 `1618ee9e2bff1b5f21ef5121a4e3c3153ef0e5d6218fecde54f233459db19c2d`).
+A fresh native process reopened a copy and showed Darrel in Town with 310/310 HP,
+2,298 rendered frames, 29,498 full-content texture checks, zero proof failures,
+empty errors and acknowledged unload. Both seed and working copies remained
+unchanged during reopen. It does not prove the prior dragon run's royal-scepter
+reward survived, or qualify device, iCloud or full-story behavior. The test
+host intentionally returns 1 because its unrelated HARPY checkpoint is unmet.
+Evidence: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/capital-reward-replay/`,
+`capital-state-replay/`, `capital-level4-reopen/`, and
+`/Volumes/office/Build/OpenCrown/capital-state-package/`. No physical device or
+live save was touched.
+
 ## 2026-11-16 — Old Capital dragon and royal scepter
 
 A second silent native replay with the `34b1c02` core reproduced the post-Guild
