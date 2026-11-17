@@ -674,6 +674,8 @@ def main():
         # Inn post-fight seven-slot guarded relative table (inn-return-switch-audit.py).
         "20078908", "200788b9", "200788c4", "200788ce",
         "200788d6", "200788de", "200788e9",
+        # 119-slot post-fight selector has two distinct destinations.
+        "201b3b00", "201b3b51",
         "20515a4d", "20515a5f", "20515a71", "20515a83", "20515aa0",
         "200f8d1e", "200f8d2b", "200f8d38", "200f8d5f", "200f8d6c",
         "200f8d79", "200f8d86", "200f8d93", "200f8da0", "200f8df5",
