@@ -1,5 +1,53 @@
 # Device port progress
 
+## 2026-11-16 — Guild quests, Castle and Old Capital
+
+The guided Julius party defeats Harpy, appraises and obtains three items,
+levels Darrel to 3 and returns to Town. Approaching the Guild then fails at
+missing `20515a4d`. Original ELF owner 515980..515b9d uses a zero-extended
+bit mask, a shifted/decremented EDX guarded unsigned <= 7, and eight signed
+relative slots at 75a3b0. Five distinct destinations are verified against the
+read-only ELF, instruction boundaries and unwind owner by
+`ios/game/guild-switch-audit.py`; all five are required by bootstrap and
+compiled into each 50,500-entry Mac, iPhoneOS and Simulator archive. This is
+a table/target audit, not a complete CFG proof.
+
+The interrupted disposable game wrote SAVE0.DAT and param.bin; its new
+SAVE0.DAT hash is `c5e06eeea48aa237c843883a4acbb4dc6dfef36c1d50fc38544539760ea7cef9`.
+A fresh native process reopens a copy with 306 HP visible. Its read-only
+observer sees `20515a4d` twice before the next stop: missing
+`sceNpTrophyUnlockTrophy`. The existing Mac loader treats this unresolved
+import as a return-zero no-op; mobile's explicit offline allowlist now matches
+that behavior. It does not unlock or persist platform trophies.
+
+A second fresh native process reopens the same seed, observes the repaired
+Guild case 360 times and the reference trophy stub, completes the Guild reward,
+accepts a quest, buys Cyclone Masher, enters the Castle audience and reaches
+Old Capital combat with Julius. It renders 27,645 frames / 27,711 vblanks,
+with 539,926 verified texture hits, zero proof failures, empty errors and clean
+unload. It stops intentionally with the unrelated HARPY checkpoint unmet and
+exit 1. Both working and source save copies retain their seed hashes in this
+run: quest/skill persistence is not established, and no Old Capital clear is
+claimed. These private hosts use input/readback observers, not release code.
+
+An uninstrumented iPhone Simulator app at `0517001` reopens the same seed and
+reaches Guild dialogue while recording the trophy call: 5,143 frames / 74,563
+verified hits, no reported error and unchanged QA saves. A separate QA-only
+counter build observes the previously missing Guild case 59 times and the
+trophy call with 5,183 frames / 73,118 checks. The checked-in
+`ios/storage/ui-qa-guild.py` repeats this from an explicitly supplied disposable
+seed and QA bundle; its independent repeat passes with 5,150 frames / 75,267
+checks, 59 Guild-case hits and exact seed/protected-save inventories. None of
+these runs qualifies physical audio, performance, trophy integration, save
+persistence after skill purchase or device behavior. Signed icon-bearing
+iPhoneOS build `0517001` verifies and is not installed. Evidence:
+`/Volumes/office/Build/OpenCrown/guild-switch-audit/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/ally-post-harpy-guided/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/guild-trophy-cold-reopen/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/ally-simulator-study/guild-regression-repro/`
+and `/Volumes/office/Build/OpenCrown/guild-hle-package/`. No physical device or
+normal/cloud save was touched.
+
 ## 2026-11-16 — Ally switch and both continuations execute
 
 The longer private guided ally run stopped at missing `200f8f13`. In the
