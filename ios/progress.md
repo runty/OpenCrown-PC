@@ -14,7 +14,11 @@ rendered frames and 105,255 verified texture checks, zero proof failures, and
 unchanged source seed and protected QA files. Screenshot and reports are in
 `/Volumes/office/Build/OpenCrown/long-checkpoint-package/post-castle-town/`.
 The six-left route selected the shop, so it does not establish an Inn save or
-a purchase. No physical device or live cloud save was used.
+a purchase. A second muted disposable run selected Buy items and displayed
+the stock list and item-use tutorial: 6,616 frames, 113,856 verified texture
+checks, no proof failures and unchanged source and protected files. Evidence:
+`/Volumes/office/Build/OpenCrown/long-checkpoint-package/shop-stock/`. No
+purchase was made; no physical device or live cloud save was used.
 
 After the player stopped the looping iPhone profiling attempt, the original
 diagnostic input and normal muted launcher were restored. The disposable
