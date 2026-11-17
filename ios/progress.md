@@ -20,8 +20,11 @@ after item appraisal and return to Town, the game wrote a new disposable save
 A fresh native process reopened a copy and showed Darrel in Town with 310/310 HP,
 2,298 rendered frames, 29,498 full-content texture checks, zero proof failures,
 empty errors and acknowledged unload. Both seed and working copies remained
-unchanged during reopen. It does not prove the prior dragon run's royal-scepter
-reward survived, or qualify device, iCloud or full-story behavior. The test
+unchanged during reopen. A separate muted Simulator app at `be8ce7c` reopened
+the exact same save and showed Darrel in Town at 310/310 HP: 2,152 frames and
+25,400 verified texture checks, with protected files and seed unchanged. Neither
+reopen proves the prior dragon run's royal-scepter reward survived or qualifies
+device, iCloud or full-story behavior. The test
 host intentionally returns 1 because its unrelated HARPY checkpoint is unmet.
 Evidence: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/capital-reward-replay/`,
 `capital-state-replay/`, `capital-level4-reopen/`, and
