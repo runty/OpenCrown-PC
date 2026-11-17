@@ -1,5 +1,47 @@
 # Device port progress
 
+## 2026-11-16 — Ally combat exposes a missing continuation
+
+A private guided native session starts from the completed-adventure disposable
+save, reports at the Adventurers Guild, enters Canaan Temple, revives Julius,
+selects him at the Inn and takes the party into the first Ruins fight. Captures
+show the ally in Town and combat, including spell effects. The run renders
+25,049 frames, checks 595,246 cached textures against full content with zero
+proof failures, reports no host/guest error and unloads cleanly. The game
+changes the disposable SAVE0.DAT and param.bin during the story/party flow.
+A separate cold native process reopens a clone of the resulting save and shows
+Julius still in the party, with 2,300 frames and 30,516 full-content checks.
+Its save stays byte-identical and the original seed remains unchanged. On
+reopen, the visible objective again says Go to Adventurers Guild; this does
+not establish that the whole quest sequence persisted. Neither intentional
+SIGINT stop satisfies the configured HARPY checkpoint; exit 1 is expected.
+
+A separate iPhone Simulator QA app with that game-written save reaches the
+first fight but stops at missing trace `2026dfc0` after 6,847 frames / 7,112
+vblanks. The original supported executable has `VUCOMISS` at ELF 26dfbc and
+`JBE +73` at 26dfc0, yielding 26dfc2 or 26e00b from incoming CF/ZF. The
+bootstrap now includes that observed continuation. A fresh 50,465-entry core
+compiles for Mac, iPhoneOS and Simulator. A separate uninstrumented Simulator
+QA package reaches the same fight checkpoint with Julius visible, no runtime
+error, unchanged disposable save and 157,529 full-content texture checks; it
+ends at 7,138 vblanks. A private read-only counter build runs two longer fight
+variants to 9,431 / 10,016 vblanks and 238,673 / 265,423 checks with no
+proof failures, but observes **zero** entries to the continuation. Its test
+assertions correctly fail: reaching the checkpoint does not prove the original
+failed branch executed. One additional attempted test was rejected before
+game startup because its 6,000-frame settle limit exceeded the allowed 3,600.
+
+The test-truncated actual lifted entry is exercised for all four incoming
+CF/ZF combinations by `ios/game/control-flow/ally-branch.py`; the selected
+target and preserved flags match JBE semantics. This tests only the first
+branch, not the full function or actual game execution. The continuation is
+therefore provisional until an on-path run observes it and passes. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/ally-simulator-study/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/next-scene-guided/`,
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/ally-progress-cold-reopen/`
+and `/Volumes/office/Build/OpenCrown/ally-continuation-fixture-repro/`.
+No physical device or normal/cloud save was accessed.
+
 ## 2026-11-16 — Simulator Files-picker cancellation and damaged copy
 
 The isolated real-picker QA exports a synthetic save into its own unique
