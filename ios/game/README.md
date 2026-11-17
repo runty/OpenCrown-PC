@@ -140,3 +140,12 @@ and observation flip/vblank anchors. This
 diagnostic option does not affect interactive Play or certify the resulting
 pixels. Compare later settled images before treating a transition capture as
 a persistent rendering defect.
+
+### Scripted town-map gesture
+
+In diagnostic input scripts, `MAP` sends the touchpad button together with a
+left-half contact at `(300, 471)` in the game's 1920×943 pad coordinates. The
+contact remains until the next input event; use a following `0` event to lift
+it. `MAP` can be combined with other named buttons. The existing `TOUCHPAD`
+name remains a button-only press. This is scripted diagnostic input; normal
+interactive controls continue to use the platform input adapter.

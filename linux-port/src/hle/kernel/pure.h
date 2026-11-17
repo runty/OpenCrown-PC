@@ -37,11 +37,14 @@ bool savedata_name_match(const char* pattern, const std::string& name);
 // e.g. "120 CROSS", "130 0", "200 OPTIONS+UP"); '#' starts a comment. A line's state holds until the next line.
 // LS_LEFT/LS_RIGHT/LS_UP/LS_DOWN and RS_LEFT/RS_RIGHT/RS_UP/RS_DOWN
 // hold the corresponding stick at an edge; the pad shim strips these bits.
+// MAP adds a left-half touchpad contact and press, as used by the Town Map control.
 constexpr uint32_t kScriptStickLeft = 0x10000000, kScriptStickRight = 0x20000000, kScriptStickUp = 0x40000000,
                    kScriptStickDown = 0x80000000, kScriptStickMask = 0xff000000;
 constexpr uint32_t kScriptRightStickLeft = 0x01000000, kScriptRightStickRight = 0x02000000,
                    kScriptRightStickUp = 0x04000000, kScriptRightStickDown = 0x08000000;
-struct InputEvent { uint64_t frame; uint32_t buttons; };
+struct InputEvent { uint64_t frame; uint32_t buttons; bool map_touch = false; };
+// Returns the latest event at or before frame, or null before the first event.
+const InputEvent* script_event_at(const std::vector<InputEvent>& ev, uint64_t frame);
 // Returns false (and the 1-based line number in *bad_line) on a malformed line. Events are sorted by frame.
 bool parse_input_script(const std::string& text, std::vector<InputEvent>* out, int* bad_line);
 uint32_t script_buttons_at(const std::vector<InputEvent>& ev, uint64_t frame);

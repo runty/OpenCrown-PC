@@ -44,7 +44,8 @@ int main(int argc, char **argv) {
   hooks.input_script = "# Same desktop syntax, deliberately out of order\n"
                        "30 0\n10 CROSS+LS_LEFT\n20 OPTIONS|LS_DOWN\n"
                        "40 LS_LEFT+LS_UP+RS_RIGHT+RS_DOWN+SQUARE\n"
-                       "50 LS_RIGHT+LS_DOWN+RS_LEFT+RS_UP+TRIANGLE\n60 0\n";
+                       "50 LS_RIGHT+LS_DOWN+RS_LEFT+RS_UP+TRIANGLE\n60 0\n"
+                       "65 MAP+SQUARE\n75 0\n80 TOUCHPAD\n90 0\n";
   dcp_offline_init(hooks);
   require(service("scePadOpen", 1000) == 1);
   require(service("scePadOpen", 1001) == 2);
@@ -71,6 +72,19 @@ int main(int argc, char **argv) {
   require(output[7] == 128 && output[8] == 128);
   read(60, 0);
   require(output[7] == 128 && output[8] == 128);
+  require(output[1 + 0x34] == 0);
+  read(65, 0x108000);
+  uint16_t map_x = 0, map_y = 0;
+  std::memcpy(&map_x, output.data() + 1 + 0x3c, 2);
+  std::memcpy(&map_y, output.data() + 1 + 0x3e, 2);
+  require(output[1 + 0x34] == 1 && map_x == 300 && map_y == 471 &&
+          output[1 + 0x40] == 0);
+  read(74, 0x108000);
+  require(output[1 + 0x34] == 1);
+  read(75, 0);
+  require(output[1 + 0x34] == 0);
+  read(80, 0x100000); // The old raw touchpad press remains touch-free.
+  require(output[1 + 0x34] == 0);
   read(10000, 0);
   read(10, 0, 128, 128, 2); // Secondary slots are not scripted.
   hooks.input_script = "\n# Explicit idle; never falls back to boot presses\n";
@@ -94,7 +108,7 @@ int main(int argc, char **argv) {
   require(rejected);
   read(600, 0x4000); // A rejected script does not partially replace the source.
   hooks.input_script = "0 CROSS\n";
-  hooks.scene_input_script = "0 LS_RIGHT+RS_LEFT\n5 0\n";
+  hooks.scene_input_script = "0 LS_RIGHT+RS_LEFT\n5 MAP\n8 0\n";
   hooks.scene_elapsed_frames = [](void *) { return frame - 100; };
   dcp_offline_init(hooks);
   require(service("scePadOpen", 1000) == 1);
@@ -103,8 +117,10 @@ int main(int argc, char **argv) {
   read(100, 0, 255);
   require(output[7] == 0 && output[8] == 128);
   read(104, 0, 255);
-  read(105, 0);
-  require(output[7] == 128 && output[8] == 128);
+  read(105, 0x100000);
+  require(output[7] == 128 && output[8] == 128 && output[1 + 0x34] == 1);
+  read(108, 0);
+  require(output[1 + 0x34] == 0);
   script_active = false; // The checkpoint driver must not suppress real input.
   hooks.input_read = [](void *, unsigned, DcpPlatformPad *pad) {
     pad->connected = 1;

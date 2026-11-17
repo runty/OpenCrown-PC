@@ -425,17 +425,27 @@ uint32_t pad_service(const char *name, const uint64_t *a) {
         pad.lx = pad.ly = pad.rx = pad.ry = 128;
       }
     } else if (hooks.scripted_input && slot == 0) {
+      const dcp::hle::InputEvent *event = nullptr;
       if (hooks.scripted_input_active && !hooks.scripted_input_active(hooks.context)) {
         if (hooks.scene_elapsed_frames && !scene_events.empty())
-          pad.buttons = dcp::hle::script_buttons_at(scene_events, hooks.scene_elapsed_frames(hooks.context));
+          event = dcp::hle::script_event_at(scene_events, hooks.scene_elapsed_frames(hooks.context));
       } else {
         uint64_t frame = hooks.vblank_count ? hooks.vblank_count(hooks.context) : 0;
         if (!hooks.input_script.empty())
-          pad.buttons = dcp::hle::script_buttons_at(input_events, frame);
+          event = dcp::hle::script_event_at(input_events, frame);
         else if (frame >= 300 && frame < 310)
           pad.buttons = 8;
         else if (frame >= 600 && frame <= 3488 && (frame - 600) % 180 < 8)
           pad.buttons = 0x4000;
+      }
+      if (event) {
+        pad.buttons = event->buttons;
+        if (event->map_touch) {
+          pad.touch_count = 1;
+          pad.tx[0] = 300;
+          pad.ty[0] = 471;
+          pad.tid[0] = 0;
+        }
       }
       if (pad.buttons & dcp::hle::kScriptStickLeft) pad.lx = 0;
       if (pad.buttons & dcp::hle::kScriptStickRight) pad.lx = 255;

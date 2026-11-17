@@ -28,7 +28,17 @@ public:
     explicit ScriptSource(std::vector<InputEvent> ev) : ev_(std::move(ev)) {}
     PadState read(int pad, uint64_t frame) override {
         PadState s;
-        if (pad == 0) s.buttons = script_buttons_at(ev_, frame);
+        if (pad == 0) {
+            if (const auto* event = script_event_at(ev_, frame)) {
+                s.buttons = event->buttons;
+                if (event->map_touch) {
+                    s.touch_num = 1;
+                    s.tx[0] = 300;
+                    s.ty[0] = 471;
+                    s.tid[0] = 0;
+                }
+            }
+        }
         if (s.buttons != last_) {
             std::fprintf(stderr, "INPUT frame %llu: buttons 0x%x\n", (unsigned long long)frame, s.buttons);
             last_ = s.buttons;

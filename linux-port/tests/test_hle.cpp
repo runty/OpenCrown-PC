@@ -143,6 +143,11 @@ int main() {
     CHECK(parse_input_script("0 RS_LEFT+RS_UP\n10 RS_RIGHT+RS_DOWN+CROSS\n", &ev, &bad));
     CHECK(script_buttons_at(ev, 0) == (kScriptRightStickLeft | kScriptRightStickUp));
     CHECK(script_buttons_at(ev, 10) == (kScriptRightStickRight | kScriptRightStickDown | 0x4000));
+    CHECK(parse_input_script("10 MAP+SQUARE\n20 0\n30 TOUCHPAD\n", &ev, &bad));
+    CHECK(!script_event_at(ev, 9));
+    CHECK(script_event_at(ev, 10)->map_touch && script_buttons_at(ev, 10) == 0x108000);
+    CHECK(!script_event_at(ev, 20)->map_touch && script_buttons_at(ev, 20) == 0);
+    CHECK(!script_event_at(ev, 30)->map_touch && script_buttons_at(ev, 30) == 0x100000);
     CHECK(!parse_input_script("10 JUMP\n", &ev, &bad) && bad == 1);
     CHECK(!parse_input_script("10\n", &ev, &bad) && bad == 1);
     CHECK(parse_input_script("", &ev, &bad) && ev.empty());

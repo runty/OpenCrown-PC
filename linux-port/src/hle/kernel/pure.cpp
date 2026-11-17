@@ -143,8 +143,9 @@ constexpr ButtonName kButtons[] = {
     {"RS_LEFT", kScriptRightStickLeft}, {"RS_RIGHT", kScriptRightStickRight},
     {"RS_UP", kScriptRightStickUp}, {"RS_DOWN", kScriptRightStickDown}};
 
-bool parse_buttons(std::string tok, uint32_t* out) {
+bool parse_buttons(std::string tok, uint32_t* out, bool* map_touch) {
     *out = 0;
+    *map_touch = false;
     if (tok.empty()) return false;
     if (tok[0] >= '0' && tok[0] <= '9') {
         char* end = nullptr;
@@ -160,6 +161,7 @@ bool parse_buttons(std::string tok, uint32_t* out) {
         std::string name = tok.substr(i, j - i);
         for (char& c : name) c = char(std::toupper(static_cast<unsigned char>(c)));
         bool found = false;
+        if (name == "MAP") { *out |= 0x100000; *map_touch = true; found = true; }
         for (const auto& b : kButtons)
             if (name == b.name) *out |= b.bit, found = true;
         if (!found) return false;
@@ -192,23 +194,29 @@ bool parse_input_script(const std::string& text, std::vector<InputEvent>* out, i
         char* end = nullptr;
         unsigned long long f = std::strtoull(tok[0].c_str(), &end, 10);
         uint32_t b = 0;
-        if (*end || tok.size() != 2 || !parse_buttons(tok[1], &b)) {
+        bool map_touch = false;
+        if (*end || tok.size() != 2 || !parse_buttons(tok[1], &b, &map_touch)) {
             if (bad_line) *bad_line = line_no;
             return false;
         }
-        out->push_back({f, b});
+        out->push_back({f, b, map_touch});
     }
     std::stable_sort(out->begin(), out->end(), [](const InputEvent& a, const InputEvent& b) { return a.frame < b.frame; });
     return true;
 }
 
-uint32_t script_buttons_at(const std::vector<InputEvent>& ev, uint64_t frame) {
-    uint32_t b = 0;
+const InputEvent* script_event_at(const std::vector<InputEvent>& ev, uint64_t frame) {
+    const InputEvent* result = nullptr;
     for (const auto& e : ev) {
         if (e.frame > frame) break;
-        b = e.buttons;
+        result = &e;
     }
-    return b;
+    return result;
+}
+
+uint32_t script_buttons_at(const std::vector<InputEvent>& ev, uint64_t frame) {
+    const auto* event = script_event_at(ev, frame);
+    return event ? event->buttons : 0;
 }
 
 int64_t dmem_alloc(uint64_t* cursor, uint64_t start, uint64_t end, uint64_t len, uint64_t align) {
