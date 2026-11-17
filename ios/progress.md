@@ -1,5 +1,35 @@
 # Device port progress
 
+## 2026-11-17 — Mobile work tabled and devices cleared
+
+The player tabled iOS work and requested removal from both devices. The
+`com.wadscorp.opencrown.mobile` app was uninstalled from the iPhone 17 Pro Max
+and iPad mini A20 Pro; each post-removal inventory confirms absence. Before
+uninstall, two copies of non-game-data Documents matched on each device (186
+iPhone files / 263 iPad files). At the player's subsequent request those
+backup copies and earlier identified phone install backups were moved to Trash;
+they remain recoverable there until Trash is emptied and are not a retained
+backup. Verification manifests and reports remain under
+`/Volumes/office/Build/OpenCrown/removal-2026-11-17/`. No new install is owed.
+
+On the player's second character the same fight led to another Inn stop on
+`201b3b51` in installed `30aeb10`, after 6,958 captured frames. The original
+ELF's 119-slot guarded selector has two distinct targets, `201b3b00` and
+`201b3b51`. `inn-postfight-second-audit.py` checked its owner, table and
+instruction boundaries against the original ELF/image and unwind atlas;
+`d62b7ee` adds both targets to bootstrap requirements. This change has **not**
+been lifted, compiled, packaged or run; it is a starting point when work
+resumes. The first fix's exact execution is likewise not independently proven.
+
+After the Tower dialogue, a disposable Simulator run showed Save completed
+and wrote SAVE0.DAT `a77b60224b6a5829b3342f9bcee354154ece33fe7f728820b99e96a83938b6d2`.
+A fresh Simulator process reopened those exact bytes, but showed the same
+fairy prompt as before the visit; Tower progress persistence is not established.
+Evidence: `long-checkpoint-package/tower-save/` and `tower-save-reopen/`.
+Full story, real-device gameplay and saves, audio interruptions, sustained
+performance and Files-provider handoff remain open. The wrapper remains pinned
+to `851c06b`, behind this experimental branch.
+
 ## 2026-11-17 — iPhone post-fight Inn dispatch
 
 The player reported a missing trace after a fight. The stopped iPhone report
