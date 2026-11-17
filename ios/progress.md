@@ -2,6 +2,20 @@
 
 ## 2026-11-17 — Simulator Castle continuation
 
+The next muted Simulator replay opened the Town Map after the Castle sequence,
+then reached Morgan's Magic Item Shop. To permit routes beyond the previous
+one-minute checkpoint, `5033878` raises the diagnostic settle-frame ceiling
+from 3,600 to 18,000; the duration, trace and vblank budgets still apply and
+the timing ring remains 3,600 intervals. The configuration boundary fixture
+passed 43 checks, and scripted-input fixtures passed 167 checks each natively
+and under sanitizers. Mac and Simulator runtime archives rebuilt. On the
+rebuilt isolated Simulator app, a 4,500-frame checkpoint completed with 6,031
+rendered frames and 105,255 verified texture checks, zero proof failures, and
+unchanged source seed and protected QA files. Screenshot and reports are in
+`/Volumes/office/Build/OpenCrown/long-checkpoint-package/post-castle-town/`.
+The six-left route selected the shop, so it does not establish an Inn save or
+a purchase. No physical device or live cloud save was used.
+
 After the player stopped the looping iPhone profiling attempt, the original
 diagnostic input and normal muted launcher were restored. The disposable
 working SAVE0.DAT and param.bin changed during that interrupted run; it did

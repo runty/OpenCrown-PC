@@ -119,7 +119,9 @@ Set `DCP_CHECKPOINT_SCENE=TOWN` and choose 120–18,000 settle frames with
 scene marker. For a walk, `DCP_CHECKPOINT_INPUT` takes the same multiline
 frame/button syntax as the boot script. Its frame numbers start at the
 observed scene vblank. Allow the entrance animation to finish before walking.
-These controls apply to checkpoint runs using disposable saves.
+These controls apply to checkpoint runs using disposable saves. Longer routes
+still require enough diagnostic time, trace and vblank budgets to finish; the
+frame-timing capture ring remains limited to 3,600 intervals.
 
 `checkpoint_elapsed_ns` measures guest time from the scene marker to checkpoint
 completion. `settled_replay_timing` counts completed replay intervals and
