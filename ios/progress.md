@@ -1,5 +1,46 @@
 # Device port progress
 
+## 2026-11-17 — Wyvern clear, scepter save and iPhone combat
+
+On the Mac QA host using core `be8ce7c`, the player-style disposable route
+reported a level-4 Guild request, visited the Castle, selected Julius and used
+Report adventures. The game displayed Save completed; SAVE0.DAT changed from
+`1618ee9e2bff1b5f21ef5121a4e3c3153ef0e5d6218fecde54f233459db19c2d` to
+`cb7ac2636df46f46dd051aca38dfb0c434e54bcf3b1316fb7cebd67648868776`.
+A fresh native process reopened both Darrel and Julius with the objective to
+retrieve the royal scepter. It entered Old Capital, observed the formerly
+missing `2024dec4` at vblank 19,664, and continued into the Wyvern encounter.
+The game visibly reported the Wyvern defeated and the scepter obtained, then
+returned to Town with the objective to go to the Castle. The game wrote new
+SAVE0.DAT `82d24f52ac07522bedb3dc0ae137d49fe37cab64489fb225c3c49df0ee2ebf1b`.
+The host rendered 41,323 frames / 41,770 vblanks and verified 973,719 texture
+hits with zero proof failures, empty host/guest errors, protected source seed
+unchanged and acknowledged unload. Its intentional stop exits 1 because the
+unrelated HARPY checkpoint remains unmet.
+
+With the user's iPhone available, signed `be8ce7c` was installed after a full
+non-game-data backup; all 124 pre-existing files matched before and after
+installation, before launch. Two distinct disposable diagnostic sessions were
+staged with complete byte-for-byte readback. The phone cold-reopened the
+post-Wyvern save and displayed the Castle objective (2,180 frames, 27,193
+full-content texture checks, zero proof failures). With the pre-Wyvern save it
+reached recognizable Old Capital with Darrel and Julius (10,511 frames,
+196,808 verified hits, zero failures). An additional run using the same save
+and input but with verification disabled reached Old Capital (11,358 frames,
+216,967 version hits). Over its 1,799 measured intervals it averaged 56.60 fps,
+p50 16.67 ms / p95 33.29 ms; thermal state at stop was fair. This single
+short run is not sustained or heavy-boss performance qualification, and scene
+and timing variability prevent a controlled verification-overhead comparison.
+All three real audio callback runs were muted, reported zero underrun/clipped
+frames, and left the diagnostic save inventories unchanged. Afterward all 122
+protected pre-existing files still matched, excluding the two expected global
+diagnostic reports; the normal launcher is restored muted. CoreDevice's 207 MB
+install cache was cleaned. No iPad or live cloud save was accessed. Full story,
+physical touch/gameplay and sustained performance, audible audio, and iCloud
+provider/conflict qualification remain open. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/capital-resume-castle/`,
+`capital-castle-save-reopen/`, and `/Volumes/office/Build/OpenCrown/capital-state-phone/`.
+
 ## 2026-11-16 — New combat dispatch and level-4 save reopen
 
 Another muted replay stopped at `2024dec4` (Old Capital combat). Original ELF
