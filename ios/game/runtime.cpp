@@ -94,6 +94,7 @@ struct Engine {
   std::atomic<bool> interactive{false};
   dcp::game::CursorReadback cursor;
   std::atomic<uint64_t> cursorReadErrors{0};
+  std::atomic<uint64_t> qaCastleStoryHits{0};
   alignas(128) std::atomic<uint64_t> steps{0};
   alignas(128) std::atomic<uint64_t> vblanks{0};
   uint64_t directCursor = 0;
@@ -1337,7 +1338,8 @@ extern "C" const char *dcp_cpu_report() {
   const auto directMemory = engine().directMemory.stats();
   std::ostringstream out;
   out << "{\"backend\":\"Remill AOT real modules\",\"stage\":\"" << stage
-      << "\",\"steps\":" << engine().steps
+      << "\",\"qa_castle_story_hits\":" << engine().qaCastleStoryHits
+      << ",\"steps\":" << engine().steps
       << ",\"booted\":" << (checkpointComplete ? "true" : "false")
       << ",\"game_code_executed\":"
       << (engine().enteredEboot ? "true" : "false")
@@ -1464,6 +1466,8 @@ extern "C" void dcp_trace_enter(State &state, uint64_t pc) {
   if (++engine().steps > engine().headless.trace_budget && !engine().interactive)
     throw std::runtime_error("guest trace budget exceeded");
   const uint64_t observedPC = canonical(pc);
+  if (observedPC == 0x201cf925)
+    ++engine().qaCastleStoryHits;
   // Original Cursor_Update (ELF 39ad80) computes the player's pad id before
   // calling 45850 at 39b0f8. At that entry RSI is the pad id, R12 still holds
   // the cursor, and its position has not yet been updated for this frame.
