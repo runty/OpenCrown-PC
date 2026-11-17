@@ -103,9 +103,13 @@ prevents a later launch from silently rolling back a newly selected restore.
 If recovery fails, the restore fails and the journal and interrupted live tree
 remain available for repair. Both APIs still require exclusive access and all
 guest writers to be stopped.
-Completed checkpoints are retained until the user/integrator deliberately prunes
-them. An empty tree is a valid checkpoint; the launcher decides when that is
-useful. The helpers do not infer whether game progress or a save slot is complete.
+The low-level checkpoint helper never prunes completed checkpoints. The app
+also uses the same checkpoint directory for save-write sessions, which retain
+up to ten valid checkpoints after a successful commit, always including the
+just-committed checkpoint; that policy can eventually remove checkpoints
+made for imports or manual recovery. See
+[save write retention](#save-write-sessions). An empty tree is a valid
+checkpoint; the launcher decides when that is useful. The helpers do not infer whether game progress or a save slot is complete.
 Create checkpoints at known quiescent boundaries and offer explicit recovery
 after an interrupted save rather than automatically preferring a newer partial
 slot.

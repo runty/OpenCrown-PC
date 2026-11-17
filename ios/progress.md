@@ -1,5 +1,28 @@
 # Device port progress
 
+## 2026-11-16 — Deeper Old Capital combat
+
+A private native replay found missing `2045e6d0` during Old Capital combat.
+`ios/game/capital-switch-audit.py` checks its four-slot bounded table against
+the original ELF, prepared image, unwind owner and instruction boundaries;
+all four targets are included in the 50,504-entry Mac, iPhoneOS and Simulator
+archives. A silent disposable-save replay reached the Tommit story scene and a
+further fight. Its read-only QA observer recorded `2045e6d0` at vblank 33,594,
+then continued to vblank 39,869: 39,188 rendered frames, 824,073 full-content
+texture checks, zero proof failures, empty errors and acknowledged unload.
+The intentional stop returns 1 because the unrelated HARPY checkpoint remains
+unmet. Its source and working saves remained unchanged, so this does not
+establish persistence of the newly acquired quest or skill.
+
+A separate uninstrumented Simulator regression reached Guild dialogue with
+5,200 frames / 71,310 checks, observed the expected offline trophy call and
+preserved its protected files. The signed, icon-bearing iOS build `34b1c02`
+was verified but not installed. Neither test qualifies the full story, device
+performance, audio or iCloud behavior. Evidence:
+`/Volumes/office/Build/OpenCrown/mobile-adventure-live/capital-switch-replay/`
+and `/Volumes/office/Build/OpenCrown/capital-switch-package/`. No physical device
+or normal/cloud save was touched.
+
 ## 2026-11-16 — Guild quests, Castle and Old Capital
 
 The guided Julius party defeats Harpy, appraises and obtains three items,
