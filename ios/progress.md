@@ -21,7 +21,12 @@ and both showed the fairy's next story prompt in Town. They rendered 2,152 /
 2,160 frames with 27,732 / 26,421 verified texture hits and no proof failures.
 The source seeds and protected QA files remained unchanged throughout. This
 qualifies the isolated Simulator save/reopen path, not physical-device saves,
-cloud sync or sustained performance. Evidence:
+cloud sync or sustained performance. From that retained save, a separate muted
+Simulator run dismissed the fairy's prompt and walked right; the inspected
+frame says the Old Tower is now available. It rendered 4,061 frames, verified
+98,513 texture hits without proof failures, and preserved the seed and protected
+QA files. Evidence also includes
+`/Volumes/office/Build/OpenCrown/long-checkpoint-package/fairy-follow/`. Evidence:
 `/Volumes/office/Build/OpenCrown/long-checkpoint-package/post-castle-save/`,
 `post-castle-cold-reopen/` and `post-castle-cold-reopen-2/`.
 
