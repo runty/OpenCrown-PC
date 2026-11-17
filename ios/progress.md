@@ -1,5 +1,23 @@
 # Device port progress
 
+## 2026-11-16 — Old Capital dragon and royal scepter
+
+A second silent native replay with the `34b1c02` core reproduced the post-Guild
+route and re-executed `2045e6d0` at vblank 33,599. It continued into a cavern
+and a multi-dragon fight, used the game's continue option after Darrel fell,
+and returned to the Inn's results: Darrel reached level 4 and the game displayed
+that the royal scepter was reclaimed. Captures retain the fight, continue,
+results, scepter and item-appraisal screens. The run reached 59,024 vblanks /
+58,296 rendered frames, 1,334,643 full-content texture checks with zero proof
+failures, empty host/guest errors and acknowledged unload. The QA driver's
+900-second post-route deadline stopped it during appraisal; the runner exits 1
+with its unrelated HARPY checkpoint unmet. The working and source saves stayed
+unchanged, so this does not establish that the new progress was saved or
+reopened. A fresh replay uses longer driver and host budgets. This is not full
+story, physical device, audio, cloud or sustained-performance qualification.
+Evidence: `/Volumes/office/Build/OpenCrown/mobile-adventure-live/capital-deep-replay/`.
+No physical device or live save was touched.
+
 ## 2026-11-16 — Deeper Old Capital combat
 
 A private native replay found missing `2045e6d0` during Old Capital combat.
