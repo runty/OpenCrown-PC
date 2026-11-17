@@ -1,5 +1,23 @@
 # Device port progress
 
+## 2026-11-17 — Old Tower map availability remains unresolved
+
+On isolated Simulator build `5033878`, four right selections on the Town Map
+highlight Old Tower, but its description says “You cannot use this facility
+yet.” This follows the previously captured “You can now go to the Old Tower”
+announcement from the same disposable post-Castle seed. Delaying the Map until
+5,000 checkpoint frames did not change that description. The two runs rendered
+5,955 / 7,550 frames and verified 140,222 / 187,787 texture hits without proof
+failures. A separate route walking right after the announcement reached the
+adventure Gate's Old Capital selection, not the Tower. It rendered 7,020 frames
+and verified 136,347 texture hits without proof failures. Each run preserved
+the source seed and protected QA files. This evidence does not establish why
+the Tower remains unavailable, whether another story action is required, or a
+runtime defect; do not claim Tower entry or completed unlock. Reports, frames
+and route scripts are under `/Volumes/office/Build/OpenCrown/long-checkpoint-package/`
+(`tower-map-four`, `tower-map-delayed`, `tower-walk`). No physical device or live
+cloud save was used.
+
 ## 2026-11-17 — Simulator Castle continuation
 
 The isolated Simulator route now returns from the Castle to the Inn and
@@ -23,7 +41,8 @@ The source seeds and protected QA files remained unchanged throughout. This
 qualifies the isolated Simulator save/reopen path, not physical-device saves,
 cloud sync or sustained performance. From that retained save, a separate muted
 Simulator run dismissed the fairy's prompt and walked right; the inspected
-frame says the Old Tower is now available. It rendered 4,061 frames, verified
+frame announces that the Old Tower is now available; subsequent Map checks
+still label the facility unavailable, as recorded above. It rendered 4,061 frames, verified
 98,513 texture hits without proof failures, and preserved the seed and protected
 QA files. Evidence also includes
 `/Volumes/office/Build/OpenCrown/long-checkpoint-package/fairy-follow/`. Evidence:
