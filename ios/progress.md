@@ -23,6 +23,22 @@ of the post-fight stop. Evidence is under
 `/Volumes/office/Build/OpenCrown/{inn-return-audit,iphone-latest-package}/`.
 No live save was written by this investigation.
 
+## 2026-11-17 — Enter Old Tower on foot in Simulator
+
+Using build `30aeb10` and the isolated post-Castle save, a timed walking
+route reached the Old Tower entrance and held the left stick up. The captured
+frame shows the fairy's opening dialogue inside Old Tower. A longer replay
+advanced dialogue and returned outside; a further run opened the Town Map and
+still showed “You cannot use this facility yet” for Old Tower. Thus the
+message does not block the first visit on foot; why map travel remains
+unavailable is not established. The three runs rendered 6,546 / 8,934 / 9,939
+frames and verified 142,042 / 222,188 / 242,138 texture hits without proof
+failures. Seed, working save and protected QA files remained unchanged; no
+story persistence or physical performance is claimed. Frames, inputs and
+reports are in `long-checkpoint-package/tower-enter-aligned35/`,
+`tower-dialogue/` and `tower-after-visit-map/` under
+`/Volumes/office/Build/OpenCrown/`. No physical device or live save was used.
+
 ## 2026-11-17 — Old Tower map availability remains unresolved
 
 On isolated Simulator build `5033878`, four right selections on the Town Map
